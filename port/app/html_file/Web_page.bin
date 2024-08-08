@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+ <title>W55RP20 Web page</title>
+
+ <meta http-equiv="pragma" content="no-cache">
+ <meta http-equiv="content-type" content="no-cache, must-revalidate">
+ <style>
+ body{background-color:transparent;}
+ body,h3,p,div{margin:0;padding:0;font: normal 14px 'omnes-pro', Helvetica, Arial, sans-serif;}
+ #header {
+	position: relative;
+	margin: auto;
+ }
+ #header a {
+	margin-left: 30px;
+ }
+ #header h1 {
+	vertical-align: middle;
+	font-size: 42px;
+	font-weight: bold;
+	text-decoration: none;
+	color: #000;
+	margin-left: 30px;
+	text-align: left;
+ }
+ #header h2 {
+	vertical-align: middle;
+	font-size: 30px;
+	font-weight: bold;
+	text-decoration: none;
+	color: #000;
+	margin-left: 30px;
+	text-align: left;
+ }
+ .usual {
+	 background:transparent;
+	 color:#111;
+	 padding:15px 20px;
+	 width:auto;
+	 margin:8px auto;
+ }
+ .usual li {list-style:none; float:left;}
+ .usual ul a {
+	 display:block;
+	 padding:6px 10px;
+	 text-decoration:none!important;
+	 margin:1px;
+	 margin-left:0;
+	 font-weight:bold;
+	 color:#FFF;
+	 background:#aaa;
+ }
+ .usual div{
+	 padding: 10px 10px 10px 10px;
+	 *padding-top:3px;
+	 *margin-top:15px;
+	 clear:left;
+	 background:#EEF3FF;
+ }
+ .ipt label{float:left;padding-top:3px;text-align:left;width:130px;}
+ .usual h3{margin-top:10px;margin-left:10px;font-size:24px;text-decoration:none;font-weight:bold;color:blue;}
+ .usual p{margin-top:0;margin-bottom:10px;}
+ .usual label{margin-left:10px;}
+ .red{color:red}
+ .analog{margin-top:2px;margin-right:10px;border:1px solid #ccc;height:20px;width:500px;display:block;} 
+ .ain{width:0%;height:100%;text-align:center;background:red;float:left;display:block;}   
+ .info div{margin:0 auto;text-align:left;display:table-cell;vertical-align:middle;background:#FFE4E1;}
+  /* CSS for Buttons */
+.btn {
+	background: #3498db;
+	background-image: -webkit-linear-gradient(top, #3498db, #2980b9);
+	background-image: -moz-linear-gradient(top, #3498db, #2980b9);
+	background-image: -ms-linear-gradient(top, #3498db, #2980b9);
+	background-image: -o-linear-gradient(top, #3498db, #2980b9);
+	background-image: linear-gradient(to bottom, #3498db, #2980b9);
+	-webkit-border-radius: 28;
+	-moz-border-radius: 28;
+	border-radius: 28px;
+	color: #ffffff;
+	font-size: 13px;
+	padding: 3px 10px 3px 10px;
+	text-decoration: none;
+}
+
+.btn:hover {
+	background: #3cb0fd;
+	background-image: -webkit-linear-gradient(top, #3cb0fd, #3498db);
+	background-image: -moz-linear-gradient(top, #3cb0fd, #3498db);
+	background-image: -ms-linear-gradient(top, #3cb0fd, #3498db);
+	background-image: -o-linear-gradient(top, #3cb0fd, #3498db);
+	background-image: linear-gradient(to bottom, #3cb0fd, #3498db);
+	cursor: pointer;
+	text-decoration: none;
+}
+ </style>
+ <script>
+ /* basis */
+ function AJAX(url, callback)
+ {
+	 var req = AJAX_init();
+	 req.onreadystatechange = AJAX_processRequest;
+	 
+	 function AJAX_init() {
+		 if (window.XMLHttpRequest) {
+		 	return new XMLHttpRequest();
+		 } else if (window.ActiveXObject) {
+		 	return new ActiveXObject('Microsoft.XMLHTTP');
+		 }
+	 };
+	 function AJAX_processRequest() {
+		 if(req.readyState == 4) {
+		 	if(req.status == 200) {
+		 	alert('Request successful');
+		 	if(callback)
+		 		callback(req.responseText);
+		 	}
+		 }
+	 };
+	 this.doGet = function() {
+		 req.open('GET', url, true);
+		 req.send(null);
+	 };
+	 this.doPost = function(body) {
+		 req.open('POST', url, true);
+		 req.setRequestHeader('Content-Type',
+		 'application/x-www-form-urlencoded');
+		 req.setRequestHeader('ISAJAX','yes');
+		 req.send(body);
+	 };
+ };
+ function $(id){return document.getElementById(id);}
+ function $$(id){return document.getElementsByName(id);}
+ function $$_ie(tag, name){
+	 if(!tag){tag='*';}
+	 var elems=document.getElementsByTagName(tag);
+	 var res=[];
+	 for(var i=0;i<elems.length;i++){
+		 att=elems[i].getAttribute('name');
+		 if(att==name){
+		 	res.push(elems[i]);
+		 }
+	 }
+	 return res;
+ }
+ function selset(id,val){
+ 	var o=$(id);
+ 	for(var i=0;i<o.options.length;i++){
+ 		if(i==val){
+ 			o.options[i].selected=true;
+ 			break;
+ 		}
+ 	}
+ }
+ function selset_name(name, val){
+ 	var o=$$(name);
+ 	for(var i=0;i<o.options.length;i++){
+ 		if(i==val){
+ 			o.options[i].selected=true;
+ 			break;
+ 		}
+ 	}
+ }
+/* Get: Devinfo */
+/* function DevinfoCallback(), getDevinfo() */
+ var dhcp_enabled = 0;
+ var server_enabled = 0;
+ function DevinfoCallback(o){
+	 $('txtFwver').value=o.fwver;
+	 $('txtDname').value=o.devname;
+	 $('txtPcode').value=o.pcode;
+	 
+	 $('txtMac').value=o.mac;
+	
+	 $('txtIp').value=o.ip;
+	 $('txtGw').value=o.gw;
+	 $('txtSub').value=o.sub;
+	 $('txtDns').value=o.dns;
+	 
+	 if(typeof(window.external)!='undefined'){
+	 	obj=$$_ie('input','dhcp');
+	 }else{
+	 	obj=$$('dhcp');
+	 }
+	 for(var i=0; i<obj.length;i++){
+	 	if(i==o.dhcp){
+	 		obj[i].checked=true;
+	 		netinfo_block(i);	 		
+	 		break;
+	 	}
+	 }
+	 
+   	 $('txtOpmode').value=o.opmode;
+	 $('txtLport').value=o.lport;
+	 $('txtRip').value=o.rip;
+	 $('txtRport').value=o.rport;
+	 $('txtModbus').value=o.modbus;
+
+	 if(typeof(window.external)!='undefined'){
+	 	obj=$$_ie('input','TCP Client');
+	 }else{
+	 	obj=$$('TCP Client');
+	 }
+	 ch0info_block(o.opmode);
+
+	 if(o.uart == '0'){
+	 	 selset('selBaud1',o.baud);
+		 selset('selDb1',o.databit);
+		 selset('selParity1',o.parity);
+		 selset('selStop1',o.stopbit);
+		 selset('selFlow1',o.flow);
+	 }else if(o.uart == '1'){
+	 	 selset('selBaud2',o.baud);
+		 selset('selDb2',o.databit);
+		 selset('selParity2',o.parity);
+		 selset('selStop2',o.stopbit);
+		 selset('selFlow2',o.flow);
+	 }
+ }
+ function getDevinfo(){
+	 var oUpdate;
+	 setTimeout(function(){
+	 	oUpdate=new AJAX('get_devinfo.cgi',function(t){
+	 		try{eval(t);}catch(e){alert(e);}
+	 });
+	 oUpdate.doGet();},300);
+ }
+ 
+ function netinfo_block(o){
+ 	if(o == 1) { 	// Using DHCP setting, Netinfo inputbox blocked
+		// Input field disabled
+		$('txtIp').disabled=true;
+		$('txtGw').disabled=true;
+		$('txtSub').disabled=true;
+		$('txtDns').disabled=true;
+		dhcp_enabled = 1;
+ 	} else {		// Static setting, Netinfo inputbox unblocked
+ 		$('txtIp').disabled=false;
+		$('txtGw').disabled=false;
+		$('txtSub').disabled=false;
+		$('txtDns').disabled=false;
+		dhcp_enabled = 0;
+ 	}
+ }
+
+ function ch0info_block(o){
+ 	if(o == 1) { // Using Server mode, Ch0info Remote ip/port blocked
+		$('txtRip').disabled=true;
+		$('txtRport').disabled=true;
+		server_enabled = 1;
+ 	} else {		// Static setting, Netinfo inputbox unblocked
+		$('txtRip').disabled=false;
+		$('txtRport').disabled=false;
+		server_enabled = 0;
+ 	}
+ }
+ 
+ function setDevReset(){
+ 	setTimeout(function(){
+		 dout=new AJAX('set_devreset.cgi', function(t){
+		 	try{eval(t);}catch(e){alert(e);}
+		 });
+		 dout.doPost('devreset');
+	},300);
+ }
+ 
+ function setDevFacReset(){
+ 	setTimeout(function(){
+		 dout=new AJAX('set_devfacreset.cgi', function(t){
+		 	try{eval(t);}catch(e){alert(e);}
+		 });
+		 dout.doPost('devfacreset');
+	},300);
+ }
+ 
+ /* Set: Devinfo - devname only */
+ function setDevinfo(){
+ 	var dev_name_str;
+ 	var net_info_str;
+ 	var ch0_info_str;
+ 	var uart0_info_str;
+ 	
+ 	dev_name_str = 'devname='+$('txtDname').value;
+ 	if(dhcp_enabled == 0){ //static
+ 		net_info_str = '&ip=' + $('txtIp').value + 
+ 		               '&gw=' + $('txtGw').value +
+ 		               '&sub=' + $('txtSub').value +
+ 		               '&dns=' + $('txtDns').value + 
+ 		               '&dhcp=' + '0';
+  }else{
+  	net_info_str = '&dhcp=' + '1';
+  }
+  
+  if(server_enabled == 0){ 	// non server
+  	ch0_info_str = '&opmode=' + $('txtOpmode').value +
+		               '&lport=' + $('txtLport').value +
+	 	               '&rip=' + $('txtRip').value +
+	 	               '&rport=' + $('txtRport').value +
+					   '&modbus=' + $('txtModbus').value;
+	}else{
+		ch0_info_str = '&opmode=' + $('txtOpmode').value +
+		               '&lport=' + $('txtLport').value +
+					   '&modbus=' + $('txtModbus').value;
+	}
+ 	
+ 	uart0_info_str = '&baud=' + $('selBaud1').value; +
+ 	                 '&databit=' + $('selDb1').value +
+ 	                 '&parity=' + $('selParity1').value +
+ 	                 '&stopbit=' + $('selStop1').value +
+ 	                 '&flow=' + $('selFlow1').value;
+ 	                 
+ 	setTimeout(function(){
+		 dout=new AJAX('set_devinfo.cgi', function(t){
+		 	try{eval(t);}catch(e){alert(e);}
+		 });
+		 dout.doPost(dev_name_str + net_info_str + ch0_info_str + uart0_info_str);
+	},300);
+ }
+
+ function ModuleUpdate()
+{        
+	if (document.UpdateModuleFirmware.file.value == "")
+	{
+		alert("Please select file first");
+		return ;
+	}
+	if(confirm('Are you sure to update firmware?')){
+	   document.UpdateModuleFirmware.submit() ;
+	}
+}
+
+ </script>
+ <style id="__web-inspector-hide-shortcut-style__">
+.__web-inspector-hide-shortcut__, .__web-inspector-hide-shortcut__ *, .__web-inspector-hidebefore-shortcut__::before, .__web-inspector-hideafter-shortcut__::after
+{
+    visibility: hidden !important;
+}
+</style></head>
+ <body>
+ 	 <div id="header">
+		 <h1>W55RP20-S2E</h1>
+		 <h2>Get/Set Interface Functions</h2>
+	 </div>
+	 <div class="usual">
+	 	<h3>Device Information <input type="button" class="btn" value="Get Settings" onclick="getDevinfo();"> <input type="button" class="btn" value="Set Settings" onclick="setDevinfo();"> <input type="button" class="btn" value="Reset" onclick="setDevReset();"> <input type="button" class="btn" value="Factory Reset" onclick="setDevFacReset();"></h3>
+		<br>
+		<div class="ipt">
+			<p><label>Firmware version:</label><input type="text" id="txtFwver" size="20" disabled="disabled" value=""></p>
+			<p><label for="txtDname">Device name:</label><input type="text" size="20" id="txtDname" name="devname" maxlength="25" value=""> </p>
+			<p><label>Product code: </label><input type="text" id="txtPcode" size="20" disabled="disabled" value=""></p>
+			<p><label>MAC address: </label><input type="text" id="txtMac" size="20" disabled="disabled" value=""></p>
+		</div>
+		<br>
+		<h3>Network Configuration</h3>
+		<br>
+		<div>
+			<input type="radio" name="dhcp" id="rdStatic" value="0" onclick="netinfo_block(this.value);"><label for="rdStatic">Static IP</label>
+			<input type="radio" name="dhcp" id="rdDhcp" value="1" onclick="netinfo_block(this.value);"><label for="rdDhcp">DHCP</label>
+		</div>
+		<div class="ipt">
+			<p><label for="txtIp">Device IP address:</label><input id="txtIp" name="ip" type="text" size="20" value=""> </p>
+			<p><label for="txtGw">Gateway:</label><input id="txtGw" name="gw" type="text" size="20" value=""> </p>
+			<p><label for="txtSub">Subnet mask:</label><input id="txtSub" name="sub" type="text" size="20" value=""> </p>
+			<p><label for="txtDns">DNS server:</label><input id="txtDns" name="dns" type="text" size="20" value=""> </p>
+		</div>
+		<br>
+		<h3>Channel #0 </h3><br><div class="ipt">
+			<p><label for="txtOpmode">Operation mode:</label>
+			<select id="txtOpmode" name="opmode" onchange="ch0info_block(this.value);">
+				<option value="0">TCP Client</option>
+				<option value="1">TCP Server</option>
+				<option value="2">TCP mixed</option>
+				<option value="3">UDP</option>
+				<option value="4">SSL CLient</option>
+				<option value="5">MQTT CLient</option>
+				<option value="6">MQTTS CLient</option>
+			</select></p>
+		  	<p><label for="txtLport">Local Port:</label><input id="txtLport" name="lport" type="text" size="20" value=""></p>
+			<p><label for="txtRip">Remote IP</label><input id="txtRip" name="rip" type="text" size="20" value=""></p>
+			<p><label for="txtRport">Remote Port</label><input id="txtRport" name="rport" type="text" size="20" value=""></p>
+			<p><label for="txtModbus">Modbus</label>
+				<select id="txtModbus" name="modbus">
+					<option value="0">NONE</option>
+					<option value="1">RTU</option>
+					<option value="2">ASCII</option>
+				</select></p>
+		</div>
+		<br>
+		<h3>Serial Port</h3><br><div>
+			<label for="selBaud1">USART Baudrate:</label>
+			<select id="selBaud1" name="baudrate">
+				<option value="0">300</option>
+				<option value="1">600</option>
+				<option value="2">1200</option>
+				<option value="3">1800</option>
+				<option value="4">2400</option>
+				<option value="5">4800</option>
+				<option value="6">9600</option>
+				<option value="7">14400</option>
+				<option value="8">19200</option>
+				<option value="9">28800</option>
+				<option value="10">38400</option>
+				<option value="11">57600</option>
+				<option value="12">115200</option>
+				<option value="13">230400</option>
+				<option value="14">460800</option>
+			</select>
+			<label for="selDb1">Data bit:</label>
+			<select id="selDb1" name="databit">
+				<option value="0">7</option>
+				<option value="1">8</option>
+			</select>
+			<label for="selParity1">Parity:</label>
+			<select id="selParity1" name="parity">
+				<option value="0">NONE</option>
+				<option value="1">ODD</option>
+				<option value="2">EVEN</option>
+			</select>
+			<label for="selStop1">Stop bit:</label>
+			<select id="selStop1" name="stopbit">
+				<option value="0">1</option>
+				<option value="1">2</option>
+			</select>
+			<label for="selFlow1">Flow control:</label>
+			<select id="selFlow1" name="flowcontrol">
+				<option value="0">NONE</option>
+				<option value="1">XON/XOFF</option>
+				<option value="2">CTS/RTS</option>
+				<option value="3">RTS on TX</option>
+				<option value="4">RTS on TX (invert)</option>
+			</select>
+		</div>
+		<br>
+		<h3>W55RP20-S2E Firmware Update</h3><br><div>
+			<form action="update_module_firmware.cgi" method="post" enctype="multipart/form-data" name="UpdateModuleFirmware" id="form1">
+				<input type="file" name="file" />
+				<label>
+				<input name="Save" type="button" id="Save" onClick="ModuleUpdate()" value="Module Update" />	  
+				</label>&nbsp;&nbsp;</td>
+			</form>
+		</div>
+		<br>
+	 </div> 
+	 <div style="margin:5px 5px; clear:both">
+	 	<center>
+	 	©Copyright 2024 WIZnet Co., Ltd.
+		</center>
+	 </div>
+ </body></html>
