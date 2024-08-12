@@ -197,9 +197,6 @@ void start_task(void *argument)
     while(1);
 #endif
     load_DevConfig_from_storage();
-
-    PRT_INFO("")
-
     DATA0_UART_Configuration();
     check_mac_address();
 

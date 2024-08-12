@@ -101,16 +101,11 @@ add_definitions(-DMBEDTLS_CONFIG_FILE="${APP_PORT_DIR}/mbedtls/inc/SSLConfig.h")
 add_definitions(-DSET_TRUSTED_CERT_IN_SAMPLES)
 add_definitions(-DPICO_FLASH_SPI_CLKDIV=4)
 add_definitions(-DPICO_DEFAULT_UART_BAUD_RATE=921600)
-#if(${BOARD_NAME} STREQUAL W55RP20_S2E)
-#    add_definitions(-DPICO_DEFAULT_UART_TX_PIN=12)
-#    add_definitions(-DPICO_DEFAULT_UART_RX_PIN=13)
-#endif()
 
 add_subdirectory(main)
 
 # Add libraries in subdirectories
 add_subdirectory(${CMAKE_SOURCE_DIR}/libraries)
-#add_subdirectory(${FREERTOS_DIR})
 add_subdirectory(${MBEDTLS_DIR})
 add_subdirectory(${BOOT_PORT_DIR})
 add_subdirectory(${APP_PORT_DIR})
