@@ -23,14 +23,16 @@
 // UART Ring buffer declaration
 BUFFER_DEFINITION(data0_rx, SEG_DATA_BUF_SIZE);
 
+#if (DEVICE_BOARD_NAME == W232N)
+uint32_t baud_table[] = {300, 600, 1200, 1800, 2400, 4800, 9600, 14400, 19200, 28800, 38400, 57600, 115200, 230400};
+#else
 uint32_t baud_table[] = {300, 600, 1200, 1800, 2400, 4800, 9600, 14400, 19200, 28800, 38400, 57600, 115200, 230400, 460800};
+#endif
 uint8_t word_len_table[] = {7, 8, 9};
 uint8_t * parity_table[] = {(uint8_t *)"N", (uint8_t *)"ODD", (uint8_t *)"EVEN"};
 uint8_t stop_bit_table[] = {1, 2};
 uint8_t * flow_ctrl_table[] = {(uint8_t *)"NONE", (uint8_t *)"XON/XOFF", (uint8_t *)"RTS/CTS", (uint8_t *)"RTS Only", (uint8_t *)"RTS Only Reverse"};
 uint8_t * uart_if_table[] = {(uint8_t *)UART_IF_STR_TTL, (uint8_t *)UART_IF_STR_RS232, (uint8_t *)UART_IF_STR_RS422, (uint8_t *)UART_IF_STR_RS485, (uint8_t *)UART_IF_STR_RS485};
-//uint8_t * uart_if_table[] = {(uint8_t *)UART_IF_STR_RS232_TTL, (uint8_t *)UART_IF_STR_RS422_485};
-
 
 // XON/XOFF Status; 
 static uint8_t xonoff_status = UART_XON;

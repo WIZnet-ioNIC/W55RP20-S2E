@@ -168,28 +168,32 @@ uint8_t set_devinfo(uint8_t * uri)
 	if((param = get_http_param_value((char *)uri, "baud", temp_buf)))
 	{
 		uint8_t baudrate_idx = ATOI(param, 10);
-		if(baudrate_idx > baud_460800) baudrate_idx = baud_115200; // 115200
+#if (DEVICE_BOARD_NAME == W232N)
+		if(baudrate_idx > baud_230400) baudrate_idx = baud_115200;
+#else
+    if(baudrate_idx > baud_460800) baudrate_idx = baud_115200;
+#endif
 		dev_config->serial_option.baud_rate = baudrate_idx;
 		ret = 1;
 	}
 	if((param = get_http_param_value((char *)uri, "databit", temp_buf)))
 	{
-    dev_config->serial_option.data_bits = ATOI(param, 10);;
+    dev_config->serial_option.data_bits = ATOI(param, 10);
 		ret = 1;
 	}
 	if((param = get_http_param_value((char *)uri, "parity", temp_buf)))
 	{
-    dev_config->serial_option.parity = ATOI(param, 10);;
+    dev_config->serial_option.parity = ATOI(param, 10);
 		ret = 1;
 	}
 	if((param = get_http_param_value((char *)uri, "stopbit", temp_buf)))
 	{
-    dev_config->serial_option.stop_bits = ATOI(param, 10);;
+    dev_config->serial_option.stop_bits = ATOI(param, 10);
 		ret = 1;
 	}
 	if((param = get_http_param_value((char *)uri, "flow", temp_buf)))
 	{
-		dev_config->serial_option.flow_control = ATOI(param, 10);;
+		dev_config->serial_option.flow_control = ATOI(param, 10);
 		ret = 1;
 	}
   vPortFree(temp_buf);

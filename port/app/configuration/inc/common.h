@@ -9,12 +9,12 @@
 /* Application Firmware Version */
 #define MAJOR_VER               1
 #define MINOR_VER               0
-#define MAINTENANCE_VER         9
+#define MAINTENANCE_VER         0
 
 #define DEV_CONFIG_VER          103
 
 //#define STR_VERSION_STATUS      "Develop" // or "Stable"
-#define STR_VERSION_STATUS      "Develop"
+#define STR_VERSION_STATUS      "Stable"
 
 //////////////////////////////////
 // W5500 HW Socket Definition  //

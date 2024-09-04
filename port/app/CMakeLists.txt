@@ -40,7 +40,7 @@ target_sources(APP_IOLIBRARY_FILES PUBLIC
         ${APP_PORT_DIR}/ioLibrary_Driver/src/w5x00_gpio_irq.c
         )
 
-if(${BOARD_NAME} STREQUAL W55RP20_S2E)
+if(${BOARD_NAME} STREQUAL W55RP20_S2E OR ${BOARD_NAME} STREQUAL W232N)
 pico_generate_pio_header(APP_IOLIBRARY_FILES ${APP_PORT_DIR}/ioLibrary_Driver/src/wiznet_spi_pio.pio)
 
 target_sources(APP_IOLIBRARY_FILES PUBLIC 

@@ -15,7 +15,7 @@
 
 #include "wizchip_conf.h"
 #include "w5x00_spi.h"
-#if (DEVICE_BOARD_NAME == W55RP20_S2E)
+#if ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N))
 #include "wiznet_spi_pio.h"
 #endif
 
@@ -25,7 +25,7 @@
  * ----------------------------------------------------------------------------------------------------
  */
 /* SPI */
-#if (DEVICE_BOARD_NAME == W55RP20_S2E)
+#if ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N))
 #define USE_SPI_PIO
 #elif (DEVICE_BOARD_NAME == WIZ5XXSR_RP)
 /* SPI */
@@ -247,7 +247,6 @@ void wizchip_initialize(void)
     if (ctlwizchip(CW_INIT_WIZCHIP, (void *)memsize) == -1)
     {
         printf(" W5x00 initialized fail\n");
-
         return;
     }
 

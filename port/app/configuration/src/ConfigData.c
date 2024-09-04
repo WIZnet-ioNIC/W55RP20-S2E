@@ -44,8 +44,17 @@ void set_DevConfig_to_factory_value(void)
     // WIZ2000-MB : 201
     // WIZ510SSL : 301
     // WIZ5XXSR-RP : 401
+    // W55RP20-S2E : 411
+    // W232N       : 421
+
     dev_config.device_common.device_type[0] = 0x04;
+#if (DEVICE_BOARD_NAME == WIZ5XXSR_RP)
     dev_config.device_common.device_type[1] = 0x00;
+#elif (DEVICE_BOARD_NAME == W55RP20_S2E)
+    dev_config.device_common.device_type[1] = 0x01;
+#elif (DEVICE_BOARD_NAME == W232N)
+    dev_config.device_common.device_type[1] = 0x02;
+#endif
     dev_config.device_common.device_type[2] = 0x01;
 
     memset(dev_config.device_common.device_name, 0x00, sizeof(DEVICE_ID_DEFAULT));
