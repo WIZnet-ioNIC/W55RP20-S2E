@@ -145,6 +145,7 @@ uint8_t device_bank_update(void)
     write_fw_len = 0;
     f_addr = FLASH_START_ADDR_BANK1_OFFSET;
     set_stop_dhcp_flag(1);
+    close(SOCK_FWUPDATE);
     xTimerStart(reset_timer, 0);
 
     temp_buf = pvPortMalloc(FLASH_SECTOR_SIZE);
