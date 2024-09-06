@@ -9,12 +9,12 @@
 /* Application Firmware Version */
 #define BOOT_MAJOR_VER               1
 #define BOOT_MINOR_VER               0
-#define BOOT_MAINTENANCE_VER         9
+#define BOOT_MAINTENANCE_VER         0
 
 #define DEV_CONFIG_VER          103
 
 //#define STR_VERSION_STATUS      "Develop" // or "Stable"
-#define STR_VERSION_STATUS      "Develop"
+#define STR_VERSION_STATUS      "Stable"
 
 //////////////////////////////////
 // W5100S HW Socket Definition  //
