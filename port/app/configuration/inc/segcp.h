@@ -125,6 +125,7 @@ typedef enum {SEGCP_MC, SEGCP_VR, SEGCP_MN, SEGCP_IM, SEGCP_OP, SEGCP_DD, SEGCP_
 #define SEGCP_115200    baud_115200
 #define SEGCP_230400    baud_230400
 #define SEGCP_460800    baud_460800
+#define SEGCP_921600    baud_921600
 
 #define SEGCP_DTBIT7    word_len7
 #define SEGCP_DTBIT8    word_len8

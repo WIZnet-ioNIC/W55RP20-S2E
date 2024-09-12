@@ -403,6 +403,7 @@
 				<option value="12">115200</option>
 				<option value="13">230400</option>
 				<option value="14">460800</option>
+				<option value="15">921600</option>
 			</select>
 			<label for="selDb1">Data bit:</label>
 			<select id="selDb1" name="databit">

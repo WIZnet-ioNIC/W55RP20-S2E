@@ -171,7 +171,7 @@ uint8_t set_devinfo(uint8_t * uri)
 #if (DEVICE_BOARD_NAME == W232N)
 		if(baudrate_idx > baud_230400) baudrate_idx = baud_115200;
 #else
-    if(baudrate_idx > baud_460800) baudrate_idx = baud_115200;
+    if(baudrate_idx > baud_921600) baudrate_idx = baud_115200;
 #endif
 		dev_config->serial_option.baud_rate = baudrate_idx;
 		ret = 1;

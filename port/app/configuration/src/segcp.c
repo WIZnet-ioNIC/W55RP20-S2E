@@ -762,9 +762,9 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep)
                     case SEGCP_BR:
                         tmp_int = atoi(param);
 #if (DEVICE_BOARD_NAME == W232N)
-                        if(param_len > 2 || tmp_int > baud_460800) ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                        if(param_len > 2 || tmp_int > baud_230400) ret |= SEGCP_RET_ERR_INVALIDPARAM;
 #else
-                       if(param_len > 2 || tmp_int > baud_230400) ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                       if(param_len > 2 || tmp_int > baud_921600) ret |= SEGCP_RET_ERR_INVALIDPARAM;
 #endif
                         else dev_config->serial_option.baud_rate = (uint8_t)tmp_int;
                         break;
