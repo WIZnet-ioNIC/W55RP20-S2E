@@ -61,6 +61,7 @@ The function pins are as follows :
 | DATA_DSR_PIN            | I    | 15      | 9        | DSR pin for Data UART control                          |
 | STATUS_PHYLINK_PIN      | O    | 16      | 10       | Output High when the PHY link is established           |
 | STATUS_TCPCONNECT_PIN   | O    | 17      | 11       | Output High when TCP connection is active              |
+| UART_IF_SEL_PIN         | I    | 18      | 12       | UART Interface select Input High : RS485/422, Low or Floating : RS232 |
 | HW_TRIG_PIN             | I    | 20      | 14       | When this pin is Low during a device reset, it enters AT Command Mode |
 | BOOT_MODE_PIN           | I    | 21      | 15       | When this pin is Low during a device reset, it enters Boot Mode        |
 | FAC_RSTn_PIN            | I    | 40      | 18       | Holding Low for more than 5 seconds triggers a factory reset           |  
