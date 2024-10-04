@@ -14,10 +14,6 @@ uint8_t flag_check_phylink = 0;
 const uint16_t LED_PIN[LEDn] = {LED1_PIN, LED2_PIN, LED3_PIN};
 uint8_t GPIO_INIT[LEDn] = {DISABLE, DISABLE, DISABLE};
 
-// Serial interface mode selector 0/1
-void init_serial_mode_select_pin(void);
-uint8_t get_serial_mode_select_pin(uint8_t sel);
-
 /* RP2040 Board Initialization */
 void RP2040_Board_Init(void)
 {
@@ -80,17 +76,17 @@ uint8_t get_hw_trig_pin(void)
 
 void init_uart_if_sel_pin(void)
 {
-    init_serial_mode_select_pin();
-
-    // for WIZ750SR series
-    //GPIO_Configuration(UART_IF_SEL_PORT, UART_IF_SEL_PIN, GPIO_Mode_IN);
+    GPIO_Configuration(UART_IF_SEL_PIN, IO_INPUT, IO_PULLDOWN);
 }
 
 
 uint8_t get_uart_if_sel_pin(void)
 {  // Status of UART interface selector pin input; [0] RS-232/TTL mode, [1] RS-422/485 mode
   #ifdef __USE_UART_IF_SELECTOR__
-    return GPIO_ReadInputDataBit(UART_IF_SEL_PORT, UART_IF_SEL_PIN);
+    if (GPIO_Input_Read(UART_IF_SEL_PIN))
+        return UART_IF_RS485;
+    else
+        return UART_IF_DEFAULT;
   #else
     return UART_IF_DEFAULT;
   #endif

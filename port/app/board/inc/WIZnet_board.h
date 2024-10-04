@@ -24,7 +24,6 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
     #define __USE_DHCP_INFINITE_LOOP__          // When this option is enabled, if DHCP IP allocation failed, process_dhcp() function will try to DHCP steps again.
     #define __USE_DNS_INFINITE_LOOP__           // When this option is enabled, if DNS query failed, process_dns() function will try to DNS steps again.
     #define __USE_HW_FACTORY_RESET__            // Use Factory reset pin
-    //#define __USE_UART_IF_SELECTOR__            // Use Serial interface port selector pin
     #define __USE_SAFE_SAVE__                   // When this option is enabled, data verify is additionally performed in the flash save of config-data.
     #define __USE_WATCHDOG__                  // WDT timeout 30 Second
     #define __USE_S2E_OVER_TLS__                // Use S2E TCP client over SSL/TLS mode
@@ -33,6 +32,7 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #if (DEVICE_BOARD_NAME == WIZ5XXSR_RP)
     #define DEVICE_ID_DEFAULT                   "WIZ5XXSR-RP"//"S2E_SSL-MB" // Device name
 #elif (DEVICE_BOARD_NAME == W55RP20_S2E)
+    #define __USE_UART_IF_SELECTOR__            // Use Serial interface port selector pin
     #define DEVICE_ID_DEFAULT                   "W55RP20-S2E"//"S2E_SSL-MB" // Device name
 #elif (DEVICE_BOARD_NAME == W232N)
     #define DEVICE_ID_DEFAULT                   "W232N"//"S2E_SSL-MB" // Device name
@@ -85,6 +85,8 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
   #define LEDn    3
 
 #elif ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N))
+  #define UART_IF_SEL_PIN        12
+
   #define DTR_PIN                 8
   #define DSR_PIN                 9
     
@@ -97,12 +99,12 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
   #define DATA0_UART_CTS_PIN     6
   #define DATA0_UART_RTS_PIN     7
 
-  #define WIZCHIP_PIN_SCK 21
-  #define WIZCHIP_PIN_MOSI 23
-  #define WIZCHIP_PIN_MISO 22
-  #define WIZCHIP_PIN_CS 20
-  #define WIZCHIP_PIN_RST 25
-  #define WIZCHIP_PIN_IRQ 24
+  #define WIZCHIP_PIN_SCK        21
+  #define WIZCHIP_PIN_MOSI       23
+  #define WIZCHIP_PIN_MISO       22
+  #define WIZCHIP_PIN_CS         20
+  #define WIZCHIP_PIN_RST        25
+  #define WIZCHIP_PIN_IRQ        24
 
   #define BOOT_MODE_PIN          15
   #define FAC_RSTn_PIN           18
@@ -112,7 +114,7 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
   #define LED1_PIN      STATUS_PHYLINK_PIN        //STATUS_PHYLINK
   #define LED2_PIN      STATUS_TCPCONNECT_PIN    //STATUS_TCP_PIN
   #define LED3_PIN      19    //Blink
-  #define LEDn    3
+  #define LEDn          3
 #endif
 
   typedef enum
