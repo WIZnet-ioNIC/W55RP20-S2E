@@ -4,7 +4,7 @@
 > The W55RP20 is a System-in-Package (SiP) developed by WIZnet, integrating Raspberry Pi's RP2040 microcontroller, WIZnet's W5500 Ethernet controller, and 2MB of Flash memory into a single chip. 
  This repository contains firmware that implements Serial to Ethernet using the W55RP20.
 
-These sections will provide informations about WIZ500SR-RP, WIZ505SR-RP and WIZ510SR-RP, which are S2E(Serial to Ethernet) modules using WIZ5XXSR-RP-C, and how to configure development environment to develop and modify WIZ5XXSR-RP-C.
+These sections will provide how to configure development environment to develop and modify W55RP20-S2E.
 
 - [W55RP20-S2E README](#w55rp20-s2e-readme)
   - [Development environment configuration](#development-environment-configuration)
