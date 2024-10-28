@@ -191,11 +191,6 @@ void start_task(void *argument)
     RP2040_W5X00_Init();
     RP2040_Board_Init();
 
-#if 0
-    set_DevConfig_to_factory_value();
-    save_DevConfig_to_storage();
-    while(1);
-#endif
     load_DevConfig_from_storage();
     DATA0_UART_Configuration();
     check_mac_address();

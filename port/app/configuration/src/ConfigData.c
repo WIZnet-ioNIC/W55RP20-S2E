@@ -404,21 +404,20 @@ void check_mac_address(void)
     if (dev_config->network_common.mac[0] != 0x00 || dev_config->network_common.mac[1] != 0x08 || dev_config->network_common.mac[2] != 0xDC)
     {
         PRT_INFO("%s\r\n", temp_buf);
-        //platform_uart_puts(temp_buf, strlen(temp_buf));
-        uart_puts(UART_ID, temp_buf);
-        
+        platform_uart_puts(temp_buf, strlen(temp_buf));
+
         while(1){
           vt = uart_getc(UART_ID);
           if(vt == 'S') {
             temp = 'R';
-            uart_putc(UART_ID, temp);
+            platform_uart_puts(&temp,1);
             break;
           }
         }
         for(vi = 0; vi < 12; vi++){
           buf[vi] = uart_getc(UART_ID);
-          uart_putc(UART_ID, buf[vi]);
         }
+        platform_uart_puts(buf, 12);
         platform_uart_puts("\r\n",2);
         for(vi = 0, vj = 0 ; vi < 6 ; vi++, vj += 2){
           dev_config->network_common.mac[vi] = get_hex(buf[vj], buf[vj+1]);
@@ -436,7 +435,6 @@ void check_mac_address(void)
                                                        mac[3],
                                                        mac[4],
                                                        mac[5]);
-        //write_storage(STORAGE_CONFIG, 0, (uint8_t *)dev_config, sizeof(DevConfig));
         save_DevConfig_to_storage();
         device_raw_reboot();
     }

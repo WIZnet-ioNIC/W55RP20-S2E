@@ -45,7 +45,6 @@ static uint8_t xonoff_status = UART_XON;
 // UART Interface selector; RS-422 or RS-485 use only
 static uint8_t uart_if_mode = UART_IF_RS422;
 static uint8_t uart_recv;
-static uint32_t rs485_422_disable_delay;
 
 extern xSemaphoreHandle seg_u2e_sem;
 extern xSemaphoreHandle segcp_uart_sem;
@@ -112,6 +111,7 @@ void DATA0_UART_Configuration(void)
     gpio_set_function(DATA0_UART_RX_PIN, GPIO_FUNC_UART);
     gpio_set_function(DATA0_UART_CTS_PIN, GPIO_FUNC_UART);
     gpio_set_function(DATA0_UART_RTS_PIN, GPIO_FUNC_UART);
+    gpio_pull_up(DATA0_UART_RX_PIN);
 
     /* Set Baud Rate */
     if(serial_option->baud_rate < (sizeof(baud_table) / sizeof(baud_table[0])))
@@ -216,7 +216,6 @@ void DATA0_UART_Configuration(void)
         }
         uart_rs485_rs422_init();
         serial_option->uart_interface = uart_if_mode;
-        rs485_422_disable_delay = (400000 / baud_table[serial_option->baud_rate]) + 1;
     }
 #endif
 
@@ -308,6 +307,7 @@ int32_t platform_uart_putc(uint16_t ch)
     {
         c[0] = ch & 0x007F; // word_len7
     }
+    device_wdt_reset();
     uart_putc(UART_ID, c[0]);
 
     return RET_OK;
@@ -317,15 +317,13 @@ int32_t platform_uart_puts(uint8_t* buf, uint16_t bytes)
 {
     uint32_t i;
 
-    for(i=0; i<bytes; i++)
+    uart_rs485_enable();
+    for(i=0; i<bytes; i++) {
         platform_uart_putc(buf[i]);
-
-#if 0
-    else if(uartNum == DEBUG_UART_PORTNUM)
-    {
-        HAL_UART_Transmit(&huart2, (uint8_t *)&buf, bytes, 1000);
+        device_wdt_reset();
     }
-#endif
+    uart_rs485_disable();
+
     return bytes;
 }
 
@@ -418,15 +416,16 @@ uint8_t get_uart_rs485_sel(void)
 
     //GPIO_Configuration(DATA0_UART_RTS_PIN, GPIO_IN, IO_NOPULL); // UART0 RTS pin: GPIO / Input
     GPIO_Configuration(DATA0_UART_RTS_PIN, GPIO_IN, IO_PULLUP);
-    GPIO_Output_Set(DATA0_UART_RTS_PIN);
+    vTaskDelay(1);
+    //GPIO_Output_Set(DATA0_UART_RTS_PIN);
     
     if(GPIO_Input_Read(DATA0_UART_RTS_PIN) == IO_LOW)
         uart_if_mode = UART_IF_RS422;
     else
         uart_if_mode = UART_IF_RS485;
+
     return uart_if_mode;
 }
-
 
 void uart_rs485_rs422_init(void)
 {
@@ -437,38 +436,34 @@ void uart_rs485_rs422_init(void)
       GPIO_Output_Set(DATA0_UART_RTS_PIN); // UART0 RTS pin init, Set the signal low
 }
 
-
 void uart_rs485_enable(void)
 {
     if(uart_if_mode == UART_IF_RS485)
     {
-      GPIO_Output_Set(DATA0_UART_RTS_PIN);
-      delay_ms(1);
+        GPIO_Output_Set(DATA0_UART_RTS_PIN);
     }
     else if(uart_if_mode == UART_IF_RS485_REVERSE)
     {
-        // RTS pin -> High
         GPIO_Output_Reset(DATA0_UART_RTS_PIN);
-        delay_ms(1);
     }    //UART_IF_RS422: None
 }
 
 
 void uart_rs485_disable(void)
-{
+{    
     if(uart_if_mode == UART_IF_RS485)
     {
-        // RTS pin -> Low
-        delay_ms(rs485_422_disable_delay);
+        uart_tx_wait_blocking(UART_ID);
+        // RTS pin -> Low;
         GPIO_Output_Reset(DATA0_UART_RTS_PIN);
+        
     }
     else if(uart_if_mode == UART_IF_RS485_REVERSE)
     {
+        uart_tx_wait_blocking(UART_ID);
         // RTS pin -> High
-        delay_ms(rs485_422_disable_delay);
         GPIO_Output_Set(DATA0_UART_RTS_PIN);
     }
-    
     //UART_IF_RS422: None
 }
 #endif
