@@ -56,7 +56,7 @@ The function pins are as follows :
 | DATA_UART_TX_PIN        | O    | 9       | 4        | TX pin for Data UART transmission                      |
 | DATA_UART_RX_PIN        | I    | 10      | 5        | RX pin for Data UART reception                         |
 | DATA_UART_CTS_PIN       | I    | 11      | 6        | CTS pin for Data UART flow control                     |
-| DATA_UART_RTS_PIN       | O    | 12      | 7        | RTS pin for Data UART flow control                     |
+| DATA_UART_RTS_PIN       | O    | 12      | 7        | RTS pin for Data UART flow control <br> When 485/422 selected by UART_IF_SEL pin, this pin act as 485/422 select pin. <br> NC : 485 <br> Low : 422                     |
 | DATA_DTR_PIN            | O    | 14      | 8        | DTR pin for Data UART control                          |
 | DATA_DSR_PIN            | I    | 15      | 9        | DSR pin for Data UART control                          |
 | STATUS_PHYLINK_PIN      | O    | 16      | 10       | Output High when the PHY link is established           |
