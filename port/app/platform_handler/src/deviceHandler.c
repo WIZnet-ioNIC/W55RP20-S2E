@@ -434,7 +434,7 @@ void display_Dev_Info_main(void)
       PRT_INFO("\r\n");
 
       PRT_INFO("\t- Debug %s port:\r\n", STR_UART);
-      PRT_INFO("\t   + %s / %s %s\r\n", "115200-8-N-1", "NONE", "(fixed)");
+      PRT_INFO("\t   + %s / %s %s\r\n", "921600-8-N-1", "NONE", "(fixed)");
 
       PRT_INFO(" - Serial data packing options:\r\n");
       PRT_INFO("\t- Time: ");

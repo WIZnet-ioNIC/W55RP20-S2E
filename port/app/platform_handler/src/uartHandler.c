@@ -414,17 +414,14 @@ uint8_t get_uart_rs485_sel(void)
 {
     struct __serial_option *serial_option = (struct __serial_option *)&(get_DevConfig_pointer()->serial_option);
 
-    //GPIO_Configuration(DATA0_UART_RTS_PIN, GPIO_IN, IO_NOPULL); // UART0 RTS pin: GPIO / Input
-    GPIO_Configuration(DATA0_UART_RTS_PIN, GPIO_IN, IO_PULLUP);
-    vTaskDelay(1);
-    //GPIO_Output_Set(DATA0_UART_RTS_PIN);
-    
+    GPIO_Configuration(DATA0_UART_RTS_PIN, GPIO_IN, IO_PULLUP);// UART0 RTS pin: GPIO / Input
     if(GPIO_Input_Read(DATA0_UART_RTS_PIN) == IO_LOW)
         uart_if_mode = UART_IF_RS422;
     else
         uart_if_mode = UART_IF_RS485;
 
     return uart_if_mode;
+    
 }
 
 void uart_rs485_rs422_init(void)
