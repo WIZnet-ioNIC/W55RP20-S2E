@@ -89,6 +89,8 @@ void net_status_task(void *argument)
                     }
                     if (check_phylink_status() == PHY_LINK_OFF) {
                         g_net_status = NET_LINK_DISCONNECTED;
+                        if (get_device_status() != ST_ATMODE)
+                          set_device_status(ST_OPEN);
                         process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
                         xSemaphoreGive(seg_sem);
                         //device_raw_reboot();
