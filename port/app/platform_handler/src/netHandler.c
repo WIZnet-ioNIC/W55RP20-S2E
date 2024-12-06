@@ -11,6 +11,7 @@
 #include "dhcp_cb.h"
 #include "seg.h"
 #include "WIZ5XXSR-RP_Debug.h"
+#include "socket.h"
 
 extern xSemaphoreHandle net_segcp_udp_sem;
 extern xSemaphoreHandle net_segcp_tcp_sem;
@@ -34,14 +35,41 @@ NetStatus get_net_status (void) {
 void net_status_task(void *argument)
 {
     DevConfig *dev_config = get_DevConfig_pointer();
+    uint8_t phylink_count; 
     int ret;
 
     while(1)
     {
         switch (g_net_status) {
             case NET_LINK_DISCONNECTED:
-                while (check_phylink_status() == PHY_LINK_OFF)
+                phylink_count = 0;
+                while (check_phylink_status() == PHY_LINK_OFF) {
                     vTaskDelay(100);
+                    phylink_count++;
+                    if (phylink_count == 50) {
+                        phylink_count = 0;
+                        PRT_INFO("W5500 RESET\r\n");
+                        wizchip_reset();
+                        wizchip_initialize();
+
+                        switch(dev_config->network_connection.working_mode)
+                        {
+                            case TCP_CLIENT_MODE:
+                            case TCP_SERVER_MODE:
+                            case TCP_MIXED_MODE:
+                            case SSL_TCP_CLIENT_MODE:
+                              wizchip_gpio_interrupt_initialize(SEG_DATA0_SOCK, (SIK_CONNECTED | SIK_DISCONNECTED | SIK_RECEIVED | SIK_TIMEOUT));  
+                              break;
+
+                            case UDP_MODE:
+                              wizchip_gpio_interrupt_initialize(SEG_DATA0_SOCK, SIK_RECEIVED);
+                              break;
+
+                            default:
+                              break;
+                        }
+                    }
+                }
                 g_net_status = NET_LINK_CONNECTED;
                 
                 break;
@@ -88,12 +116,16 @@ void net_status_task(void *argument)
                         }
                     }
                     if (check_phylink_status() == PHY_LINK_OFF) {
+
+#if 1   //restore status
                         g_net_status = NET_LINK_DISCONNECTED;
                         if (get_device_status() != ST_ATMODE)
                           set_device_status(ST_OPEN);
                         process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
                         xSemaphoreGive(seg_sem);
-                        //device_raw_reboot();
+#else   //device reset
+                        device_raw_reboot();
+#endif
                         break;
                     }
                     vTaskDelay(2000);

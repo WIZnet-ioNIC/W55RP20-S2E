@@ -18,7 +18,7 @@ These sections will provide how to configure development environment to develop 
 
 To develop and modify W55RP20-S2E, the development environment must be configured so that RP2040 can be used.
 
-These examples were tested after configuring the development environment on **Windows**. Please refer to '**Chapter 3: Installing the Raspberry Pi Pico VS Code Extension**' in the document below and configure accordingly.
+W55RP20-S2E was developed by configuring the development environment for **Windows**, When configuring the development environment, refer to the '**9.2. Building on MS Windows**' section of '**Getting started with Raspberry Pi Pico**' document below to configure the development environment.
 
 - [**Getting started with Raspberry Pi Pico**][link-getting_started_with_raspberry_pi_pico]
 
