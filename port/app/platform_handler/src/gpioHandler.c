@@ -111,11 +111,9 @@ void Device_IO_Init(void)
     struct __serial_option *serial_option = (struct __serial_option *)&(get_DevConfig_pointer()->serial_option);
     // Set the DTR pin to high when the DTR signal enabled (== PHY link status disabled)
 
-    if(serial_option->dtr_en == 1)
-    {
-        init_flowcontrol_dtr_pin();
+    init_flowcontrol_dtr_pin();
+    if(serial_option->dtr_en == 0)
         set_flowcontrol_dtr_pin(ON);
-    }
 
     if(serial_option->dsr_en == 1)
         init_flowcontrol_dsr_pin();
@@ -497,5 +495,3 @@ uint16_t read_ADC(uint8_t ch)
 }
 
 #endif
-
-

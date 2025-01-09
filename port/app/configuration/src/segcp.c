@@ -80,6 +80,7 @@ volatile uint16_t configtool_keepalive_time = 0;
 uint8_t flag_send_configtool_keepalive = SEGCP_DISABLE;
 
 extern uint8_t sw_modeswitch_at_mode_on;
+extern uint8_t flag_process_dhcp_success;
 
 extern xSemaphoreHandle net_segcp_udp_sem;
 extern xSemaphoreHandle net_segcp_tcp_sem;
@@ -377,20 +378,40 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep)
                     case SEGCP_RI: sprintf(trep,"%d", dev_config->tcp_option.reconnection);
                         break;
                     case SEGCP_LI:
-                        sprintf(trep,"%d.%d.%d.%d", dev_config->network_common.local_ip[0], dev_config->network_common.local_ip[1],
-                                                    dev_config->network_common.local_ip[2], dev_config->network_common.local_ip[3]);
+                        if (dev_config->network_option.dhcp_use && !flag_process_dhcp_success) {  //if dhcp doesn't be finished, send all 0
+                            sprintf(trep,"0.0.0.0");
+                        }
+                        else {
+                            sprintf(trep,"%d.%d.%d.%d", dev_config->network_common.local_ip[0], dev_config->network_common.local_ip[1],
+                                                        dev_config->network_common.local_ip[2], dev_config->network_common.local_ip[3]);
+                        }
                         break;
                     case SEGCP_SM: 
-                        sprintf(trep,"%d.%d.%d.%d", dev_config->network_common.subnet[0], dev_config->network_common.subnet[1],
-                                                    dev_config->network_common.subnet[2], dev_config->network_common.subnet[3]);
+                        if (dev_config->network_option.dhcp_use && !flag_process_dhcp_success) {  //if dhcp doesn't be finished, send all 0
+                            sprintf(trep,"0.0.0.0");
+                        }
+                        else {
+                            sprintf(trep,"%d.%d.%d.%d", dev_config->network_common.subnet[0], dev_config->network_common.subnet[1],
+                                                        dev_config->network_common.subnet[2], dev_config->network_common.subnet[3]);
+                        }
                         break;
-                    case SEGCP_GW: 
-                        sprintf(trep,"%d.%d.%d.%d", dev_config->network_common.gateway[0], dev_config->network_common.gateway[1],
-                                                    dev_config->network_common.gateway[2], dev_config->network_common.gateway[3]);
+                    case SEGCP_GW:
+                        if (dev_config->network_option.dhcp_use && !flag_process_dhcp_success) {  //if dhcp doesn't be finished, send all 0
+                            sprintf(trep,"0.0.0.0");
+                        }
+                        else {
+                            sprintf(trep,"%d.%d.%d.%d", dev_config->network_common.gateway[0], dev_config->network_common.gateway[1],
+                                                        dev_config->network_common.gateway[2], dev_config->network_common.gateway[3]);
+                        }
                         break;
                     case SEGCP_DS:
-                        sprintf(trep,"%d.%d.%d.%d", dev_config->network_option.dns_server_ip[0], dev_config->network_option.dns_server_ip[1],
-                                                    dev_config->network_option.dns_server_ip[2], dev_config->network_option.dns_server_ip[3]);
+                        if (dev_config->network_option.dhcp_use && !flag_process_dhcp_success) {  //if dhcp doesn't be finished, send all 0
+                            sprintf(trep,"0.0.0.0");
+                        }
+                        else {
+                            sprintf(trep,"%d.%d.%d.%d", dev_config->network_option.dns_server_ip[0], dev_config->network_option.dns_server_ip[1],
+                                                        dev_config->network_option.dns_server_ip[2], dev_config->network_option.dns_server_ip[3]);
+                        }
                         break;
 
                     case SEGCP_DH:

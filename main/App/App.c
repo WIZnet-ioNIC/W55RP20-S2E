@@ -189,9 +189,9 @@ void start_task(void *argument)
     
     RP2040_Init();
     RP2040_W5X00_Init();
-    RP2040_Board_Init();
 
     load_DevConfig_from_storage();
+    RP2040_Board_Init();
     DATA0_UART_Configuration();
     check_mac_address();
 
