@@ -35,7 +35,7 @@ extern wiz_tls_context s2e_tlsContext;
  *         host : host name
  * @retval None
  */
-int NewNetwork_mqtt_tls(Network* n, int sn, const char * host)
+int NewNetwork_mqtt_tls(Network* n, int sn)
 {
 
     n->my_socket = sn;
@@ -43,7 +43,7 @@ int NewNetwork_mqtt_tls(Network* n, int sn, const char * host)
     n->mqttwrite = mqtt_tls_write;
     n->disconnect = mqtt_tls_disconnect;
 
-    return wiz_tls_init(&s2e_tlsContext, n->my_socket, host);
+    return wiz_tls_init(&s2e_tlsContext, n->my_socket);
 }
 
 int mqtt_tls_connect(uint8_t *remote_ip, uint16_t remote_port, uint32_t timeout)

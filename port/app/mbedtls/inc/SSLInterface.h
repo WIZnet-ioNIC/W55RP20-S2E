@@ -114,7 +114,7 @@ void WIZnetDebugCB(void *ctx, int level, const char *file, int line, const char 
  * param host name
  * param certificate
  */
-int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd, const char * host);
+int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd);
 
 void wiz_tls_deinit(wiz_tls_context* tlsContext);
 
@@ -140,7 +140,6 @@ int check_ca(uint8_t *ca_data, uint32_t ca_len);
 int check_pkey(wiz_tls_context* tlsContext, uint8_t *pkey_data, uint32_t pkey_len);
 int get_wiz_tls_init_state(void);
 void set_wiz_tls_init_state(int state);
-
 
 #endif
 

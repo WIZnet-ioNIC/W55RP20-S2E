@@ -29,9 +29,6 @@
 #define END_CERT "-----END CERTIFICATE-----"
 #define END_PKEY "-----END RSA PRIVATE KEY-----"
 
-// Ring Buffer declaration
-BUFFER_DECLARATION(data0_rx);
-
 /* Private functions ---------------------------------------------------------*/
 uint16_t uart_get_commandline(uint8_t* buf, uint16_t maxSize);
 

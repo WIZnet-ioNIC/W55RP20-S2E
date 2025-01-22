@@ -64,6 +64,7 @@ endif()
 #    message(FATAL_ERROR "WIZNET_CHIP is wrong = ${WIZNET_CHIP}")
 #endif()
 
+message(STATUS "BOARD_NAME = ${BOARD_NAME}")
 message(STATUS "WIZNET_CHIP = ${WIZNET_CHIP}")
 
 # Set the project root directory if it's not already defined, as may happen if
