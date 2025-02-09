@@ -19,31 +19,29 @@ extern uint8_t plus_count;
 
 void eMBRTUInit( uint32_t ulBaudRate )
 {
-	uint32_t usTimerT35_50us;
-
-	/* Modbus RTU uses 8 Databits. */
-
-  /* If baudrate > 19200 then we should use the fixed timer values
-   * t35 = 1750us. Otherwise t35 must be 3.5 times the character time.
-   */
- if( baud_table[ulBaudRate] > 19200 )
-  {
-      usTimerT35_50us = 35;
-  }
-  else
-  {
-      /* The timer reload value for a character is given by:
-       *
-       * ChTimeValue = Ticks_per_1s / ( Baudrate / 11 )
-       *             = 11 * Ticks_per_1s / Baudrate
-       *             = 220000 / Baudrate
-       * The reload for t3.5 is 1.5 times this value and similary
-       * for t3.5.
-       */
-      usTimerT35_50us = ( 7UL * 220000UL ) / ( 2UL * baud_table[ulBaudRate] );
-  }
-  xMBPortTimersInit(usTimerT35_50us);
+    uint32_t usTimerT35_50us;
+ 
+    /* Modbus RTU uses 8 Databits. */
+ 
+    /* If baudrate > 19200 then we should use the fixed timer values
+     * t35 = 1750us. Otherwise t35 must be 3.5 times the character time.
+     */
+    if (baud_table[ulBaudRate] > 19200)
+    {
+        usTimerT35_50us = 1750 / 50;
+    }
+    else
+    {
+        /* The timer reload value for a character is given by:
+         * ChTimeValue = 11 * 1000000 / Baudrate  (us)
+         * T3.5 = 3.5 * ChTimeValue
+         * usTimerT35_50us = T3.5 / 50 (50us)
+         */
+        usTimerT35_50us = (uint32_t)((3.5 * 11 * 1000000UL) / (50UL * baud_table[ulBaudRate]) + 1);
+    }
+    xMBPortTimersInit(usTimerT35_50us);
 }
+
 
 static bool mbRTUPackage( uint8_t * pucRcvAddress, uint8_t ** pucFrame, uint16_t * pusLength )
 {
@@ -99,59 +97,61 @@ void RTU_Uart_RX(void)
 	uint8_t ucByte;
 
 	//printf(" 1> RTU_Uart_RX %d \r\n", eRcvState);
-	
-	/* Always read the character. */
-	if(UART_read(&ucByte, 1) <= 0) return;
 
-	//printf(" 2> RTU_Uart_RX %d \r\n", eRcvState);
- 
-	switch ( eRcvState ) {
-		/* If we have received a character in the init state we have to
-		* wait until the frame is finished.
-		*/
-		case STATE_RX_INIT:
-		//printf(" > case STATE_RX_INIT:\r\n");
-			vMBPortTimersEnable(  );
-			break;
+  while (1) {
+    /* Always read the character. */
+    if(UART_read(&ucByte, 1) <= 0) return;
 
-		/* In the error state we wait until all characters in the
-		* damaged frame are transmitted.
-		*/
-		case STATE_RX_ERROR:
-			vMBPortTimersEnable(  );
-			break;
+    //printf(" 2> RTU_Uart_RX %d \r\n", eRcvState);
 
-		/* In the idle state we wait for a new character. If a character
-		* is received the t1.5 and t3.5 timers are started and the
-		* receiver is in the state STATE_RX_RECEIVCE.
-		*/
-		case STATE_RX_IDLE:
-			usRcvBufferPos = 0;
-			ucRTUBuf[usRcvBufferPos++] = ucByte;
-			eRcvState = STATE_RX_RCV;
+    switch ( eRcvState ) {
+    	/* If we have received a character in the init state we have to
+    	* wait until the frame is finished.
+    	*/
+    	case STATE_RX_INIT:
+    	//printf(" > case STATE_RX_INIT:\r\n");
+    		vMBPortTimersEnable(  );
+    		break;
 
-			//printf("%d ",ucByte);
-			/* Enable t3.5 timers. */
-			vMBPortTimersEnable(  );
-			break;
+    	/* In the error state we wait until all characters in the
+    	* damaged frame are transmitted.
+    	*/
+    	case STATE_RX_ERROR:
+    		vMBPortTimersEnable(  );
+    		break;
 
-		/* We are currently receiving a frame. Reset the timer after
-		* every character received. If more than the maximum possible
-		* number of bytes in a modbus frame is received the frame is
-		* ignored.
-		*/
-		case STATE_RX_RCV:
-			if( usRcvBufferPos < MB_SER_PDU_SIZE_MAX ) {
-				ucRTUBuf[usRcvBufferPos++] = ucByte;
-				//printf("%d ",ucByte);
-			}
-			else {
-				eRcvState = STATE_RX_ERROR;
-			}
+    	/* In the idle state we wait for a new character. If a character
+    	* is received the t1.5 and t3.5 timers are started and the
+    	* receiver is in the state STATE_RX_RECEIVCE.
+    	*/
+    	case STATE_RX_IDLE:
+    		usRcvBufferPos = 0;
+    		ucRTUBuf[usRcvBufferPos++] = ucByte;
+    		eRcvState = STATE_RX_RCV;
 
-			vMBPortTimersEnable();
-			//IWDG_ReloadCounter();
-			break;
-	}
+    		//printf("%d ",ucByte);
+    		/* Enable t3.5 timers. */
+    		vMBPortTimersEnable(  );
+    		break;
+
+    	/* We are currently receiving a frame. Reset the timer after
+    	* every character received. If more than the maximum possible
+    	* number of bytes in a modbus frame is received the frame is
+    	* ignored.
+    	*/
+    	case STATE_RX_RCV:
+    		if( usRcvBufferPos < MB_SER_PDU_SIZE_MAX ) {
+    			ucRTUBuf[usRcvBufferPos++] = ucByte;
+    			//printf("%d ",ucByte);
+    		}
+    		else {
+    			eRcvState = STATE_RX_ERROR;
+    		}
+
+    		vMBPortTimersEnable();
+    		//IWDG_ReloadCounter();
+    		break;
+    }
+  }
 }
 
