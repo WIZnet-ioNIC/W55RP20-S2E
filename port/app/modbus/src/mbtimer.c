@@ -12,8 +12,7 @@ extern xSemaphoreHandle seg_u2e_sem;
 
 void vMBPortTimersCallback(struct repeating_timer *t)
 {
-  if (t == &g_mb_timer)
-    xMBRTUTimerT35Expired();
+  xMBRTUTimerT35Expired();
 }
  
 void xMBPortTimersInit( uint32_t usTim1Timerout50us)

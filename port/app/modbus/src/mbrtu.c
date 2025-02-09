@@ -14,8 +14,7 @@ static volatile uint16_t usRcvBufferPos;
 
 volatile uint8_t *pucTCPBufferCur;
 volatile uint16_t usTCPBufferPos;
-
-extern uint8_t plus_count;
+extern volatile uint8_t mb_state_rtu_finish;
 
 void eMBRTUInit( uint32_t ulBaudRate )
 {
@@ -152,6 +151,7 @@ void RTU_Uart_RX(void)
     		//IWDG_ReloadCounter();
     		break;
     }
+    if (mb_state_rtu_finish == TRUE) return;
   }
 }
 
