@@ -2283,15 +2283,10 @@ void seg_u2e_task (void *argument)  {
 }
 
 void seg_recv_task (void *argument)  {
-    uint16_t reg_val;
     uint8_t serial_mode = get_serial_communation_protocol();
 
     while(1) {
         xSemaphoreTake(seg_e2u_sem, portMAX_DELAY);
-        //PRT_SEG("xSemaphoreTake(seg_e2u_sem, portMAX_DELAY)\r\n");
-
-        //PRT_SEG("Serial_mode = %d, e2u_size = %d\r\n", serial_mode, e2u_size);
-        //if (getSn_RX_RSR(SEG_DATA0_SOCK)) {
         switch (serial_mode)
         {
             case SEG_SERIAL_PROTOCOL_NONE :
@@ -2300,14 +2295,10 @@ void seg_recv_task (void *argument)  {
 
             case SEG_SERIAL_MODBUS_RTU :
                 mbTCPtoRTU(SEG_DATA0_SOCK);
-                reg_val = SIK_RECEIVED & 0x00FF;
-                ctlsocket(SEG_DATA0_SOCK, CS_CLR_INTERRUPT, (void *)&reg_val);
                 break;
             
             case SEG_SERIAL_MODBUS_ASCII :
                 mbTCPtoASCII(SEG_DATA0_SOCK);
-                reg_val = SIK_RECEIVED & 0x00FF;
-                ctlsocket(SEG_DATA0_SOCK, CS_CLR_INTERRUPT, (void *)&reg_val);
                 break;
         }
 #ifdef __USE_WATCHDOG__
