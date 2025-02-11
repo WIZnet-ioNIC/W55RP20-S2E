@@ -90,8 +90,13 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
   #define DTR_PIN                 8
   #define DSR_PIN                 9
     
+#if 0
   #define STATUS_PHYLINK_PIN      10
   #define STATUS_TCPCONNECT_PIN   11
+#else //NICOM
+  #define STATUS_PHYLINK_PIN      11
+  #define STATUS_TCPCONNECT_PIN   10
+#endif
 
   // UART1
   #define DATA0_UART_TX_PIN      4
