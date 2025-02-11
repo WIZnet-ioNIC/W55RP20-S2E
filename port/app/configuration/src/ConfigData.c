@@ -401,7 +401,12 @@ void check_mac_address(void)
     uint32_t vi, vj;
     uint8_t temp_buf[] = "INPUT MAC ? ";
 
+#if 0
     if (dev_config->network_common.mac[0] != 0x00 || dev_config->network_common.mac[1] != 0x08 || dev_config->network_common.mac[2] != 0xDC)
+#else   //Platypus
+    if (dev_config->network_common.mac[0] != 0xEC || dev_config->network_common.mac[1] != 0x74 || dev_config->network_common.mac[2] != 0xCD)
+#endif
+
     {
         PRT_INFO("%s\r\n", temp_buf);
         platform_uart_puts(temp_buf, strlen(temp_buf));

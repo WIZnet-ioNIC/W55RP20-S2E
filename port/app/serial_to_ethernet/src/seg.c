@@ -224,12 +224,22 @@ void set_device_status(teDEVSTATUS status)
             break;
     }
     
+#if 0
     // Status indicator pins
     if(network_connection->working_state == ST_CONNECT)
         set_connection_status_io(STATUS_TCPCONNECT_PIN, ON); // Status I/O pin to low
     else
         set_connection_status_io(STATUS_TCPCONNECT_PIN, OFF); // Status I/O pin to high
+#else //Platypus
+  // Status indicator pins
+  if(network_connection->working_state == ST_CONNECT)
+      set_connection_status_io(STATUS_TCPCONNECT_PIN, OFF); // Status I/O pin to low
+  else
+      set_connection_status_io(STATUS_TCPCONNECT_PIN, ON); // Status I/O pin to high
+
+#endif
 }
+
 
 uint8_t get_device_status(void)
 {

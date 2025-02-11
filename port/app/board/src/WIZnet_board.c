@@ -97,9 +97,15 @@ void init_tcpconnection_status_pin(void)
 {
   GPIO_Configuration(STATUS_TCPCONNECT_PIN, IO_OUTPUT, IO_NOPULL);
   
+#if 0
+  set_connection_status_io(STATUS_TCPCONNECT_PIN, OFF);
+#else //Platypus
   // Pin initial state; Low
-  GPIO_Output_Reset(STATUS_TCPCONNECT_PIN);
+  //GPIO_Output_Reset(STATUS_TCPCONNECT_PIN);
+  set_connection_status_io(STATUS_TCPCONNECT_PIN, ON);
+#endif
 }
+
 
 
 #ifdef __USE_HW_FACTORY_RESET__
