@@ -18,7 +18,9 @@
 #include "seg.h"
 #include "segcp.h"
 #include "util.h"
+#include "bufferHandler.h"
 #include "uartHandler.h"
+#include "spiHandler.h"
 #include "gpioHandler.h"
 #include "timerHandler.h"
 #include "netHandler.h"
@@ -109,14 +111,14 @@ void do_segcp_tcp(void)
     segcp_ret_handler(segcp_ret);
 }
 
-void do_segcp_uart(void)
+void do_segcp_serial(void)
 {
     DevConfig *dev_config = get_DevConfig_pointer();
     uint16_t segcp_ret = 0;
 
     // Process the serial AT command mode
 
-    segcp_ret = proc_SEGCP_uart(gSEGCPREQ, gSEGCPREP);
+    segcp_ret = proc_SEGCP_serial(gSEGCPREQ, gSEGCPREP);
     if(segcp_ret & SEGCP_RET_ERR)
         if(dev_config->serial_common.serial_debug_en) PRT_ERR(" > SEGCP:ERROR:%04X\r\n", segcp_ret);
     segcp_ret_handler(segcp_ret);
@@ -511,7 +513,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep)
                         sprintf(trep, "%d", get_connection_status_io(STATUS_TCPCONNECT_PIN)); // STATUS_TCPCONNECT_PIN (in) == DSR_PIN (in)
                         break;
                     case SEGCP_RX:
-                        uart_rx_flush();
+                        data_buffer_flush();
                         sprintf(trep, "%s", "FLUSH");
                         break;
                     case SEGCP_SV:
@@ -1293,7 +1295,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep)
             ret |= SEGCP_RET_ERR_NOCOMMAND;
         
         // Process the serial command mode
-        if(opmode == DEVICE_AT_MODE)
+        if(opmode == DEVICE_AT_MODE || get_uart_spi_if())
         {
             if(ret & SEGCP_RET_ERR)
             {
@@ -1302,7 +1304,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep)
 #ifdef DBG_LEVEL_SEGCP
                 PRT_SEGCP("ERROR : %s\r\n",trep);
 #endif
-                uart_rx_flush();
+                data_buffer_flush();
                 return ret;
             }
         }
@@ -1310,7 +1312,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep)
     }
     
 #ifdef DBG_LEVEL_SEGCP
-    PRT_SEGCP("END of [proc_SEGCP] function - RET[0x%.4x]\r\n\r\n", ret);
+    PRT_SEGCP("END of [proc_SEGCP] function - RET[0x%.4x]\r\n", ret);
 #endif
     
     return ret;
@@ -1510,26 +1512,56 @@ uint16_t proc_SEGCP_tcp(uint8_t* segcp_req, uint8_t* segcp_rep)
     return ret;
 }
 
-uint16_t proc_SEGCP_uart(uint8_t * segcp_req, uint8_t * segcp_rep)
+uint16_t proc_SEGCP_serial(uint8_t * segcp_req, uint8_t * segcp_rep)
 {
     DevConfig *dev_config = get_DevConfig_pointer();
     
     uint16_t len = 0;
     uint16_t ret = 0;
 
-    if(get_uart_buffer_usedsize())
-    {
-        len = uart_get_commandline(segcp_req, CONFIG_BUF_SIZE);
-        
-        if(len != 0)
+    if (get_uart_spi_if()) {
+        gSEGCPPRIVILEGE = SEGCP_PRIVILEGE_SET | SEGCP_PRIVILEGE_WRITE;
+        ret = proc_SEGCP(segcp_req, segcp_rep);
+        if(segcp_rep[0])
         {
-            gSEGCPPRIVILEGE = SEGCP_PRIVILEGE_SET | SEGCP_PRIVILEGE_WRITE;
-            ret = proc_SEGCP(segcp_req, segcp_rep);
-            if(segcp_rep[0])
+            uint8_t header[4];
+
+            len = strlen((char *)segcp_rep);
+            header[0] = SPI_SLAVE_WRITE_LEN_CMD;
+            memcpy(&header[1], &len, 2);
+            header[3] = SPI_DUMMY;
+        
+            if(dev_config->serial_common.serial_debug_en)
+                printf("%s",segcp_rep);
+            
+            memcpy(get_data_buffer_ptr(), header, 4);
+            memcpy(get_data_buffer_ptr()+4, segcp_rep, len);
+
+            GPIO_Output_Reset(DATA0_SPI_INT_PIN);
+            platform_spi_write_dma(get_data_buffer_ptr(), len+4);
+            irq_set_enabled(SPI0_IRQ, true);
+            GPIO_Output_Set(DATA0_SPI_INT_PIN);
+        }
+        else  //AT Command Set
+        {
+            spi_send_ack();
+            irq_set_enabled(SPI0_IRQ, true);
+        }
+    }
+    else {
+        if(get_data_buffer_usedsize())
+        {
+            len = uart_get_commandline(segcp_req, CONFIG_BUF_SIZE);
+            if(len != 0)
             {
-                if(dev_config->serial_common.serial_debug_en)
-                    printf("%s",segcp_rep);
-                platform_uart_puts(segcp_rep, strlen((char *)segcp_rep));
+                gSEGCPPRIVILEGE = SEGCP_PRIVILEGE_SET | SEGCP_PRIVILEGE_WRITE;
+                ret = proc_SEGCP(segcp_req, segcp_rep);
+                if(segcp_rep[0])
+                {
+                    if(dev_config->serial_common.serial_debug_en)
+                        printf("%s",segcp_rep);
+                    platform_uart_puts(segcp_rep, strlen((char *)segcp_rep));
+                }
             }
         }
     }
@@ -1557,14 +1589,14 @@ uint16_t uart_get_commandline(uint8_t* buf, uint16_t maxSize)
     DevConfig *dev_config = get_DevConfig_pointer();
     
     uint16_t i;
-    uint16_t len = get_uart_buffer_usedsize();
+    uint16_t len = get_data_buffer_usedsize();
 
     if(len >= 4) // Minimum of command: 4-bytes, e.g., MC\r\n (MC$0d$0a)
     {
         memset(buf, NULL, CONFIG_BUF_SIZE);
         for(i = 0; i < maxSize; i++)
         {
-            buf[i] = platform_uart_getc();
+            buf[i] = data_buffer_getc();
             if(buf[i] == 0x0a) break;	// [0x0a]: end of command (Line feed)
         }
 
@@ -1572,11 +1604,11 @@ uint16_t uart_get_commandline(uint8_t* buf, uint16_t maxSize)
         {
             for(i++; i < maxSize; i++)
             {
-                buf[i] = platform_uart_getc();
+                buf[i] = data_buffer_getc();
                 if (strstr(buf, END_CERT))
                 {
                     vTaskDelay(10);
-                    uart_rx_flush();
+                    data_buffer_flush();
                     break;
                 }
             }
@@ -1585,11 +1617,11 @@ uint16_t uart_get_commandline(uint8_t* buf, uint16_t maxSize)
         {
             for(i++; i < maxSize; i++)
             {
-                buf[i] = platform_uart_getc();
+                buf[i] = data_buffer_getc();
                 if (strstr(buf, END_PKEY))
                 {
                     delay_ms(10);
-                    uart_rx_flush();
+                    data_buffer_flush();
                     break;
                 }
             }
@@ -1653,11 +1685,10 @@ void segcp_tcp_task(void *argument) {
 }
 
 
-void segcp_uart_task(void *argument) {
+void segcp_serial_task(void *argument) {
 
     while(1) {
         xSemaphoreTake(segcp_uart_sem, portMAX_DELAY);
-        PRT_SEGCP("start do_segcp\r\n");
 
         // Serial AT command mode enabled, initial settings
         if((opmode == DEVICE_GW_MODE) && (sw_modeswitch_at_mode_on == SEG_ENABLE))
@@ -1672,7 +1703,7 @@ void segcp_uart_task(void *argument) {
             sw_modeswitch_at_mode_on = SEG_DISABLE;
         }
         else
-            do_segcp_uart();
+            do_segcp_serial();
         //vTaskDelay(10);
     }
 }

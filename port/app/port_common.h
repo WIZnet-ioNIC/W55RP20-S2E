@@ -27,12 +27,11 @@
 
 #include "hardware/uart.h"
 #include "hardware/resets.h"
+#include "hardware/spi.h"
 #include "hardware/watchdog.h"
 
 #if ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N))
 #include "hardware/pio.h"
-#else
-#include "hardware/spi.h"
 #endif
 
 #include "RP2040.h"

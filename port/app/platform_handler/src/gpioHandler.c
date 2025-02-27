@@ -238,7 +238,6 @@ void gpio_handler_timer_msec(void)
 uint8_t factory_flag;
 void factory_reset_pin_callback(void)
 {
-    PRT_INFO("interrupt occured\r\n");
     factory_flag = 1;
 }
 

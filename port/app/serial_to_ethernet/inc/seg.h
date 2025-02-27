@@ -144,6 +144,9 @@ void inactivity_timer_callback( TimerHandle_t xTimer );
 void auth_timer_callback( TimerHandle_t xTimer );
 void seg_timer_task (void *argument);
 
+void ether_to_spi(uint8_t sock);
+void seg_spi_data_transfer_task(void);
+
 
 #endif /* SEG_H_ */
 

@@ -8,6 +8,7 @@
 #include "mqtt_transport_interface.h"
 #include "seg.h"
 #include "timerHandler.h"
+#include "bufferHandler.h"
 #include "uartHandler.h"
 #include "gpioHandler.h"
 #include "ConfigData.h"
@@ -76,6 +77,7 @@ extern volatile uint8_t mb_state_ascii_finish;
 
 extern xSemaphoreHandle seg_e2u_sem;
 extern xSemaphoreHandle seg_u2e_sem;
+extern xSemaphoreHandle seg_spi_pending_sem;
 //extern xSemaphoreHandle conn_seg_sem;
 extern xSemaphoreHandle seg_sem;
 extern xSemaphoreHandle net_seg_sem;
@@ -223,7 +225,7 @@ void set_device_status(teDEVSTATUS status)
         default:
             break;
     }
-    
+
     // Status indicator pins
     if(network_connection->working_state == ST_CONNECT)
         set_connection_status_io(STATUS_TCPCONNECT_PIN, ON); // Status I/O pin to low
@@ -266,7 +268,7 @@ void proc_SEG_udp(uint8_t sock)
             if(serial_mode == SEG_SERIAL_PROTOCOL_NONE)
             {
                 // UART Ring buffer clear
-                uart_rx_flush();
+                data_buffer_flush();
             }
             
             u2e_size = 0;
@@ -346,7 +348,7 @@ void proc_SEG_tcp_client(uint8_t sock)
                 }
                 
                 if(serial_mode == SEG_SERIAL_PROTOCOL_NONE)                    
-                    uart_rx_flush(); // UART Ring buffer clear
+                    data_buffer_flush(); // UART Ring buffer clear
                 
                 // Debug message enable flag: TCP client socket open
                 set_device_status(ST_CONNECT);
@@ -517,7 +519,7 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock)
                 }
 
                 if(serial_mode == SEG_SERIAL_PROTOCOL_NONE)
-                    uart_rx_flush(); // UART Ring buffer clear
+                    data_buffer_flush(); // UART Ring buffer clear
 
                 // Debug message enable flag: TCP client socket open
                 set_device_status(ST_CONNECT);
@@ -719,7 +721,7 @@ void proc_SEG_mqtt_client(uint8_t sock)
                 }
                 
                 if(serial_mode == SEG_SERIAL_PROTOCOL_NONE)
-                    uart_rx_flush(); // UART Ring buffer clear
+                    data_buffer_flush(); // UART Ring buffer clear
                     
                 set_device_status(ST_CONNECT);
                 if(tcp_option->inactivity) {
@@ -921,7 +923,7 @@ void proc_SEG_mqtts_client(uint8_t sock)
                 }
                 
                 if(serial_mode == SEG_SERIAL_PROTOCOL_NONE)
-                    uart_rx_flush();
+                    data_buffer_flush();
                 set_device_status(ST_CONNECT);
                                 
                 if(tcp_option->inactivity) {
@@ -1071,7 +1073,7 @@ void proc_SEG_tcp_server(uint8_t sock)
                 }
                 
                 if(serial_mode == SEG_SERIAL_PROTOCOL_NONE)
-                    uart_rx_flush(); // UART Ring buffer clear
+                    data_buffer_flush(); // UART Ring buffer clear
                     
                 set_device_status(ST_CONNECT);
                 if(tcp_option->inactivity) {
@@ -1182,7 +1184,7 @@ void proc_SEG_tcp_mixed(uint8_t sock)
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
                     process_socket_termination(sock, SOCK_TERMINATION_DELAY);
                     reconnection_count = 0;
-                    uart_rx_flush();
+                    data_buffer_flush();
                     mixed_state = MIXED_SERVER;
 #endif
                     return;
@@ -1199,7 +1201,7 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                     PRT_SEG("reconnection_count >= MAX_RECONNECTION_COUNT\r\n");
                     process_socket_termination(sock, SOCK_TERMINATION_DELAY);
                     reconnection_count = 0;
-                    uart_rx_flush();
+                    data_buffer_flush();
                     mixed_state = MIXED_SERVER;
                 }
 #ifdef _SEG_DEBUG_
@@ -1274,7 +1276,7 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                 }
                 else
                 {
-                    if(get_uart_buffer_usedsize() || u2e_size)
+                    if(get_data_buffer_usedsize() || u2e_size)
                         xSemaphoreGive(seg_u2e_sem);
                 }
                 
@@ -1371,7 +1373,10 @@ void uart_to_ether(uint8_t sock)
 
     // UART ring buffer -> user's buffer
 
-    len = get_serial_data();
+    if (get_uart_spi_if())
+        len = u2e_size;
+    else
+        len = get_serial_data();
     
     if(len > 0)
     {
@@ -1419,6 +1424,11 @@ void uart_to_ether(uint8_t sock)
 
         if (seg_inactivity_timer != NULL)
             xTimerReset(seg_inactivity_timer, 0);
+        
+        if (get_uart_spi_if()) {
+            spi_send_ack();
+            irq_set_enabled(SPI0_IRQ, true);
+        }
     }
 }
 
@@ -1429,14 +1439,14 @@ uint16_t get_serial_data(void)
     uint16_t i;
     uint16_t len;
 
-    len = get_uart_buffer_usedsize();
+    len = get_data_buffer_usedsize();
     
     if((len + u2e_size) >= DATA_BUF_SIZE) // Avoiding u2e buffer (g_send_buf) overflow
     {
         /* Checking Data packing option: character delimiter */
         if((serial_data_packing->packing_delimiter[0] != 0x00) && (len == 1))
         {
-            g_send_buf[u2e_size] = (uint8_t)platform_uart_getc();
+            g_send_buf[u2e_size] = (uint8_t)data_buffer_getc();
             if(serial_data_packing->packing_delimiter[0] == g_send_buf[u2e_size])
                 return u2e_size;
         }
@@ -1452,7 +1462,7 @@ uint16_t get_serial_data(void)
         // ## 20150427 bugfix: Incorrect serial data storing (UART ring buffer to g_send_buf)
         for(i = 0; i < len; i++)
         {
-            g_send_buf[u2e_size++] = (uint8_t)platform_uart_getc();
+            g_send_buf[u2e_size++] = (uint8_t)data_buffer_getc();
 
 #ifdef _UART_DEBUG_
             //printf("[%d]%.2x ", (u2e_size-1), g_send_buf[(u2e_size-1)]);
@@ -1467,7 +1477,7 @@ uint16_t get_serial_data(void)
         /* Checking Data packing options */
         for(i = 0; i < len; i++)
         {
-            g_send_buf[u2e_size++] = (uint8_t)platform_uart_getc();
+            g_send_buf[u2e_size++] = (uint8_t)data_buffer_getc();
             
             // Packing delimiter: character option
             if((serial_data_packing->packing_delimiter[0] != 0x00) &&
@@ -1483,7 +1493,7 @@ uint16_t get_serial_data(void)
     // Packing delimiter: time option
     if((serial_data_packing->packing_time != 0) && (u2e_size != 0) && (flag_serial_input_time_elapse))
     {
-        if(get_uart_buffer_usedsize() == 0)
+        if(get_data_buffer_usedsize() == 0)
             flag_serial_input_time_elapse = SEG_DISABLE; // ##
         
         return u2e_size;
@@ -1622,6 +1632,88 @@ void ether_to_uart(uint8_t sock)
     }while(e2u_size);
 }
 
+void ether_to_spi(uint8_t sock)
+{
+    struct __serial_option *serial_option = (struct __serial_option *)&(get_DevConfig_pointer()->serial_option);
+    struct __serial_common *serial_common = (struct __serial_common *)&(get_DevConfig_pointer()->serial_common);
+    struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
+    struct __tcp_option *tcp_option = (struct __tcp_option *)&(get_DevConfig_pointer()->tcp_option);
+    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
+
+    uint16_t len;
+    uint16_t i;
+    uint16_t reg_val;
+
+    do {
+        // H/W Socket buffer -> User's buffer
+        if (!(network_connection->working_mode == MQTT_CLIENT_MODE || network_connection->working_mode == MQTTS_CLIENT_MODE))
+        {
+            len = getSn_RX_RSR(sock);
+            if(len > DATA_BUF_SIZE) len = DATA_BUF_SIZE; // avoiding buffer overflow
+            
+            if(len > 0)
+            {
+                add_data_transfer_bytecount(SEG_ETHER_RX, e2u_size);
+
+                if (network_connection->working_mode == UDP_MODE) {
+                    e2u_size = recvfrom(sock, g_recv_buf, len, peerip, &peerport);
+                    
+                    if(memcmp(peerip_tmp, peerip, 4) !=  0)
+                    {
+                        memcpy(peerip_tmp, peerip, 4);
+                        if(serial_common->serial_debug_en)
+                            printf(" > UDP Peer IP/Port: %d.%d.%d.%d : %d\r\n", peerip[0], peerip[1], peerip[2], peerip[3], peerport);
+                    }
+                }
+                else if (network_connection->working_state == ST_CONNECT) {
+#ifdef __USE_S2E_OVER_TLS__
+                    if (network_connection->working_mode == SSL_TCP_CLIENT_MODE)
+                        e2u_size = wiz_tls_read(&s2e_tlsContext, g_recv_buf, len);
+#endif
+                    else
+                        e2u_size = recv(sock, g_recv_buf, len);
+                }
+                reg_val = SIK_RECEIVED & 0x00FF;
+                ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
+
+            }
+            else
+              break;
+            
+            if((network_connection->working_mode == TCP_SERVER_MODE) ||  \
+              ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state == MIXED_SERVER)))
+            {
+                // Connection password authentication
+                if((tcp_option->pw_connect_en == SEG_ENABLE) && (flag_connect_pw_auth == SEG_DISABLE))
+                {
+                    if(check_connect_pw_auth(g_recv_buf, len) == SEG_ENABLE)
+                        flag_connect_pw_auth = SEG_ENABLE;
+                    else
+                        flag_connect_pw_auth = SEG_DISABLE;
+                    e2u_size = 0;
+
+                    xTimerStop(seg_auth_timer, 0);
+                    if(flag_connect_pw_auth == SEG_DISABLE)
+                    {
+                        disconnect(sock);
+                        return;
+                    }
+                }
+            }
+        }
+        // Ethernet data transfer to DATA UART
+        if(e2u_size != 0)
+        {
+            if((serial_common->serial_debug_en == SEG_DEBUG_E2S) || (serial_common->serial_debug_en == SEG_DEBUG_ALL))
+                debugSerial_dataTransfer(g_recv_buf, e2u_size, SEG_DEBUG_E2S);
+            PRT_SEG("e2u_size = %d\r\n", e2u_size);
+            //for(i = 0; i < e2u_size; i++) platform_uart_putc(g_recv_buf[i]);
+            add_data_transfer_bytecount(SEG_ETHER_TX, e2u_size);
+            //e2u_size = 0;
+            GPIO_Output_Reset(DATA0_SPI_INT_PIN);
+        }
+    }while(0);
+}
 
 uint16_t get_tcp_any_port(void)
 {
@@ -1766,7 +1858,7 @@ void init_trigger_modeswitch(uint8_t mode)
     }
     
     u2e_size = 0;
-    uart_rx_flush();
+    data_buffer_flush();
     reset_SEG_timeflags();
     //xTimerReset(seg_inactivity_timer, 0);
 }
@@ -1824,7 +1916,7 @@ void restore_serial_data(uint8_t idx)
     
     for(i = 0; i < idx; i++)
     {
-        put_byte_to_uart_buffer(ch_tmp[i]);
+        put_byte_to_data_buffer(ch_tmp[i]);
         ch_tmp[i] = 0x00;
     }
     
@@ -2054,7 +2146,12 @@ void mqtt_subscribeMessageHandler(uint8_t *data, uint32_t data_len)
         printf("\r\n");
     }
 #endif
-    ether_to_uart(SOCK_DATA); //socket parameter is not used in mqtt
+    if (get_uart_spi_if()) {
+        ether_to_spi(SEG_DATA0_SOCK);
+    }
+    else {
+        ether_to_uart(SEG_DATA0_SOCK);
+    }
 }
 
 uint32_t get_data_transfer_bytecount(teDATADIR dir)
@@ -2239,7 +2336,6 @@ void seg_u2e_task (void *argument)  {
     struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
     struct __tcp_option *tcp_option = (struct tcp_option *)&(get_DevConfig_pointer()->tcp_option);
 
-    PRT_SEG("Running Task\r\n");
     while(1) {
         xSemaphoreTake(seg_u2e_sem, portMAX_DELAY);
         //PRT_SEG("xSemaphoreTake(seg_u2e_sem, portMAX_DELAY)\r\n");
@@ -2247,7 +2343,7 @@ void seg_u2e_task (void *argument)  {
         switch (serial_mode)
         {
             case SEG_SERIAL_PROTOCOL_NONE :
-                if(get_uart_buffer_usedsize() || u2e_size)
+                if(get_data_buffer_usedsize() || u2e_size)
                 {
                     if ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state == MIXED_SERVER) && (ST_OPEN == get_device_status())) {
                         process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
@@ -2287,10 +2383,19 @@ void seg_recv_task (void *argument)  {
 
     while(1) {
         xSemaphoreTake(seg_e2u_sem, portMAX_DELAY);
+        //PRT_SEG("xSemaphoreTake(seg_e2u_sem, portMAX_DELAY)\r\n");
+
+        //PRT_SEG("Serial_mode = %d, e2u_size = %d\r\n", serial_mode, e2u_size);
+        //if (getSn_RX_RSR(SEG_DATA0_SOCK)) {
         switch (serial_mode)
         {
             case SEG_SERIAL_PROTOCOL_NONE :
-                ether_to_uart(SEG_DATA0_SOCK);
+                if (get_uart_spi_if()) {
+                    ether_to_spi(SEG_DATA0_SOCK);
+                }
+                else {
+                    ether_to_uart(SEG_DATA0_SOCK);
+                }
                 break;
 
             case SEG_SERIAL_MODBUS_RTU :

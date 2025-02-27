@@ -181,6 +181,7 @@ target_link_libraries(APP_S2E_FILES PUBLIC
 add_library(APP_PLATFORM_FILES STATIC)
 
 target_sources(APP_PLATFORM_FILES PUBLIC
+        ${APP_PORT_DIR}/platform_handler/src/bufferHandler.c
         ${APP_PORT_DIR}/platform_handler/src/dhcp_cb.c
         ${APP_PORT_DIR}/platform_handler/src/deviceHandler.c
         ${APP_PORT_DIR}/platform_handler/src/dnsHandler.c
@@ -188,6 +189,7 @@ target_sources(APP_PLATFORM_FILES PUBLIC
         ${APP_PORT_DIR}/platform_handler/src/gpioHandler.c
         ${APP_PORT_DIR}/platform_handler/src/httpHandler.c
         ${APP_PORT_DIR}/platform_handler/src/netHandler.c
+        ${APP_PORT_DIR}/platform_handler/src/spiHandler.c
         ${APP_PORT_DIR}/platform_handler/src/storageHandler.c
         ${APP_PORT_DIR}/platform_handler/src/timerHandler.c
         ${APP_PORT_DIR}/platform_handler/src/uartHandler.c
