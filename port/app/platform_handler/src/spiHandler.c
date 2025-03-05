@@ -354,7 +354,7 @@ void spi_send_ack(void) {
     
     //PRT_INFO("Send ACK\r\n");
     platform_spi_write(header, 4);
-    //spi_slave_write_dma(header, 4);
+    //platform_spi_write_dma(header, 4);
 }
 
 void spi_send_nack(void) {
@@ -366,6 +366,6 @@ void spi_send_nack(void) {
     
     //PRT_INFO("Send NACK\r\n");
     platform_spi_write(header, 4);
-    //spi_slave_write_dma(header, 4);
+    //platform_spi_write_dma(header, 4);
 }
 

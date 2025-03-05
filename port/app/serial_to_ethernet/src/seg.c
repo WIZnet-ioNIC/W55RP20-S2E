@@ -1706,7 +1706,7 @@ void ether_to_spi(uint8_t sock)
         {
             if((serial_common->serial_debug_en == SEG_DEBUG_E2S) || (serial_common->serial_debug_en == SEG_DEBUG_ALL))
                 debugSerial_dataTransfer(g_recv_buf, e2u_size, SEG_DEBUG_E2S);
-            PRT_SEG("e2u_size = %d\r\n", e2u_size);
+            //PRT_SEG("e2u_size = %d\r\n", e2u_size);
             //for(i = 0; i < e2u_size; i++) platform_uart_putc(g_recv_buf[i]);
             add_data_transfer_bytecount(SEG_ETHER_TX, e2u_size);
             //e2u_size = 0;

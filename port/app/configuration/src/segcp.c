@@ -1493,12 +1493,10 @@ uint16_t proc_SEGCP_tcp(uint8_t* segcp_req, uint8_t* segcp_rep)
             break;
             
         case SOCK_CLOSE_WAIT:
-            PRT_SEGCP("case SOCK_CLOSE_WAIT:\r\n");
             disconnect(SEGCP_TCP_SOCK);
         
         case SOCK_CLOSED:
         case SOCK_FIN_WAIT:
-            PRT_SEGCP("case SOCK_CLOSED:\r\n");
             close(SEGCP_TCP_SOCK);
             
             if(socket(SEGCP_TCP_SOCK, Sn_MR_TCP, DEVICE_SEGCP_PORT, SF_TCP_NODELAY) == SEGCP_TCP_SOCK)
