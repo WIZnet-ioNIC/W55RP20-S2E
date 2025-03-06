@@ -206,6 +206,7 @@ void start_task(void *argument)
       PRT_INFO(" > Serial SPI Mode\r\n");
       DATA0_UART_Deinit();
       DATA0_SPI_Configuration(PLL_SYS_KHZ * 1000);
+      dev_config->serial_option.uart_interface = SPI_IF_SLAVE;
     }
     else {
       DATA0_UART_Interrupt_Enable();
