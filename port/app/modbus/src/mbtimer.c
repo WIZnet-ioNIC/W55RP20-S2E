@@ -44,8 +44,8 @@ void xMBRTUTimerT35Expired( void )
 		* a new frame was received. */
 		case STATE_RX_RCV:
 			mb_state_rtu_finish = TRUE;  
-      xSemaphoreGiveFromISR(seg_u2e_sem, &xHigherPriorityTaskWoken);
-      portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
+            xSemaphoreGiveFromISR(seg_u2e_sem, &xHigherPriorityTaskWoken);
+            portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
 			break;
 		
 		/* An error occured while receiving the frame. */
