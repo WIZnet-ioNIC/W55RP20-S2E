@@ -33,12 +33,11 @@ void mbRTUtoTCP(uint8_t sock)
 
 	if(MBrtu2tcpFrame() != FALSE)
 	{
-		switch(getSn_SR(sock)) {
-			case SOCK_UDP :
+		switch(get_device_status()) {
+			case ST_UDP :
 				sendto(sock, (uint8_t*)pucTCPBufferCur, usTCPBufferPos, network_connection->remote_ip, network_connection->remote_port);
 				break;
-			case SOCK_ESTABLISHED:
-			case SOCK_CLOSE_WAIT:
+			case ST_CONNECT:
 				send(sock, (uint8_t*)pucTCPBufferCur, usTCPBufferPos);
 				break;
 			default:

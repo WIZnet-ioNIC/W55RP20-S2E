@@ -52,44 +52,40 @@ extern volatile uint16_t usASCIIBufferPos;
 
 static bool mbTCPGet(uint8_t sock, uint8_t ** ppucMBTCPFrame, uint16_t * usTCPLength )
 {
-	struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
+  struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
 
-	uint16_t len;
-	uint16_t usTCPBufPos;
-	uint8_t  peerip[4];
-	uint16_t peerport;
+  uint16_t len;
+  uint16_t usTCPBufPos;
+  uint8_t  peerip[4];
+  uint16_t peerport;
+  uint16_t reg_val = SIK_RECEIVED & 0x00FF;;
 
-	len = getSn_RX_RSR(sock);
-	
-	if( len > 0 )
-	{
-		switch(getSn_SR(SOCK_DATA))
-		{
-			case SOCK_UDP:
+  len = getSn_RX_RSR(sock);
 
-				usTCPBufPos = recvfrom(SOCK_DATA, aucTCPBuf, len, peerip, &peerport);
-
-				if(memcmp(peerip, network_connection->remote_ip, sizeof(peerip)) || network_connection->remote_port != peerport)
-				{
-					network_connection->remote_ip[0] = peerip[0];
-					network_connection->remote_ip[1] = peerip[1];
-					network_connection->remote_ip[2] = peerip[2];
-					network_connection->remote_ip[3] = peerip[3];
-					network_connection->remote_port = peerport;
-				}
-				break;
-			case SOCK_ESTABLISHED:
-			case SOCK_CLOSE_WAIT:
-				usTCPBufPos = recv(sock, aucTCPBuf, len);
-				break;
-			default:
-				break;
-		}
-		*ppucMBTCPFrame = &aucTCPBuf[0];
-		*usTCPLength = usTCPBufPos;
-		return TRUE;
-	}
-	return FALSE;
+  if( len > 0 )
+  {
+    if (network_connection->working_mode == UDP_MODE) {
+      usTCPBufPos = recvfrom(SOCK_DATA, aucTCPBuf, len, peerip, &peerport);
+      ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
+ 
+      if(memcmp(peerip, network_connection->remote_ip, sizeof(peerip)) || network_connection->remote_port != peerport)
+      {
+        network_connection->remote_ip[0] = peerip[0];
+        network_connection->remote_ip[1] = peerip[1];
+        network_connection->remote_ip[2] = peerip[2];
+        network_connection->remote_ip[3] = peerip[3];
+        network_connection->remote_port = peerport;
+      }
+    }
+    else {
+      usTCPBufPos = recv(sock, aucTCPBuf, len);
+      ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
+    } 
+    *ppucMBTCPFrame = &aucTCPBuf[0];
+    *usTCPLength = usTCPBufPos;
+    return TRUE;
+  }
+  return FALSE;
 }
 
 static bool mbTCPPackage(uint8_t sock, uint8_t* pucRcvAddress, uint8_t** ppucFrame, uint16_t * pusLength )

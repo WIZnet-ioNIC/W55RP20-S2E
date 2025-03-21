@@ -572,7 +572,7 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock)
                 set_wiz_tls_init_state(DISABLE);
             }
 
-            if(wiz_tls_init(&s2e_tlsContext, sock, network_connection->dns_domain_name) > 0)
+            if(wiz_tls_init(&s2e_tlsContext, sock) > 0)
             {
                 set_device_status(ST_OPEN);
 
@@ -969,7 +969,7 @@ void proc_SEG_mqtts_client(uint8_t sock)
                 set_wiz_tls_init_state(DISABLE);
             }
 
-            if(wiz_tls_init(&s2e_tlsContext, sock, network_connection->dns_domain_name) > 0)
+            if(wiz_tls_init(&s2e_tlsContext, sock) > 0)
             {
                 set_device_status(ST_OPEN);
 
@@ -2040,8 +2040,8 @@ void add_data_transfer_bytecount(teDATADIR dir, uint16_t len)
 
 int wizchip_mqtt_publish(mqtt_config_t *mqtt_config, uint8_t *pub_topic, uint8_t qos, uint8_t *pub_data, uint32_t pub_data_len)
 {
-    PRT_SEG("MQTT PUB Len = %d\r\n", pub_data_len);
-    PRT_SEG("MQTT PUB Data = %.*s\r\n", pub_data_len, pub_data);
+//    PRT_SEG("MQTT PUB Len = %d\r\n", pub_data_len);
+//    PRT_SEG("MQTT PUB Data = %.*s\r\n", pub_data_len, pub_data);
     
     if(mqtt_transport_publish(mqtt_config, pub_topic, pub_data, pub_data_len, qos))
         return -1;
@@ -2054,14 +2054,17 @@ void mqtt_subscribeMessageHandler(uint8_t *data, uint32_t data_len)
 
     e2u_size = data_len;
     memcpy(g_recv_buf, data, data_len);
+
+#if 0
     if(serial_common->serial_debug_en)
     {
         PRT_INFO("Eth Recv len = %d : ", data_len);
         for (uint32_t i=0; i<data_len; i++)
           printf("0x%02X ", g_recv_buf[i], i);
         printf("\r\n");
-    }        
-    ether_to_uart(0); //socket parameter is not used in mqtt
+    }
+#endif
+    ether_to_uart(SOCK_DATA); //socket parameter is not used in mqtt
 }
 
 uint32_t get_data_transfer_bytecount(teDATADIR dir)
@@ -2290,15 +2293,10 @@ void seg_u2e_task (void *argument)  {
 }
 
 void seg_recv_task (void *argument)  {
-    uint16_t reg_val;
     uint8_t serial_mode = get_serial_communation_protocol();
 
     while(1) {
         xSemaphoreTake(seg_e2u_sem, portMAX_DELAY);
-        //PRT_SEG("xSemaphoreTake(seg_e2u_sem, portMAX_DELAY)\r\n");
-
-        //PRT_SEG("Serial_mode = %d, e2u_size = %d\r\n", serial_mode, e2u_size);
-        //if (getSn_RX_RSR(SEG_DATA0_SOCK)) {
         switch (serial_mode)
         {
             case SEG_SERIAL_PROTOCOL_NONE :
@@ -2307,14 +2305,10 @@ void seg_recv_task (void *argument)  {
 
             case SEG_SERIAL_MODBUS_RTU :
                 mbTCPtoRTU(SEG_DATA0_SOCK);
-                reg_val = SIK_RECEIVED & 0x00FF;
-                ctlsocket(SEG_DATA0_SOCK, CS_CLR_INTERRUPT, (void *)&reg_val);
                 break;
             
             case SEG_SERIAL_MODBUS_ASCII :
                 mbTCPtoASCII(SEG_DATA0_SOCK);
-                reg_val = SIK_RECEIVED & 0x00FF;
-                ctlsocket(SEG_DATA0_SOCK, CS_CLR_INTERRUPT, (void *)&reg_val);
                 break;
         }
 #ifdef __USE_WATCHDOG__

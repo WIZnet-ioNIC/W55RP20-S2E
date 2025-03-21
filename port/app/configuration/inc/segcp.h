@@ -147,8 +147,6 @@ typedef enum {SEGCP_MC, SEGCP_VR, SEGCP_MN, SEGCP_IM, SEGCP_OP, SEGCP_DD, SEGCP_
 
 #define CONFIGTOOL_KEEPALIVE_TIME_MS	15000 // unit:ms, used by TCP unicast search function only.
 
-extern uint8_t gSEGCPPRIVILEGE;
-
 void do_segcp_tcp(void);
 void do_segcp_udp(void);
 void do_segcp_uart(void);
@@ -156,11 +154,10 @@ void segcp_ret_handler(uint16_t segcp_ret);
 void set_segcp_uart(uint8_t uartNum);
 uint8_t get_segcp_uart(void);
 uint8_t parse_SEGCP(uint8_t * pmsg, uint8_t * param);
-uint16_t proc_SEGCP(uint8_t * segcp_req, uint8_t * segcp_rep);
+uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privilege);
 uint16_t proc_SEGCP_tcp(uint8_t * segcp_req, uint8_t * segcp_rep);
 uint16_t proc_SEGCP_udp(uint8_t * segcp_req, uint8_t * segcp_rep);
 uint16_t proc_SEGCP_uart(uint8_t * segcp_req, uint8_t * segcp_rep);
-void set_SEGCP_privilege(uint8_t ptype);
 void segcp_timer_msec(void); // for timer
 void segcp_tcp_task(void *argument);
 void segcp_udp_task(void *argument);

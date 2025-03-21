@@ -127,47 +127,47 @@ bool MBascii2tcpFrame(void)
 	return FALSE;
 }
 
-
 void ASCII_Uart_RX(void)
 {
-	uint8_t ucByte = 0;
+  uint8_t ucByte = 0;
+  
+  while(1) {
+    /* Always read the character. */
+    if(UART_read(&ucByte, 1) <= 0) return;
 
-	/* Always read the character. */
-	if(UART_read(&ucByte, 1) <= 0) return;
-	
-	switch ( eRcvState )
-	{
-		case STATE_RX_IDLE:
-			usASCIIBufferPos = 0;
-			if(ucByte == MB_ASCII_START) {
-				eRcvState = STATE_RX_RCV;
-			}
-			break;
-		case STATE_RX_RCV:
-			if( usASCIIBufferPos < MB_SER_PDU_SIZE_MAX ) {
-				if(ucByte == MB_ASCII_DEFAULT_CR) {
-					eRcvState = STATE_RX_END;
-				}
-				else {
-					ucASCIIBuf[usASCIIBufferPos++] = ucByte;
-				}
-			}
-			else {
-				eRcvState = STATE_RX_ERROR;
-			}
-
-			//IWDG_ReloadCounter();
-			break;
-		case STATE_RX_END:
-			if(ucByte == MB_ASCII_DEFAULT_LF) {
-				mb_state_ascii_finish = TRUE;
-				eRcvState = STATE_RX_IDLE;
-			}
-			break;
-		case STATE_RX_ERROR:
-			break;
-		default:
-			break;
-	}
+    switch ( eRcvState )
+    {
+      case STATE_RX_IDLE:
+        usASCIIBufferPos = 0;
+        if(ucByte == MB_ASCII_START) {
+          eRcvState = STATE_RX_RCV;
+        }
+        break;
+      case STATE_RX_RCV:
+        if( usASCIIBufferPos < MB_SER_PDU_SIZE_MAX ) {
+          if(ucByte == MB_ASCII_DEFAULT_CR) {
+            eRcvState = STATE_RX_END;
+          }
+          else {
+            ucASCIIBuf[usASCIIBufferPos++] = ucByte;
+          }
+        }
+        else {
+          eRcvState = STATE_RX_ERROR;
+        }
+        break;
+      case STATE_RX_END:
+        if(ucByte == MB_ASCII_DEFAULT_LF) {
+          mb_state_ascii_finish = TRUE;
+          eRcvState = STATE_RX_IDLE;
+          return;
+        }
+        break;
+      case STATE_RX_ERROR:
+        break;
+      default:
+        break;
+    }
+  }
 }
 

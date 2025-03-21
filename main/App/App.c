@@ -189,9 +189,9 @@ void start_task(void *argument)
     
     RP2040_Init();
     RP2040_W5X00_Init();
-    RP2040_Board_Init();
 
     load_DevConfig_from_storage();
+    RP2040_Board_Init();
     DATA0_UART_Configuration();
     check_mac_address();
 
@@ -208,12 +208,7 @@ void start_task(void *argument)
       init_trigger_modeswitch(DEVICE_AT_MODE);
 
     serial_mode = get_serial_communation_protocol();
-    if(serial_mode == SEG_SERIAL_PROTOCOL_NONE)
-    {
-        PRT_INFO(" > Serial to Ethernet Gateway Mode\r\n");
-    }
-    else
-    {   
+    if(serial_mode == SEG_SERIAL_MODBUS_RTU) {
         PRT_INFO(" > Modbus Mode\r\n");
         eMBRTUInit(dev_config->serial_option.baud_rate);
     }

@@ -29,15 +29,13 @@
 #define END_CERT "-----END CERTIFICATE-----"
 #define END_PKEY "-----END RSA PRIVATE KEY-----"
 
-// Ring Buffer declaration
-BUFFER_DECLARATION(data0_rx);
-
 /* Private functions ---------------------------------------------------------*/
 uint16_t uart_get_commandline(uint8_t* buf, uint16_t maxSize);
 
 /* Private variables ---------------------------------------------------------*/
 uint8_t gSEGCPREQ[CONFIG_BUF_SIZE];
 uint8_t gSEGCPREP[CONFIG_BUF_SIZE];
+uint8_t tpar[SEGCP_PARAM_MAX*2];    //for parsing config data
 
 static uint8_t SEGCP_UART = SEG_DATA0_UART; // default: SEG_DATA0_UART
 
@@ -72,14 +70,13 @@ uint8_t * tbSEGCPCMD[] = {"MC", "VR", "MN", "IM", "OP", "CP", "DG", "KA", "KI", 
 #endif
 uint8_t * tbSEGCPERR[] = {"ERNULL", "ERNOTAVAIL", "ERNOPARAM", "ERIGNORED", "ERNOCOMMAND", "ERINVALIDPARAM", "ERNOPRIVILEGE"};
 
-uint8_t gSEGCPPRIVILEGE = SEGCP_PRIVILEGE_CLR;
-
 // Keep-alive timer values for TCP unicast search function
 uint8_t enable_configtool_keepalive_timer = SEGCP_DISABLE;
 volatile uint16_t configtool_keepalive_time = 0;
 uint8_t flag_send_configtool_keepalive = SEGCP_DISABLE;
 
 extern uint8_t sw_modeswitch_at_mode_on;
+extern uint8_t flag_process_dhcp_success;
 
 extern xSemaphoreHandle net_segcp_udp_sem;
 extern xSemaphoreHandle net_segcp_tcp_sem;
@@ -283,7 +280,7 @@ uint8_t parse_SEGCP(uint8_t * pmsg, uint8_t * param)
     return cmdnum;
 }
 
-uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep)
+uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privilege)
 {
     DevConfig *dev_config = get_DevConfig_pointer();
     
@@ -377,20 +374,40 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep)
                     case SEGCP_RI: sprintf(trep,"%d", dev_config->tcp_option.reconnection);
                         break;
                     case SEGCP_LI:
-                        sprintf(trep,"%d.%d.%d.%d", dev_config->network_common.local_ip[0], dev_config->network_common.local_ip[1],
-                                                    dev_config->network_common.local_ip[2], dev_config->network_common.local_ip[3]);
+                        if (dev_config->network_option.dhcp_use && !flag_process_dhcp_success) {  //if dhcp doesn't be finished, send all 0
+                            sprintf(trep,"0.0.0.0");
+                        }
+                        else {
+                            sprintf(trep,"%d.%d.%d.%d", dev_config->network_common.local_ip[0], dev_config->network_common.local_ip[1],
+                                                        dev_config->network_common.local_ip[2], dev_config->network_common.local_ip[3]);
+                        }
                         break;
                     case SEGCP_SM: 
-                        sprintf(trep,"%d.%d.%d.%d", dev_config->network_common.subnet[0], dev_config->network_common.subnet[1],
-                                                    dev_config->network_common.subnet[2], dev_config->network_common.subnet[3]);
+                        if (dev_config->network_option.dhcp_use && !flag_process_dhcp_success) {  //if dhcp doesn't be finished, send all 0
+                            sprintf(trep,"0.0.0.0");
+                        }
+                        else {
+                            sprintf(trep,"%d.%d.%d.%d", dev_config->network_common.subnet[0], dev_config->network_common.subnet[1],
+                                                        dev_config->network_common.subnet[2], dev_config->network_common.subnet[3]);
+                        }
                         break;
-                    case SEGCP_GW: 
-                        sprintf(trep,"%d.%d.%d.%d", dev_config->network_common.gateway[0], dev_config->network_common.gateway[1],
-                                                    dev_config->network_common.gateway[2], dev_config->network_common.gateway[3]);
+                    case SEGCP_GW:
+                        if (dev_config->network_option.dhcp_use && !flag_process_dhcp_success) {  //if dhcp doesn't be finished, send all 0
+                            sprintf(trep,"0.0.0.0");
+                        }
+                        else {
+                            sprintf(trep,"%d.%d.%d.%d", dev_config->network_common.gateway[0], dev_config->network_common.gateway[1],
+                                                        dev_config->network_common.gateway[2], dev_config->network_common.gateway[3]);
+                        }
                         break;
                     case SEGCP_DS:
-                        sprintf(trep,"%d.%d.%d.%d", dev_config->network_option.dns_server_ip[0], dev_config->network_option.dns_server_ip[1],
-                                                    dev_config->network_option.dns_server_ip[2], dev_config->network_option.dns_server_ip[3]);
+                        if (dev_config->network_option.dhcp_use && !flag_process_dhcp_success) {  //if dhcp doesn't be finished, send all 0
+                            sprintf(trep,"0.0.0.0");
+                        }
+                        else {
+                            sprintf(trep,"%d.%d.%d.%d", dev_config->network_option.dns_server_ip[0], dev_config->network_option.dns_server_ip[1],
+                                                        dev_config->network_option.dns_server_ip[2], dev_config->network_option.dns_server_ip[3]);
+                        }
                         break;
 
                     case SEGCP_DH:
@@ -497,15 +514,15 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep)
                         sprintf(trep, "%s", "FLUSH");
                         break;
                     case SEGCP_SV:
-                        if(gSEGCPPRIVILEGE & (SEGCP_PRIVILEGE_SET|SEGCP_PRIVILEGE_WRITE)) ret |= SEGCP_RET_SAVE;
+                        if(segcp_privilege & (SEGCP_PRIVILEGE_SET|SEGCP_PRIVILEGE_WRITE)) ret |= SEGCP_RET_SAVE;
                         else ret |= SEGCP_RET_ERR_NOPRIVILEGE;
                         break;
                     case SEGCP_EX:
-                        if(gSEGCPPRIVILEGE & (SEGCP_PRIVILEGE_SET|SEGCP_PRIVILEGE_WRITE)) ret |= SEGCP_RET_SWITCH;
+                        if(segcp_privilege & (SEGCP_PRIVILEGE_SET|SEGCP_PRIVILEGE_WRITE)) ret |= SEGCP_RET_SWITCH;
                         else ret |= SEGCP_RET_ERR_NOPRIVILEGE;
                         break;
                     case SEGCP_RT:
-                        if(gSEGCPPRIVILEGE & (SEGCP_PRIVILEGE_SET|SEGCP_PRIVILEGE_WRITE)) ret |= SEGCP_RET_REBOOT;
+                        if(segcp_privilege & (SEGCP_PRIVILEGE_SET|SEGCP_PRIVILEGE_WRITE)) ret |= SEGCP_RET_REBOOT;
                         else ret |= SEGCP_RET_ERR_NOPRIVILEGE;
                         break;
                     case SEGCP_UN:
@@ -518,7 +535,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep)
                         sprintf(trep, "%s", strDEVSTATUS[dev_config->network_connection.working_state]);
                         break;
                     case SEGCP_FR: 
-                        if(gSEGCPPRIVILEGE & (SEGCP_PRIVILEGE_SET|SEGCP_PRIVILEGE_WRITE)) 
+                        if(segcp_privilege & (SEGCP_PRIVILEGE_SET|SEGCP_PRIVILEGE_WRITE)) 
                         {
                             // #20161110 Hidden option, Local port number [1] + FR cmd => K! (EEPROM Erase)
                             if(dev_config->network_connection.local_port == 1)
@@ -617,7 +634,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep)
                     trep += strlen(trep);
                 }
             }
-            else if(gSEGCPPRIVILEGE & (SEGCP_PRIVILEGE_SET|SEGCP_PRIVILEGE_WRITE))
+            else if(segcp_privilege & (SEGCP_PRIVILEGE_SET|SEGCP_PRIVILEGE_WRITE))
             {
                 switch((teSEGCPCMDNUM)cmdnum)
                 {
@@ -1308,12 +1325,11 @@ uint16_t proc_SEGCP_udp(uint8_t* segcp_req, uint8_t* segcp_rep)
     uint8_t destip[4];
     uint16_t destport;
     
-    uint8_t tpar[SEGCP_PARAM_MAX*2];
     uint8_t* treq;
     uint8_t* trep;
     uint16_t reg_val;
-    
-    gSEGCPPRIVILEGE = SEGCP_PRIVILEGE_CLR;
+    uint8_t segcp_privilege = SEGCP_PRIVILEGE_CLR;
+
     switch(getSn_SR(SEGCP_UDP_SOCK))
     {
         case SOCK_UDP:            
@@ -1332,12 +1348,12 @@ uint16_t proc_SEGCP_udp(uint8_t* segcp_req, uint8_t* segcp_rep)
                 if(SEGCP_MA == parse_SEGCP(treq, tpar))
                 {
                     if(!memcmp(tpar,"\xFF\xFF\xFF\xFF\xFF\xFF", 6))
-                        gSEGCPPRIVILEGE |= (SEGCP_PRIVILEGE_SET | SEGCP_PRIVILEGE_READ);
+                        segcp_privilege |= (SEGCP_PRIVILEGE_SET | SEGCP_PRIVILEGE_READ);
                     else if(!memcmp(tpar, dev_config->network_common.mac, sizeof(dev_config->network_common.mac)))
-                        gSEGCPPRIVILEGE |= (SEGCP_PRIVILEGE_SET | SEGCP_PRIVILEGE_WRITE);
+                        segcp_privilege |= (SEGCP_PRIVILEGE_SET | SEGCP_PRIVILEGE_WRITE);
                     else break;
                     
-                    if(gSEGCPPRIVILEGE & SEGCP_PRIVILEGE_SET)
+                    if(segcp_privilege & SEGCP_PRIVILEGE_SET)
                     {
                         sprintf(trep,"%s%c%c%c%c%c%c\r\n",tbSEGCPCMD[SEGCP_MA],
                             dev_config->network_common.mac[0],
@@ -1357,7 +1373,7 @@ uint16_t proc_SEGCP_udp(uint8_t* segcp_req, uint8_t* segcp_rep)
                                 memcpy(trep,treq, strlen(tpar)+4);  // "PWxxxx\r\n"
                                 treq += (strlen(tpar) + 4);
                                 trep += (strlen(tpar) + 4);
-                                ret = proc_SEGCP(treq,trep);
+                                ret = proc_SEGCP(treq, trep, segcp_privilege);
                                 
                                 sendto(SEGCP_UDP_SOCK, segcp_rep, 14+strlen(tpar)+strlen(trep), "\xFF\xFF\xFF\xFF", destport);
 
@@ -1392,12 +1408,10 @@ uint16_t proc_SEGCP_tcp(uint8_t* segcp_req, uint8_t* segcp_rep)
     uint16_t ret = 0;
     uint16_t len = 0;
     
-    uint8_t tpar[SEGCP_PARAM_MAX+1];
     uint8_t * treq;
     uint8_t * trep;
     uint16_t reg_val;
-    
-    gSEGCPPRIVILEGE = SEGCP_PRIVILEGE_CLR;
+    uint8_t segcp_privilege = SEGCP_PRIVILEGE_CLR;
     
     switch(getSn_SR(SEGCP_TCP_SOCK))
     {
@@ -1434,12 +1448,12 @@ uint16_t proc_SEGCP_tcp(uint8_t* segcp_req, uint8_t* segcp_rep)
                 if(SEGCP_MA == parse_SEGCP(treq, tpar))
                 {
                     if(!memcmp(tpar, "\xFF\xFF\xFF\xFF\xFF\xFF", 6))
-                        gSEGCPPRIVILEGE |= (SEGCP_PRIVILEGE_SET | SEGCP_PRIVILEGE_READ);
+                        segcp_privilege |= (SEGCP_PRIVILEGE_SET | SEGCP_PRIVILEGE_READ);
                     else if(!memcmp(tpar, dev_config->network_common.mac, sizeof(dev_config->network_common.mac)))
-                        gSEGCPPRIVILEGE |= (SEGCP_PRIVILEGE_SET | SEGCP_PRIVILEGE_WRITE);
+                        segcp_privilege |= (SEGCP_PRIVILEGE_SET | SEGCP_PRIVILEGE_WRITE);
                     else break;
                     
-                    if(gSEGCPPRIVILEGE & SEGCP_PRIVILEGE_SET)
+                    if(segcp_privilege & SEGCP_PRIVILEGE_SET)
                     {
                         sprintf(trep,"%s%c%c%c%c%c%c\r\n",tbSEGCPCMD[SEGCP_MA],
                             dev_config->network_common.mac[0],
@@ -1459,7 +1473,7 @@ uint16_t proc_SEGCP_tcp(uint8_t* segcp_req, uint8_t* segcp_rep)
                                 memcpy(trep,treq, strlen(tpar)+4);  // "PWxxxx\r\n"
                                 treq += (strlen(tpar) + 4);
                                 trep += (strlen(tpar) + 4);
-                                ret = proc_SEGCP(treq,trep);
+                                ret = proc_SEGCP(treq, trep, segcp_privilege);
                                 send(SEGCP_TCP_SOCK, segcp_rep, 14+strlen(tpar)+strlen(trep));
                             }
                         }
@@ -1498,6 +1512,7 @@ uint16_t proc_SEGCP_uart(uint8_t * segcp_req, uint8_t * segcp_rep)
     
     uint16_t len = 0;
     uint16_t ret = 0;
+    uint8_t segcp_privilege;
 
     if(get_uart_buffer_usedsize())
     {
@@ -1505,8 +1520,8 @@ uint16_t proc_SEGCP_uart(uint8_t * segcp_req, uint8_t * segcp_rep)
         
         if(len != 0)
         {
-            gSEGCPPRIVILEGE = SEGCP_PRIVILEGE_SET | SEGCP_PRIVILEGE_WRITE;
-            ret = proc_SEGCP(segcp_req, segcp_rep);
+            segcp_privilege = SEGCP_PRIVILEGE_SET | SEGCP_PRIVILEGE_WRITE;
+            ret = proc_SEGCP(segcp_req, segcp_rep, segcp_privilege);
             if(segcp_rep[0])
             {
                 if(dev_config->serial_common.serial_debug_en)
@@ -1516,22 +1531,6 @@ uint16_t proc_SEGCP_uart(uint8_t * segcp_req, uint8_t * segcp_rep)
         }
     }
     return ret;
-}
-
-void set_SEGCP_privilege(uint8_t ptype)
-{
-    if(ptype == SEGCP_PRIVILEGE_READ)
-    {
-        gSEGCPPRIVILEGE |= (SEGCP_PRIVILEGE_SET | SEGCP_PRIVILEGE_READ);
-    }
-    else if(ptype == SEGCP_PRIVILEGE_WRITE)
-    {
-        gSEGCPPRIVILEGE |= (SEGCP_PRIVILEGE_SET | SEGCP_PRIVILEGE_WRITE);
-    }
-    else if(ptype == SEGCP_PRIVILEGE_CLR)
-    {
-        gSEGCPPRIVILEGE = SEGCP_PRIVILEGE_CLR;
-    }
 }
 
 uint16_t uart_get_commandline(uint8_t* buf, uint16_t maxSize)
