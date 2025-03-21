@@ -246,7 +246,6 @@ void load_DevConfig_from_storage(void)
     set_device_status(ST_OPEN);
 }
 
-
 void save_DevConfig_to_storage(void)
 {
     erase_storage(STORAGE_CONFIG);
