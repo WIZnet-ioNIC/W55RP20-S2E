@@ -243,8 +243,8 @@ void load_DevConfig_from_storage(void)
     dev_config.device_common.fw_ver[0] = MAJOR_VER;
     dev_config.device_common.fw_ver[1] = MINOR_VER;
     dev_config.device_common.fw_ver[2] = MAINTENANCE_VER;
+    set_device_status(ST_OPEN);
 }
-
 
 void save_DevConfig_to_storage(void)
 {
@@ -252,17 +252,18 @@ void save_DevConfig_to_storage(void)
 #ifndef __USE_SAFE_SAVE__
     write_storage(STORAGE_CONFIG, 0, (uint8_t *)&dev_config, sizeof(DevConfig));
 #else
-    DevConfig dev_config_tmp;
+    DevConfig *dev_config_tmp = pvPortMalloc(sizeof(DevConfig));
     uint8_t update_success = SEGCP_DISABLE;
     uint8_t retry_cnt = 0;
     int ret;
-    
+
+    memset(dev_config_tmp, 0x00, FLASH_SECTOR_SIZE);
     do {
         write_storage(STORAGE_CONFIG, 0, (uint8_t *)&dev_config, sizeof(DevConfig));
-        read_storage(STORAGE_CONFIG, &dev_config_tmp, sizeof(DevConfig));
+        read_storage(STORAGE_CONFIG, dev_config_tmp, sizeof(DevConfig));
         
 #endif        
-        if(memcmp(&dev_config, &dev_config_tmp, sizeof(DevConfig)) == 0) { // Config-data set is successfully updated.
+        if(memcmp(&dev_config, dev_config_tmp, sizeof(DevConfig)) == 0) { // Config-data set is successfully updated.
             update_success = SEGCP_ENABLE;
         } else {
             retry_cnt++;
@@ -273,6 +274,7 @@ void save_DevConfig_to_storage(void)
             break;
         }
     } while(update_success != SEGCP_ENABLE);
+    vPortFree(dev_config_tmp);
 }
 
 void get_DevConfig_value(void *dest, const void *src, uint16_t size)

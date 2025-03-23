@@ -225,7 +225,7 @@ void set_device_status(teDEVSTATUS status)
         default:
             break;
     }
-
+    
     // Status indicator pins
     if(network_connection->working_state == ST_CONNECT)
         set_connection_status_io(STATUS_TCPCONNECT_PIN, ON); // Status I/O pin to low
@@ -2383,10 +2383,6 @@ void seg_recv_task (void *argument)  {
 
     while(1) {
         xSemaphoreTake(seg_e2u_sem, portMAX_DELAY);
-        //PRT_SEG("xSemaphoreTake(seg_e2u_sem, portMAX_DELAY)\r\n");
-
-        //PRT_SEG("Serial_mode = %d, e2u_size = %d\r\n", serial_mode, e2u_size);
-        //if (getSn_RX_RSR(SEG_DATA0_SOCK)) {
         switch (serial_mode)
         {
             case SEG_SERIAL_PROTOCOL_NONE :
