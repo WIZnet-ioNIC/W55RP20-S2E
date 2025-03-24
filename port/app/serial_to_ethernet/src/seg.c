@@ -225,7 +225,7 @@ void set_device_status(teDEVSTATUS status)
         default:
             break;
     }
-    
+
     // Status indicator pins
     if(network_connection->working_state == ST_CONNECT)
         set_connection_status_io(STATUS_TCPCONNECT_PIN, ON); // Status I/O pin to low
