@@ -507,7 +507,11 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         sprintf(trep, "%d", get_connection_status_io(STATUS_PHYLINK_PIN)); // STATUS_PHYLINK_PIN (in) == DTR_PIN (out)
                         break;
                     case SEGCP_S1:
+                    #if 0
                         sprintf(trep, "%d", get_connection_status_io(STATUS_TCPCONNECT_PIN)); // STATUS_TCPCONNECT_PIN (in) == DSR_PIN (in)
+                    #else //Platypus
+                        sprintf(trep, "%d", !get_connection_status_io(STATUS_TCPCONNECT_PIN)); // STATUS_TCPCONNECT_PIN (in) == DSR_PIN (in)
+                    #endif
                         break;
                     case SEGCP_RX:
                         uart_rx_flush();
@@ -639,7 +643,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                 switch((teSEGCPCMDNUM)cmdnum)
                 {
                     case SEGCP_MC:
-                        if((dev_config->network_common.mac[0] == 0x00) && (dev_config->network_common.mac[1] == 0x08) && (dev_config->network_common.mac[2] == 0xDC)) ret |= SEGCP_RET_ERR_IGNORED;
+                        if((dev_config->network_common.mac[0] == MAC_OUI0) && (dev_config->network_common.mac[1] == MAC_OUI1) && (dev_config->network_common.mac[2] == MAC_OUI2)) ret |= SEGCP_RET_ERR_IGNORED;
                         else if(!is_macaddr(param, ".:-", dev_config->network_common.mac)) ret |= SEGCP_RET_ERR_INVALIDPARAM;
                         break;
                     case SEGCP_VR: 

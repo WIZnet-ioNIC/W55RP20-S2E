@@ -23,7 +23,7 @@
 #include "mbedtls/ssl.h"
 
 static DevConfig dev_config;
-uint8_t mac[] = {0x00, 0x08, 0xdc, 0xAA, 0xBB, 0xCC};
+uint8_t mac[] = {MAC_OUI0, MAC_OUI1, MAC_OUI2, 0xAA, 0xBB, 0xCC};
 
 DevConfig* get_DevConfig_pointer(void)
 {
@@ -403,12 +403,7 @@ void check_mac_address(void)
     uint32_t vi, vj;
     uint8_t temp_buf[] = "INPUT MAC ? ";
 
-#if 0
-    if (dev_config->network_common.mac[0] != 0x00 || dev_config->network_common.mac[1] != 0x08 || dev_config->network_common.mac[2] != 0xDC)
-#else   //Platypus
-    if (dev_config->network_common.mac[0] != 0xEC || dev_config->network_common.mac[1] != 0x74 || dev_config->network_common.mac[2] != 0xCD)
-#endif
-
+    if (dev_config->network_common.mac[0] != MAC_OUI0 || dev_config->network_common.mac[1] != MAC_OUI1 || dev_config->network_common.mac[2] != MAC_OUI2)
     {
         PRT_INFO("%s\r\n", temp_buf);
         platform_uart_puts(temp_buf, strlen(temp_buf));

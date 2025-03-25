@@ -51,6 +51,7 @@ void net_status_task(void *argument)
                         PRT_INFO("W5500 RESET\r\n");
                         wizchip_reset();
                         wizchip_initialize();
+                        Net_Conf();
 
                         switch(dev_config->network_connection.working_mode)
                         {
@@ -71,11 +72,9 @@ void net_status_task(void *argument)
                     }
                 }
                 g_net_status = NET_LINK_CONNECTED;
-                
                 break;
 
             case NET_LINK_CONNECTED:
-                    Net_Conf();
                     xSemaphoreGive(net_segcp_udp_sem);
                     if(dev_config->network_option.dhcp_use) {
                         set_stop_dhcp_flag(0);
@@ -118,6 +117,8 @@ void net_status_task(void *argument)
                     if (check_phylink_status() == PHY_LINK_OFF) {
 
 #if 1   //restore status
+                        flag_process_dhcp_success = OFF;
+                        flag_process_dns_success = OFF;
                         g_net_status = NET_LINK_DISCONNECTED;
                         if (get_device_status() != ST_ATMODE)
                           set_device_status(ST_OPEN);
