@@ -257,7 +257,11 @@ void save_DevConfig_to_storage(void)
     uint8_t retry_cnt = 0;
     int ret;
 
-    memset(dev_config_tmp, 0x00, FLASH_SECTOR_SIZE);
+    if (dev_config_tmp == NULL) {
+        PRT_SEGCP(" > Error: Memory allocation failed for dev_config_tmp\r\n");
+        return;
+    }
+    memset(dev_config_tmp, 0x00, sizeof(DevConfig));
     do {
         write_storage(STORAGE_CONFIG, 0, (uint8_t *)&dev_config, sizeof(DevConfig));
         read_storage(STORAGE_CONFIG, dev_config_tmp, sizeof(DevConfig));

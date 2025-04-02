@@ -6,7 +6,7 @@ eMBRcvState eRcvState;
 repeating_timer_t g_mb_timer;
 
 volatile uint8_t mb_state_rtu_finish;
-volatile uint16_t mb_timeout;
+volatile uint32_t mb_timeout;
 
 extern xSemaphoreHandle seg_u2e_sem;
 
@@ -15,9 +15,19 @@ void vMBPortTimersCallback(struct repeating_timer *t)
   xMBRTUTimerT35Expired();
 }
  
-void xMBPortTimersInit( uint32_t usTim1Timerout50us)
+void xMBPortTimersInit(uint32_t usTim1Timerout50us)
 {
-	mb_timeout = usTim1Timerout50us * 50;
+    /* Calculate mb_timeout in ¥ìs: T3.5 + 50ms response timeout */
+    uint32_t t35_time_us = usTim1Timerout50us * 50;
+    if (usTim1Timerout50us > (0xFFFFFFFFUL / 50))
+        mb_timeout = 0xFFFFFFFFUL; // Prevent overflow
+    else
+        mb_timeout = t35_time_us + 50000; // T3.5 + 50ms
+
+    /* Check for overflow */
+    if (mb_timeout < t35_time_us)
+        mb_timeout = 0xFFFFFFFFUL;
+	PRT_INFO("mb_timeout = %d us\r\n", mb_timeout);
 }
 
 void vMBPortTimersEnable( void )

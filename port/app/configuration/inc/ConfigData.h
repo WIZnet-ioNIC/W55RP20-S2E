@@ -13,7 +13,6 @@
 
 #define DNS_DOMAIN_SIZE         128
 
-
 #define MQTT_TOPIC_SIZE		    128
 #define MQTT_USER_NAME_SIZE		128
 #define MQTT_PASSWORD_SIZE		128

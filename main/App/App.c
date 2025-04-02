@@ -115,10 +115,6 @@ static void set_W5X00_NetTimeout(void);
 void start_task(void *argument);
 void eth_interrupt_task(void *argument);
 
-//void *pvPortCalloc( size_t sNb, size_t sSize );
-void pvPortFree( void *vPtr );
-
-
 /**
  * ----------------------------------------------------------------------------------------------------
  * Main
