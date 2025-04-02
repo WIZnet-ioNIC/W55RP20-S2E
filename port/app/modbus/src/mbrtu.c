@@ -16,31 +16,48 @@ volatile uint8_t *pucTCPBufferCur;
 volatile uint16_t usTCPBufferPos;
 extern volatile uint8_t mb_state_rtu_finish;
 
-void eMBRTUInit( uint32_t ulBaudRate )
+void eMBRTUInit(uint32_t ulBaudRate)
 {
     uint32_t usTimerT35_50us;
- 
-    /* Modbus RTU uses 8 Databits. */
- 
-    /* If baudrate > 19200 then we should use the fixed timer values
-     * t35 = 1750us. Otherwise t35 must be 3.5 times the character time.
+    uint32_t t35_time_us;
+
+    /* Modbus RTU uses 8 databits. */
+
+    /* If baud rate > 19200, use fixed timer value: t35 = 1750us.
+     * Otherwise, t35 must be 3.5 times the character time.
      */
     if (baud_table[ulBaudRate] > 19200)
     {
-        usTimerT35_50us = 1750 / 50;
+        t35_time_us = 1750; // Fixed value: 1750¡Íis
+        usTimerT35_50us = 35; // 1750us / 50us = 35
     }
     else
     {
-        /* The timer reload value for a character is given by:
-         * ChTimeValue = 11 * 1000000 / Baudrate  (us)
-         * T3.5 = 3.5 * ChTimeValue
-         * usTimerT35_50us = T3.5 / 50 (50us)
-         */
-        usTimerT35_50us = (uint32_t)((3.5 * 11 * 1000000UL) / (50UL * baud_table[ulBaudRate]) + 1);
-    }
-    xMBPortTimersInit(usTimerT35_50us);
-}
+        /* Calculate 1 bit time (¡Íis) = 1,000,000 / baudrate */
+        uint32_t bit_time_us = 1000000UL / baud_table[ulBaudRate];
+        /* Calculate 1 character time (¡Íis) = 11 * bit_time_us */
+        uint32_t char_time_us = bit_time_us * 11;
+        /* Calculate T3.5 = 3.5 * character time (in ¡Íis) */
+        t35_time_us = (char_time_us * 35) / 10; // 3.5x calculation
 
+        /* Ensure minimum value to prevent zero */
+        if (t35_time_us < 1)
+            t35_time_us = 1;
+
+        /* Convert to 50¡Íis units with ceiling */
+        usTimerT35_50us = (t35_time_us + 49) / 50;
+
+        /* Limit usTimerT35_50us to prevent timer overflow (e.g., 16-bit timer max = 65535) */
+        if (usTimerT35_50us > 65535)
+        {
+            usTimerT35_50us = 65535; // Max value for 16-bit timer
+            t35_time_us = usTimerT35_50us * 50; // Adjust t35_time_us accordingly
+        }
+    }
+
+    PRT_INFO("Baud Rate: %u, usTimerT35_50us = %u\r\n", baud_table[ulBaudRate], usTimerT35_50us);
+    xMBPortTimersInit(usTimerT35_50us); // Initialize timer
+}
 
 static bool mbRTUPackage( uint8_t * pucRcvAddress, uint8_t ** pucFrame, uint16_t * pusLength )
 {

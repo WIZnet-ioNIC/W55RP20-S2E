@@ -34,10 +34,5 @@ int UART_read(void *data, int bytes)
 
 uint32_t UART_write(void *data, int bytes)
 {
-  uint32_t i;
-  uint8_t *data_ptr = data;
-
-  for(i=0; i<bytes; i++)
-    uart_putc(UART_ID, data_ptr[i]);
-  return bytes;
+  return platform_uart_puts(data, bytes);
 }
