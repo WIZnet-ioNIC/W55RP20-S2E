@@ -13,7 +13,6 @@
 
 #define DNS_DOMAIN_SIZE         128
 
-
 #define MQTT_TOPIC_SIZE		    128
 #define MQTT_USER_NAME_SIZE		128
 #define MQTT_PASSWORD_SIZE		128
@@ -21,6 +20,10 @@
 // Safe Save
 #define MAX_SAVE_RETRY              5
 #define SAVE_INTERVAL_MS            1000
+
+#define MAC_OUI0  0x00
+#define MAC_OUI1  0x08
+#define MAC_OUI2  0xDC
 
 enum bank_num{
     APP_BANK0 = 0,

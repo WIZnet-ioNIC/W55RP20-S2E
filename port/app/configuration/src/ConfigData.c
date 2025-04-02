@@ -23,7 +23,7 @@
 #include "mbedtls/ssl.h"
 
 static DevConfig dev_config;
-uint8_t mac[] = {0x00, 0x08, 0xdc, 0xAA, 0xBB, 0xCC};
+uint8_t mac[] = {MAC_OUI0, MAC_OUI1, MAC_OUI2, 0xAA, 0xBB, 0xCC};
 
 DevConfig* get_DevConfig_pointer(void)
 {
@@ -257,7 +257,11 @@ void save_DevConfig_to_storage(void)
     uint8_t retry_cnt = 0;
     int ret;
 
-    memset(dev_config_tmp, 0x00, FLASH_SECTOR_SIZE);
+    if (dev_config_tmp == NULL) {
+        PRT_SEGCP(" > Error: Memory allocation failed for dev_config_tmp\r\n");
+        return;
+    }
+    memset(dev_config_tmp, 0x00, sizeof(DevConfig));
     do {
         write_storage(STORAGE_CONFIG, 0, (uint8_t *)&dev_config, sizeof(DevConfig));
         read_storage(STORAGE_CONFIG, dev_config_tmp, sizeof(DevConfig));
@@ -403,7 +407,7 @@ void check_mac_address(void)
     uint32_t vi, vj;
     uint8_t temp_buf[] = "INPUT MAC ? ";
 
-    if (dev_config->network_common.mac[0] != 0x00 || dev_config->network_common.mac[1] != 0x08 || dev_config->network_common.mac[2] != 0xDC)
+    if (dev_config->network_common.mac[0] != MAC_OUI0 || dev_config->network_common.mac[1] != MAC_OUI1 || dev_config->network_common.mac[2] != MAC_OUI2)
     {
         PRT_INFO("%s\r\n", temp_buf);
         platform_uart_puts(temp_buf, strlen(temp_buf));
