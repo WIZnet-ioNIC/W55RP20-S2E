@@ -83,7 +83,6 @@ extern xSemaphoreHandle net_segcp_tcp_sem;
 extern xSemaphoreHandle segcp_udp_sem;
 extern xSemaphoreHandle segcp_tcp_sem;
 extern xSemaphoreHandle segcp_uart_sem;
-extern xSemaphoreHandle seg_sem;
 
 #ifdef __USE_S2E_OVER_TLS__
 extern wiz_tls_context s2e_tlsContext;
@@ -136,10 +135,7 @@ void segcp_ret_handler(uint16_t segcp_ret)
             if(opmode == DEVICE_GW_MODE)
                 init_trigger_modeswitch(DEVICE_AT_MODE); // DEVICE_GW_MODE -> DEVICE_AT_MODE
             else
-            {
                 init_trigger_modeswitch(DEVICE_GW_MODE); // DEVICE_AT_MODE -> DEVICE_GW_MODE
-                xSemaphoreGive(seg_sem);
-            }
         }
     
         if(segcp_ret & SEGCP_RET_FACTORY)

@@ -117,7 +117,7 @@ void set_DevConfig_to_factory_value(void)
     dev_config.tcp_option.pw_connect_en = DISABLE;
 
     // Default Settings for Data UART: 115200-8-N-1, No flowctrl
-    dev_config.serial_option.uart_interface = UART_IF_RS232;
+    dev_config.serial_option.uart_interface = UART_IF_RS232_TTL;
     dev_config.serial_option.protocol = SEG_SERIAL_PROTOCOL_NONE;
     dev_config.serial_option.baud_rate = baud_115200;
     dev_config.serial_option.data_bits = word_len8;

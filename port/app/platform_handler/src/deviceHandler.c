@@ -375,8 +375,8 @@ void display_Dev_Info_main(void)
 
     PRT_INFO(" - Device mode: %s\r\n", str_working[dev_config->network_connection.working_mode]);
 
-    PRT_INFO(" - Data channel: [UART Port %d] %s mode\r\n", ((dev_config->serial_option.uart_interface == UART_IF_TTL) ||
-                                                      (dev_config->serial_option.uart_interface == UART_IF_RS232))?0:1,
+    PRT_INFO(" - Data channel: [UART Port %d] %s mode\r\n", ((dev_config->serial_option.uart_interface == UART_IF_RS232_TTL) ||
+                                                      (dev_config->serial_option.uart_interface == UART_IF_RS232_TTL))?0:1,
                                                        uart_if_table[dev_config->serial_option.uart_interface]);
     PRT_INFO(" - Network settings: \r\n");
     PRT_INFO("\t- Obtaining IP settings: [%s]\r\n", (dev_config->network_option.dhcp_use == 1)?"Automatic - DHCP":"Static");
@@ -416,7 +416,7 @@ void display_Dev_Info_main(void)
       printf("%d-", word_len_table[dev_config->serial_option.data_bits]);
       printf("%s-", parity_table[dev_config->serial_option.parity]);
       printf("%d / ", stop_bit_table[dev_config->serial_option.stop_bits]);
-      if((dev_config->serial_option.uart_interface == UART_IF_TTL) || (dev_config->serial_option.uart_interface == UART_IF_RS232))
+      if(dev_config->serial_option.uart_interface == UART_IF_RS232_TTL)
       {
           printf("Flow control: %s", flow_ctrl_table[dev_config->serial_option.flow_control]);
       }
