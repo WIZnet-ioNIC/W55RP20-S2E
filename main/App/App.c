@@ -94,7 +94,6 @@ xSemaphoreHandle segcp_tcp_sem = NULL;
 xSemaphoreHandle segcp_uart_sem = NULL;
 xSemaphoreHandle seg_u2e_sem = NULL;
 xSemaphoreHandle seg_e2u_sem = NULL;;
-xSemaphoreHandle seg_sem = NULL;
 xSemaphoreHandle seg_timer_sem = NULL;
 xSemaphoreHandle wizchip_critical_sem = NULL;
 xSemaphoreHandle flash_critical_sem = NULL;
@@ -215,9 +214,6 @@ void start_task(void *argument)
         case TCP_SERVER_MODE:
         case TCP_MIXED_MODE:
         case SSL_TCP_CLIENT_MODE:
-          wizchip_gpio_interrupt_initialize(SEG_DATA0_SOCK, (SIK_CONNECTED | SIK_DISCONNECTED | SIK_RECEIVED | SIK_TIMEOUT));  
-          break;
-
         case UDP_MODE:
           wizchip_gpio_interrupt_initialize(SEG_DATA0_SOCK, SIK_RECEIVED);
           break;
@@ -240,7 +236,6 @@ void start_task(void *argument)
     segcp_uart_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_e2u_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_u2e_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    seg_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_timer_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     
     xTaskCreate(net_status_task, "Net_Status_Task", NET_TASK_STACK_SIZE, NULL, NET_TASK_PRIORITY, NULL);
@@ -278,8 +273,6 @@ void eth_interrupt_task(void *argument)
     while (1) {
         xSemaphoreTake(eth_interrupt_sem, portMAX_DELAY);
         ctlsocket(SEG_DATA0_SOCK, CS_GET_INTERRUPT, (void *)&reg_val);
-        if ((reg_val & SIK_CONNECTED) || (reg_val & SIK_DISCONNECTED) || (reg_val & SIK_TIMEOUT))
-            xSemaphoreGive(seg_sem);
         if (reg_val & SIK_RECEIVED)
             xSemaphoreGive(seg_e2u_sem);
     }

@@ -64,6 +64,7 @@ endif()
 #    message(FATAL_ERROR "WIZNET_CHIP is wrong = ${WIZNET_CHIP}")
 #endif()
 
+message(STATUS "BOARD_NAME = ${BOARD_NAME}")
 message(STATUS "WIZNET_CHIP = ${WIZNET_CHIP}")
 
 # Set the project root directory if it's not already defined, as may happen if
@@ -107,14 +108,6 @@ add_definitions(-DSET_TRUSTED_CERT_IN_SAMPLES)
 add_definitions(-DPICO_FLASH_SPI_CLKDIV=4)
 add_definitions(-DPICO_DEFAULT_UART_BAUD_RATE=921600)
 
-add_subdirectory(main)
-
-# Add libraries in subdirectories
-add_subdirectory(${CMAKE_SOURCE_DIR}/libraries)
-add_subdirectory(${MBEDTLS_DIR})
-add_subdirectory(${BOOT_PORT_DIR})
-add_subdirectory(${APP_PORT_DIR})
-
 # Set compile options
 add_compile_options(
         -Wall
@@ -123,3 +116,11 @@ add_compile_options(
         -Wno-maybe-uninitialized
         -O3
         )
+
+add_subdirectory(main)
+# Add libraries in subdirectories
+add_subdirectory(${CMAKE_SOURCE_DIR}/libraries)
+add_subdirectory(${MBEDTLS_DIR})
+add_subdirectory(${BOOT_PORT_DIR})
+add_subdirectory(${APP_PORT_DIR})
+

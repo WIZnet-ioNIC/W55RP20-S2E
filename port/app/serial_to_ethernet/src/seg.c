@@ -76,8 +76,6 @@ extern volatile uint8_t mb_state_ascii_finish;
 
 extern xSemaphoreHandle seg_e2u_sem;
 extern xSemaphoreHandle seg_u2e_sem;
-//extern xSemaphoreHandle conn_seg_sem;
-extern xSemaphoreHandle seg_sem;
 extern xSemaphoreHandle net_seg_sem;
 extern xSemaphoreHandle seg_timer_sem;
 extern xSemaphoreHandle segcp_uart_sem;
@@ -188,8 +186,6 @@ void do_seg(uint8_t sock)
             check_uart_flow_control(serial_option->flow_control);
         }
     }
-    else
-        xSemaphoreTake(seg_sem, portMAX_DELAY);   
 }
 
 void set_device_status(teDEVSTATUS status)
@@ -263,13 +259,6 @@ void proc_SEG_udp(uint8_t sock)
     switch(state)
     {
         case SOCK_UDP:
-#if 0
-            if(serial_data_packing->packing_time) {
-                if (seg_packing_timer == NULL) 
-                  seg_packing_timer = xTimerCreate("seg_packing_timer", pdMS_TO_TICKS(serial_data_packing->packing_time), pdFALSE, 0, seg_packing_timer_callback);
-            }
-#endif
-            xSemaphoreTake(seg_sem, portMAX_DELAY);
             break;
             
         case SOCK_CLOSED:
@@ -377,9 +366,6 @@ void proc_SEG_tcp_client(uint8_t sock)
                     }
                 }
             }
-            xSemaphoreTake(seg_sem, portMAX_DELAY);
-            reg_val = (SIK_DISCONNECTED | SIK_TIMEOUT) & 0x00FF; // except SIK_SENT(send OK) interrupt
-            ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
             break;
         
         case SOCK_CLOSE_WAIT:
@@ -550,9 +536,6 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock)
                 
                 first_established = 0;
             }
-            xSemaphoreTake(seg_sem, portMAX_DELAY);
-            reg_val = (SIK_DISCONNECTED | SIK_TIMEOUT) & 0x00FF;
-            ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
             break;
 
         case SOCK_CLOSE_WAIT:
@@ -1050,13 +1033,9 @@ void proc_SEG_tcp_server(uint8_t sock)
     switch(state)
     {
         case SOCK_INIT:
-            //listen(sock); //Function call Immediately after socket open operation
             break;
         
         case SOCK_LISTEN:
-            PRT_SEG("case SOCK_LISTEN\r\n");
-            //xSemaphoreTake(conn_seg_sem, portMAX_DELAY);
-            xSemaphoreTake(seg_sem, portMAX_DELAY);
             break;
         
         case SOCK_ESTABLISHED:
@@ -1109,9 +1088,6 @@ void proc_SEG_tcp_server(uint8_t sock)
                     xTimerStart(seg_auth_timer, 0);
                 }
             }
-            xSemaphoreTake(seg_sem, portMAX_DELAY);
-            reg_val = (SIK_DISCONNECTED | SIK_TIMEOUT) & 0x00FF; // except SIK_SENT(send OK) interrupt
-            ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
             break;
 
         case SOCK_CLOSE_WAIT:
@@ -1225,13 +1201,9 @@ void proc_SEG_tcp_mixed(uint8_t sock)
             break;
         
         case SOCK_LISTEN:
-            PRT_SEG("case SOCK_LISTEN\r\n");
-            xSemaphoreTake(seg_sem, portMAX_DELAY);
-            PRT_SEG("After xSemaphoreTake(seg_sem, portMAX_DELAY)\r\n");
             break;
         
         case SOCK_ESTABLISHED:
-            PRT_SEG("case SOCK_ESTABLISHED mode = %d\r\n", mixed_state);
             if(getSn_IR(sock) & Sn_IR_CON)
             {
                 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1292,11 +1264,6 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                 reconnection_count = 0;
 #endif
             }
-            
-            xSemaphoreTake(seg_sem, portMAX_DELAY);            
-            reg_val = (SIK_DISCONNECTED | SIK_TIMEOUT) & 0x00FF; // except SIK_SENT(send OK) interrupt
-            ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
-            PRT_SEG("xSemaphoreTake(seg_sem, portMAX_DELAY); mixed_state = %d\r\n", mixed_state);
             break;
         
         case SOCK_CLOSE_WAIT:
@@ -1704,10 +1671,7 @@ uint8_t process_socket_termination(uint8_t sock, uint32_t timeout)
             } while ((millis() - tickStart) < timeout);
         }
         if (network_connection->working_mode == TCP_MIXED_MODE) {
-            if (mixed_state == MIXED_SERVER)
-                xSemaphoreGive(seg_sem);
-            else
-                mixed_state = MIXED_SERVER;
+            mixed_state = MIXED_SERVER;
         }
     }
     close(sock);
@@ -2206,19 +2170,7 @@ void seg_timer_msec(void)
     {
         // result of command mode trigger code comparison
         if(triggercode_idx == 3) {
-            sw_modeswitch_at_mode_on = SEG_ENABLE;  // success
-
-            switch (network_connection->working_mode)
-            {
-                case TCP_CLIENT_MODE:
-                case TCP_SERVER_MODE:
-                case TCP_MIXED_MODE:
-                case SSL_TCP_CLIENT_MODE:
-                case UDP_MODE:
-                    xSemaphoreGiveFromISR(seg_sem, &xHigherPriorityTaskWoken);
-                    portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
-                    break;
-            }
+            sw_modeswitch_at_mode_on = SEG_ENABLE;  // success}
             xSemaphoreGiveFromISR(segcp_uart_sem, &xHigherPriorityTaskWoken);
             portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
         }
@@ -2238,9 +2190,8 @@ void seg_task (void *argument)  {
             PRT_SEGCP("get_net_status() != NET_LINK_DISCONNECTED\r\n");
             xSemaphoreTake(net_seg_sem, portMAX_DELAY);
         }
-        //xSemaphoreTake(recv_segcp_sem, portMAX_DELAY);
         do_seg(SEG_DATA0_SOCK);
-        //vTaskDelay(1);
+        vTaskDelay(10);
     }
 }
 
@@ -2262,8 +2213,6 @@ void seg_u2e_task (void *argument)  {
                     if ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state == MIXED_SERVER) && (ST_OPEN == get_device_status())) {
                         process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
                         mixed_state = MIXED_CLIENT;
-                        //reconnection_time = tcp_option->reconnection; // rapid initial connection
-                        xSemaphoreGive(seg_sem);
                     }
                     else if((ST_CONNECT == get_device_status()) || network_connection->working_mode == UDP_MODE)
                         uart_to_ether(SEG_DATA0_SOCK);
@@ -2360,8 +2309,6 @@ void seg_timer_task (void *argument)  {
             flag_inactivity = SEG_DISABLE;
 #endif
             process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
-            if (!(network_connection->working_mode == MQTT_CLIENT_MODE || network_connection->working_mode == MQTTS_CLIENT_MODE))
-                xSemaphoreGive(seg_sem);
         }
 
         if(flag_send_keepalive == SEG_ENABLE)
@@ -2387,7 +2334,6 @@ void seg_timer_task (void *argument)  {
                 printf(" > CONNECTION PW: AUTH TIMEOUT\r\n");
 #endif
                 process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
-                xSemaphoreGive(seg_sem);
             }
         }
     }

@@ -17,7 +17,7 @@ void vMBPortTimersCallback(struct repeating_timer *t)
  
 void xMBPortTimersInit(uint32_t usTim1Timerout50us)
 {
-    /* Calculate mb_timeout in ¥ìs: T3.5 + 50ms response timeout */
+    /* Calculate mb_timeout in Î¼s: T3.5 + 50ms response timeout */
     uint32_t t35_time_us = usTim1Timerout50us * 50;
     if (usTim1Timerout50us > (0xFFFFFFFFUL / 50))
         mb_timeout = 0xFFFFFFFFUL; // Prevent overflow
