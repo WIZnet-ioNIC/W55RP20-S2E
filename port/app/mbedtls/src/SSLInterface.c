@@ -121,7 +121,13 @@ int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd)
     mbedtls_x509_crt_init(tlsContext->cacert);
     mbedtls_x509_crt_init(tlsContext->clicert);
     mbedtls_pk_init(tlsContext->pkey);
-
+    const int *ciphersuite_list = mbedtls_ssl_list_ciphersuites();
+    while (*ciphersuite_list != 0) {
+        const char *name = mbedtls_ssl_get_ciphersuite_name(*ciphersuite_list);
+        if (name != NULL)
+            PRT_SSL("%s\r\n", name);
+        ciphersuite_list++;
+    }
   /*
     Initialize certificates
   */
@@ -316,6 +322,9 @@ int wiz_tls_socket_connect(wiz_tls_context* tlsContext, char * addr, unsigned in
     int ret;
     uint8_t sock = (uint8_t)(tlsContext->socket_fd);
 
+#if defined(MBEDTLS_ERROR_C)
+     char error_buf[1024];
+#endif
     /*socket open*/
     ret = socket(sock, Sn_MR_TCP, 0, 0x00);
     if(ret != sock)
@@ -335,9 +344,9 @@ int wiz_tls_socket_connect(wiz_tls_context* tlsContext, char * addr, unsigned in
         if( ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE )
         {
 #if defined(MBEDTLS_ERROR_C)
-            memset(tempBuf, 0, 1024);
-            mbedtls_strerror(ret, (char *) tempBuf, DEBUG_BUFFER_SIZE );
-            printf( " failed\n\r  ! mbedtls_ssl_handshake returned %d: %s\n\r", ret, tempBuf );
+            memset(error_buf, 0, 1024);
+            mbedtls_strerror(ret, (char *) error_buf, DEBUG_BUFFER_SIZE );
+            printf( " failed\n\r  ! mbedtls_ssl_handshake returned %d: %s\n\r", ret, error_buf );
 #endif
             return( -1 );
         }

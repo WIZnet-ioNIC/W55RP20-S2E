@@ -468,10 +468,11 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock)
                                   (char *)network_connection->remote_ip,
                                   (unsigned int)network_connection->remote_port);
 
-            reg_val = (SIK_CONNECTED | SIK_DISCONNECTED | SIK_RECEIVED | SIK_TIMEOUT) & 0x00FF;
-            ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
 #if 1
-            reg_val = (SIK_CONNECTED | SIK_DISCONNECTED | SIK_RECEIVED | SIK_TIMEOUT) & 0x00FF; // except SIK_SENT(send OK) interrupt
+            reg_val = SIK_RECEIVED & 0x00FF;
+            ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
+
+            reg_val =  SIK_RECEIVED & 0x00FF; // except SIK_SENT(send OK) interrupt
             ctlsocket(sock, CS_SET_INTMASK, (void *)&reg_val);
 
             ctlwizchip(CW_GET_INTRMASK, (void *)&reg_val);
@@ -734,7 +735,6 @@ void proc_SEG_mqtt_client(uint8_t sock)
                 first_established = 0;
             }
             mqtt_transport_yield(&g_mqtt_config);
-            vTaskDelay(1);
             break;
         
         case SOCK_CLOSE_WAIT:
@@ -937,7 +937,6 @@ void proc_SEG_mqtts_client(uint8_t sock)
                 first_established = 0;
             }
             mqtt_transport_yield(&g_mqtt_config);
-            vTaskDelay(1);
             break;
         
         case SOCK_CLOSE_WAIT:
