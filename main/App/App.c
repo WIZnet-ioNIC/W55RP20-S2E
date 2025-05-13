@@ -280,16 +280,6 @@ void eth_interrupt_task(void *argument)
 
 void vApplicationPassiveIdleHook(void)
 {
-#if 0
-    static uint32_t count = 0;
-
-    count++;
-    if (count > 3000000)
-    {
-      count = 0;
-      printf("%d IdleHook\r\n", get_core_num());
-    }
-#endif
 #ifdef __USE_WATCHDOG__
     static uint8_t core_num = 0;
     uint8_t core_num_tmp = get_core_num();
