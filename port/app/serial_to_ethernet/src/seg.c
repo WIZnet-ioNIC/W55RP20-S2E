@@ -282,12 +282,11 @@ void proc_SEG_udp(uint8_t sock)
                 
                 if(serial_common->serial_debug_en)
                 {
-                    printf(" > SEG:UDP_MODE:SOCKOPEN\r\n");
+                    PRT_SEG(" > SEG:UDP_MODE:SOCKOPEN\r\n");
                 }
             }
             break;
         default:
-            vTaskDelay(1);
             break;
     }
 }
@@ -321,9 +320,8 @@ void proc_SEG_tcp_client(uint8_t sock)
             // TCP connect
             connect(sock, network_connection->remote_ip, network_connection->remote_port);
 #ifdef _SEG_DEBUG_
-            printf(" > SEG:TCP_CLIENT_MODE:CLIENT_CONNECTION\r\n");
+            PRT_SEG(" > SEG:TCP_CLIENT_MODE:CLIENT_CONNECTION\r\n");
 #endif
-            vTaskDelay(1); //need some delay
             break;
         
         case SOCK_ESTABLISHED:
@@ -398,7 +396,7 @@ void proc_SEG_tcp_client(uint8_t sock)
 
 
 #ifdef _SEG_DEBUG_
-            printf(" > TCP CLIENT: client_any_port = %d\r\n", client_any_port);
+            PRT_SEG(" > TCP CLIENT: client_any_port = %d\r\n", client_any_port);
 #endif
             // ## 20180208 Added by Eric, TCP Connect function in TCP client/mixed mode operates in non-block mode
             if(socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK)) == sock)
@@ -408,13 +406,12 @@ void proc_SEG_tcp_client(uint8_t sock)
                     modeswitch_gap_time = serial_data_packing->packing_time;
                 
                 if(serial_common->serial_debug_en)
-                    printf(" > SEG:TCP_CLIENT_MODE:SOCKOPEN\r\n");
+                    PRT_SEG(" > SEG:TCP_CLIENT_MODE:SOCKOPEN\r\n");
 
             }
             break;
             
         default:
-            vTaskDelay(1);
             break;
     }
 }
@@ -494,7 +491,6 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock)
             first_established = 1;
             
             PRT_SEG(" > SEG:TCP_CLIENT_OVER_TLS_MODE: TCP CLIENT CONNECTED\r\n");
-            vTaskDelay(1); //need some delay
             break;
 
         case SOCK_ESTABLISHED:
@@ -602,11 +598,8 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock)
             break;
 
         default:
-            PRT_SEG("default = 0x%02X\r\n", state);
-            vTaskDelay(1);
             break;
     }
-    //vTaskDelay(1);
 }
 
 #endif
@@ -697,7 +690,6 @@ void proc_SEG_mqtt_client(uint8_t sock)
                 }
             }
             PRT_SEG(" > SEG:MQTT_CLIENT_MODE:MQTTSubscribed\r\n");
-            vTaskDelay(1); //need some delay
             first_established = 1;
             break;
         
@@ -709,7 +701,7 @@ void proc_SEG_mqtt_client(uint8_t sock)
                 {
                     getsockopt(sock, SO_DESTIP, &destip);
                     getsockopt(sock, SO_DESTPORT, &destport);
-                    printf(" > SEG:CONNECTED TO - %d.%d.%d.%d : %d\r\n", destip[0], destip[1], destip[2], destip[3], destport);
+                    PRT_SEG(" > SEG:CONNECTED TO - %d.%d.%d.%d : %d\r\n", destip[0], destip[1], destip[2], destip[3], destport);
                 }
                 
                 if(serial_mode == SEG_SERIAL_PROTOCOL_NONE)
@@ -784,11 +776,9 @@ void proc_SEG_mqtt_client(uint8_t sock)
             break;
             
         default:
-            vTaskDelay(1);
             break;
     }
 }
-
 
 void proc_SEG_mqtts_client(uint8_t sock)
 {
@@ -889,7 +879,6 @@ void proc_SEG_mqtts_client(uint8_t sock)
             }
             first_established = 1;
             PRT_SEG(" > SEG:MQTTS_CLIENT_MODE:MQTTSubscribed\r\n");
-            vTaskDelay(1); //need some delay
             break;
         
         case SOCK_ESTABLISHED:
@@ -910,7 +899,7 @@ void proc_SEG_mqtts_client(uint8_t sock)
                 {
                     getsockopt(sock, SO_DESTIP, &destip);
                     getsockopt(sock, SO_DESTPORT, &destport);
-                    printf(" > SEG:CONNECTED TO - %d.%d.%d.%d : %d\r\n", destip[0], destip[1], destip[2], destip[3], destport);
+                    PRT_SEG(" > SEG:CONNECTED TO - %d.%d.%d.%d : %d\r\n", destip[0], destip[1], destip[2], destip[3], destport);
                 }
                 
                 if(serial_mode == SEG_SERIAL_PROTOCOL_NONE)
@@ -1005,7 +994,6 @@ void proc_SEG_mqtts_client(uint8_t sock)
 
             
         default:
-            vTaskDelay(1);
             break;
     }
 }
@@ -1055,7 +1043,7 @@ void proc_SEG_tcp_server(uint8_t sock)
                 {
                     getsockopt(sock, SO_DESTIP, &destip);
                     getsockopt(sock, SO_DESTPORT, &destport);
-                    printf(" > SEG:CONNECTED FROM - %d.%d.%d.%d : %d\r\n",destip[0], destip[1], destip[2], destip[3], destport);
+                    PRT_SEG(" > SEG:CONNECTED FROM - %d.%d.%d.%d : %d\r\n",destip[0], destip[1], destip[2], destip[3], destport);
                 }
                 
                 if(serial_mode == SEG_SERIAL_PROTOCOL_NONE)
@@ -1116,12 +1104,11 @@ void proc_SEG_tcp_server(uint8_t sock)
                 listen(sock);
                 
                 if(serial_common->serial_debug_en)
-                    printf(" > SEG:TCP_SERVER_MODE:SOCKOPEN\r\n");
+                    PRT_SEG(" > SEG:TCP_SERVER_MODE:SOCKOPEN\r\n");
             }
             break;
             
         default:
-            vTaskDelay(1);
             break;
     }
 }
@@ -1189,14 +1176,13 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                 }
 #ifdef _SEG_DEBUG_
                 if(reconnection_count != 0)
-                    printf(" > SEG:TCP_MIXED_MODE:CLIENT_CONNECTION [%d]\r\n", reconnection_count);
+                    PRT_SEG(" > SEG:TCP_MIXED_MODE:CLIENT_CONNECTION [%d]\r\n", reconnection_count);
                 else
-                    printf(" > SEG:TCP_MIXED_MODE:CLIENT_CONNECTION_RETRY FAILED\r\n");
+                    PRT_SEG(" > SEG:TCP_MIXED_MODE:CLIENT_CONNECTION_RETRY FAILED\r\n");
 #endif
 #endif
             
-            }    
-            vTaskDelay(1); //need some delay
+            }
             break;
         
         case SOCK_LISTEN:
@@ -1218,9 +1204,9 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                     getsockopt(sock, SO_DESTPORT, &destport);
                     
                     if(mixed_state == MIXED_SERVER)
-                        printf(" > SEG:CONNECTED FROM - %d.%d.%d.%d : %d\r\n", destip[0], destip[1], destip[2], destip[3], destport);
+                        PRT_SEG(" > SEG:CONNECTED FROM - %d.%d.%d.%d : %d\r\n", destip[0], destip[1], destip[2], destip[3], destport);
                     else
-                        printf(" > SEG:CONNECTED TO - %d.%d.%d.%d : %d\r\n", destip[0], destip[1], destip[2], destip[3], destport);
+                        PRT_SEG(" > SEG:CONNECTED TO - %d.%d.%d.%d : %d\r\n", destip[0], destip[1], destip[2], destip[3], destport);
                 }
 
                 set_device_status(ST_CONNECT);
@@ -1297,11 +1283,12 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                     listen(sock);
                     
                     if(serial_common->serial_debug_en)
-                        printf(" > SEG:TCP_MIXED_MODE:SERVER_SOCKOPEN\r\n");
+                        PRT_SEG(" > SEG:TCP_MIXED_MODE:SERVER_SOCKOPEN\r\n");
                 }
             }
             else  // MIXED_CLIENT
             {
+                PRT_INFO(" > SEG:TCP_MIXED_MODE:CLIENT_SOCKCLOSED\r\n");
                 e2u_size = 0;
                 if(network_connection->fixed_local_port)
                     source_port = network_connection->local_port;
@@ -1309,7 +1296,7 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                     source_port = get_tcp_any_port();
 
 #ifdef _SEG_DEBUG_
-                printf(" > TCP CLIENT: any_port = %d\r\n", source_port);
+                PRT_SEG(" > TCP CLIENT: any_port = %d\r\n", source_port);
 #endif
                 if(socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK)) == sock)
                 {
@@ -1322,13 +1309,12 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                         //reconnection_start_time = millis();
                     
                     if(serial_common->serial_debug_en)
-                        printf(" > SEG:TCP_MIXED_MODE:CLIENT_SOCKOPEN\r\n");
+                        PRT_SEG(" > SEG:TCP_MIXED_MODE:CLIENT_SOCKOPEN\r\n");
                 }
             }
             break;
             
         default:
-            vTaskDelay(1);
             break;
     }
 }
@@ -1429,11 +1415,6 @@ uint16_t get_serial_data(void)
         for(i = 0; i < len; i++)
         {
             g_send_buf[u2e_size++] = (uint8_t)platform_uart_getc();
-
-#ifdef _UART_DEBUG_
-            //printf("[%d]%.2x ", (u2e_size-1), g_send_buf[(u2e_size-1)]);
-            //platform_uart_putc(DEBUG_UART_PORTNUM, ch);// ## UART echo; for debugging
-#endif
         }
         
         return u2e_size;
@@ -1509,7 +1490,7 @@ void ether_to_uart(uint8_t sock)
                     {
                         memcpy(peerip_tmp, peerip, 4);
                         if(serial_common->serial_debug_en)
-                            printf(" > UDP Peer IP/Port: %d.%d.%d.%d : %d\r\n", peerip[0], peerip[1], peerip[2], peerip[3], peerport);
+                            PRT_SEG(" > UDP Peer IP/Port: %d.%d.%d.%d : %d\r\n", peerip[0], peerip[1], peerip[2], peerip[3], peerport);
                     }
                 }
                 else if (network_connection->working_state == ST_CONNECT) {
@@ -1696,9 +1677,9 @@ uint8_t check_connect_pw_auth(uint8_t * buf, uint16_t len)
     }
     
 #ifdef _SEG_DEBUG_
-    printf(" > Connection password: %s, len: %d\r\n", tcp_option->pw_connect, strlen(tcp_option->pw_connect));
-    printf(" > Entered password: %s, len: %d\r\n", pwbuf, len);
-    printf(" >> Auth %s\r\n", ret ? "success":"failed");
+    PRT_SEG(" > Connection password: %s, len: %d\r\n", tcp_option->pw_connect, strlen(tcp_option->pw_connect));
+    PRT_SEG(" > Entered password: %s, len: %d\r\n", pwbuf, len);
+    PRT_SEG(" >> Auth %s\r\n", ret ? "success":"failed");
 #endif
     
     return ret;
@@ -1717,7 +1698,7 @@ void init_trigger_modeswitch(uint8_t mode)
         
         if(serial_common->serial_debug_en)
         {
-            printf(" > SEG:AT Mode\r\n");
+            PRT_SEG(" > SEG:AT Mode\r\n");
             platform_uart_puts((uint8_t *)"SEG:AT Mode\r\n", sizeof("SEG:AT Mode\r\n"));
         }
     }
@@ -1733,7 +1714,7 @@ void init_trigger_modeswitch(uint8_t mode)
                 
         if(serial_common->serial_debug_en)
         {
-            printf(" > SEG:GW Mode\r\n");
+            PRT_SEG(" > SEG:GW Mode\r\n");
             platform_uart_puts((uint8_t *)"SEG:GW Mode\r\n", sizeof("SEG:GW Mode\r\n"));
         }
     }
@@ -1889,13 +1870,13 @@ uint8_t check_tcp_connect_exception(void)
     // DNS failed
     if((network_connection->dns_use == SEG_ENABLE) && (flag_process_dns_success != ON))
     {
-        if(serial_common->serial_debug_en) printf(" > SEG:CONNECTION FAILED - DNS Failed flag_process_dns_success = %d\r\n", flag_process_dns_success);
+        if(serial_common->serial_debug_en) PRT_SEG(" > SEG:CONNECTION FAILED - DNS Failed flag_process_dns_success = %d\r\n", flag_process_dns_success);
         ret = ON;
     }
     // if dhcp failed (0.0.0.0), this case do not connect to peer
     else if((srcip[0] == 0x00) && (srcip[1] == 0x00) && (srcip[2] == 0x00) && (srcip[3] == 0x00))
     {
-        if(serial_common->serial_debug_en) printf(" > SEG:CONNECTION FAILED - Invalid IP address: Zero IP\r\n");
+        if(serial_common->serial_debug_en) PRT_SEG(" > SEG:CONNECTION FAILED - Invalid IP address: Zero IP\r\n");
         ret = ON;
     }
     // Destination zero IP
@@ -1904,7 +1885,7 @@ uint8_t check_tcp_connect_exception(void)
             (network_connection->remote_ip[2] == 0x00) &&
             (network_connection->remote_ip[3] == 0x00))
     {
-        if(serial_common->serial_debug_en) printf(" > SEG:CONNECTION FAILED - Invalid Destination IP address: Zero IP\r\n");
+        if(serial_common->serial_debug_en) PRT_SEG(" > SEG:CONNECTION FAILED - Invalid Destination IP address: Zero IP\r\n");
         ret = ON;
     }
      // Duplicate IP address
@@ -1913,7 +1894,7 @@ uint8_t check_tcp_connect_exception(void)
             (srcip[2] == network_connection->remote_ip[2]) &&
             (srcip[3] == network_connection->remote_ip[3]))
     {
-        if(serial_common->serial_debug_en) printf(" > SEG:CONNECTION FAILED - Duplicate IP address\r\n");
+        if(serial_common->serial_debug_en) PRT_SEG(" > SEG:CONNECTION FAILED - Duplicate IP address\r\n");
         ret = ON;
     }
     else if((srcip[0] == 192) && (srcip[1] == 168)) // local IP address == Class C private IP
@@ -1925,7 +1906,7 @@ uint8_t check_tcp_connect_exception(void)
             if(srcip[2] != network_connection->remote_ip[2]) // Class C Private IP network mismatch
             {
                 if(serial_common->serial_debug_en)
-                    printf(" > SEG:CONNECTION FAILED - Invalid IP address range (%d.%d.[%d].%d)\r\n",
+                    PRT_SEG(" > SEG:CONNECTION FAILED - Invalid IP address range (%d.%d.[%d].%d)\r\n",
                                                                 network_connection->remote_ip[0],
                                                                 network_connection->remote_ip[1],
                                                                 network_connection->remote_ip[2],
@@ -2017,16 +1998,6 @@ void mqtt_subscribeMessageHandler(uint8_t *data, uint32_t data_len)
 
     e2u_size = data_len;
     memcpy(g_recv_buf, data, data_len);
-
-#if 0
-    if(serial_common->serial_debug_en)
-    {
-        PRT_INFO("Eth Recv len = %d : ", data_len);
-        for (uint32_t i=0; i<data_len; i++)
-          printf("0x%02X ", g_recv_buf[i], i);
-        printf("\r\n");
-    }
-#endif
     ether_to_uart(SOCK_DATA); //socket parameter is not used in mqtt
 }
 
@@ -2154,6 +2125,8 @@ void seg_timer_msec(void)
                 case TCP_MIXED_MODE:
                 case SSL_TCP_CLIENT_MODE:
                 case UDP_MODE:
+                case MQTT_CLIENT_MODE:
+                case MQTTS_CLIENT_MODE:
                     xSemaphoreGiveFromISR(seg_u2e_sem, &xHigherPriorityTaskWoken);
                     portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
                     break;
@@ -2330,7 +2303,7 @@ void seg_timer_task (void *argument)  {
                 flag_auth_time = SEG_DISABLE;
 
 #ifdef _SEG_DEBUG_
-                printf(" > CONNECTION PW: AUTH TIMEOUT\r\n");
+                PRT_SEG(" > CONNECTION PW: AUTH TIMEOUT\r\n");
 #endif
                 process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
             }

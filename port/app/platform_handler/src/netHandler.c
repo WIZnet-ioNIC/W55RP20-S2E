@@ -58,9 +58,6 @@ void net_status_task(void *argument)
                             case TCP_SERVER_MODE:
                             case TCP_MIXED_MODE:
                             case SSL_TCP_CLIENT_MODE:
-                              wizchip_gpio_interrupt_initialize(SEG_DATA0_SOCK, (SIK_CONNECTED | SIK_DISCONNECTED | SIK_RECEIVED | SIK_TIMEOUT));  
-                              break;
-
                             case UDP_MODE:
                               wizchip_gpio_interrupt_initialize(SEG_DATA0_SOCK, SIK_RECEIVED);
                               break;

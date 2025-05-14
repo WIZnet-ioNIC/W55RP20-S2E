@@ -8,6 +8,7 @@ These sections will provide how to configure development environment to develop 
 
 - [W55RP20-S2E README](#w55rp20-s2e-readme)
   - [Development environment configuration](#development-environment-configuration)
+    - [Required Build Environment](#required-build-environment)
 - [Hardware requirements](#hardware-requirements)
 - [W232N](#w232n)
 
@@ -17,6 +18,15 @@ These sections will provide how to configure development environment to develop 
 ## Development environment configuration
 
 To develop and modify W55RP20-S2E, the development environment must be configured so that RP2040 can be used.
+
+### Required Build Environment
+
+We recommend the following versions for successful build and development:
+
+- **pico-sdk**: `2.0.0`  
+- **ARM GCC Toolchain**: `13.2.Rel1`
+
+> Using other versions of the toolchain may result in build errors.  
 
 W55RP20-S2E was developed by configuring the development environment for **Windows**, When configuring the development environment, refer to the '**9.2. Building on MS Windows**' section of '**Getting started with Raspberry Pi Pico**' document below to configure the development environment.
 

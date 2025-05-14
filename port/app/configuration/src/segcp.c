@@ -1419,9 +1419,6 @@ uint16_t proc_SEGCP_tcp(uint8_t* segcp_req, uint8_t* segcp_rep)
             break;
         
         case SOCK_LISTEN:
-            //reg_val = (SIK_CONNECTED | SIK_DISCONNECTED | SIK_RECEIVED | SIK_TIMEOUT) & 0x00FF; // except SIK_SENT(send OK) interrupt
-            //reg_val = (SIK_CONNECTED) & 0x00FF; // except SIK_SENT(send OK) interrupt
-            //ctlsocket(SEGCP_TCP_SOCK, CS_CLR_INTERRUPT, (void *)&reg_val);
             break;
         
         case SOCK_ESTABLISHED:
