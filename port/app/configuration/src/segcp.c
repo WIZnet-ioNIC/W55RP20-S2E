@@ -85,7 +85,6 @@ extern xSemaphoreHandle net_segcp_tcp_sem;
 extern xSemaphoreHandle segcp_udp_sem;
 extern xSemaphoreHandle segcp_tcp_sem;
 extern xSemaphoreHandle segcp_uart_sem;
-extern xSemaphoreHandle seg_sem;
 
 #ifdef __USE_S2E_OVER_TLS__
 extern wiz_tls_context s2e_tlsContext;
@@ -138,10 +137,7 @@ void segcp_ret_handler(uint16_t segcp_ret)
             if(opmode == DEVICE_GW_MODE)
                 init_trigger_modeswitch(DEVICE_AT_MODE); // DEVICE_GW_MODE -> DEVICE_AT_MODE
             else
-            {
                 init_trigger_modeswitch(DEVICE_GW_MODE); // DEVICE_AT_MODE -> DEVICE_GW_MODE
-                xSemaphoreGive(seg_sem);
-            }
         }
     
         if(segcp_ret & SEGCP_RET_FACTORY)
@@ -1421,9 +1417,6 @@ uint16_t proc_SEGCP_tcp(uint8_t* segcp_req, uint8_t* segcp_rep)
             break;
         
         case SOCK_LISTEN:
-            //reg_val = (SIK_CONNECTED | SIK_DISCONNECTED | SIK_RECEIVED | SIK_TIMEOUT) & 0x00FF; // except SIK_SENT(send OK) interrupt
-            //reg_val = (SIK_CONNECTED) & 0x00FF; // except SIK_SENT(send OK) interrupt
-            //ctlsocket(SEGCP_TCP_SOCK, CS_CLR_INTERRUPT, (void *)&reg_val);
             break;
         
         case SOCK_ESTABLISHED:
@@ -1489,10 +1482,12 @@ uint16_t proc_SEGCP_tcp(uint8_t* segcp_req, uint8_t* segcp_rep)
             break;
             
         case SOCK_CLOSE_WAIT:
+            PRT_SEGCP("case SOCK_CLOSE_WAIT:\r\n");
             disconnect(SEGCP_TCP_SOCK);
         
         case SOCK_CLOSED:
         case SOCK_FIN_WAIT:
+            PRT_SEGCP("case SOCK_CLOSED:\r\n");
             close(SEGCP_TCP_SOCK);
             
             if(socket(SEGCP_TCP_SOCK, Sn_MR_TCP, DEVICE_SEGCP_PORT, SF_TCP_NODELAY) == SEGCP_TCP_SOCK)

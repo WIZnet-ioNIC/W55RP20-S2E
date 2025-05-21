@@ -17,7 +17,6 @@ extern xSemaphoreHandle net_segcp_udp_sem;
 extern xSemaphoreHandle net_segcp_tcp_sem;
 extern xSemaphoreHandle net_http_webserver_sem;
 extern xSemaphoreHandle net_seg_sem;
-extern xSemaphoreHandle seg_sem;
 
 extern uint8_t g_send_buf[DATA_BUF_SIZE];
 extern uint8_t g_recv_mqtt_buf[DATA_BUF_SIZE];
@@ -59,9 +58,6 @@ void net_status_task(void *argument)
                             case TCP_SERVER_MODE:
                             case TCP_MIXED_MODE:
                             case SSL_TCP_CLIENT_MODE:
-                              wizchip_gpio_interrupt_initialize(SEG_DATA0_SOCK, (SIK_CONNECTED | SIK_DISCONNECTED | SIK_RECEIVED | SIK_TIMEOUT));  
-                              break;
-
                             case UDP_MODE:
                               wizchip_gpio_interrupt_initialize(SEG_DATA0_SOCK, SIK_RECEIVED);
                               break;
@@ -109,7 +105,6 @@ void net_status_task(void *argument)
                             if (ret == DHCP_FAILED) {
                                 g_net_status = NET_LINK_DISCONNECTED;
                                 process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
-                                xSemaphoreGive(seg_sem);
                                 break;
                             }
                         }
@@ -123,7 +118,6 @@ void net_status_task(void *argument)
                         if (get_device_status() != ST_ATMODE)
                           set_device_status(ST_OPEN);
                         process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
-                        xSemaphoreGive(seg_sem);
 #else   //device reset
                         device_raw_reboot();
 #endif

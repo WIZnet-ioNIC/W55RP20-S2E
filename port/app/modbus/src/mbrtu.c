@@ -28,23 +28,23 @@ void eMBRTUInit(uint32_t ulBaudRate)
      */
     if (baud_table[ulBaudRate] > 19200)
     {
-        t35_time_us = 1750; // Fixed value: 1750¡Iis
+        t35_time_us = 1750; // Fixed value: 1750탎
         usTimerT35_50us = 35; // 1750us / 50us = 35
     }
     else
     {
-        /* Calculate 1 bit time (¡Iis) = 1,000,000 / baudrate */
+        /* Calculate 1 bit time (탎) = 1,000,000 / baudrate */
         uint32_t bit_time_us = 1000000UL / baud_table[ulBaudRate];
-        /* Calculate 1 character time (¡Iis) = 11 * bit_time_us */
+        /* Calculate 1 character time (탎) = 11 * bit_time_us */
         uint32_t char_time_us = bit_time_us * 11;
-        /* Calculate T3.5 = 3.5 * character time (in ¡Iis) */
+        /* Calculate T3.5 = 3.5 * character time (in 탎) */
         t35_time_us = (char_time_us * 35) / 10; // 3.5x calculation
 
         /* Ensure minimum value to prevent zero */
         if (t35_time_us < 1)
             t35_time_us = 1;
 
-        /* Convert to 50¡Iis units with ceiling */
+        /* Convert to 50탎 units with ceiling */
         usTimerT35_50us = (t35_time_us + 49) / 50;
 
         /* Limit usTimerT35_50us to prevent timer overflow (e.g., 16-bit timer max = 65535) */

@@ -19,22 +19,20 @@
 
 // UART interface selector, RS-232/TTL or RS-422/485
 #define UART_IF_RS232_TTL               0
-#define UART_IF_TTL                     0
-#define UART_IF_RS232                   1
-#define UART_IF_RS422                   2
-#define UART_IF_RS485                   3
-#define UART_IF_RS485_REVERSE           4
-#define SPI_IF_SLAVE                    5
+#define UART_IF_RS422                   1
+#define UART_IF_RS485                   2
+#define UART_IF_RS485_REVERSE           3
+#define SPI_IF_SLAVE                    4
 
-#define UART_IF_STR_TTL                 "TTL"
-#define UART_IF_STR_RS232               "RS-232"
+#define UART_IF_STR_RS232_TTL          "TTL/RS-232"
+//#define UART_IF_STR_RS232               "RS-232"
 #define UART_IF_STR_RS422               "RS-422"
 #define UART_IF_STR_RS485               "RS-485"
 #define SPI_IF_STR_SLAVE                "SPI_SLAVE"
 
 // If the define '__USE_UART_IF_SELECTOR__' disabled, default UART interface is selected to be 'UART_IF_DEFAULT'
 //#define UART_IF_DEFAULT                 UART_IF_RS485
-#define UART_IF_DEFAULT               UART_IF_RS232
+#define UART_IF_DEFAULT               UART_IF_RS232_TTL
 
 // UART RTS/CTS pins
 // RTS: output, CTS: input
@@ -46,7 +44,9 @@
 
 #define UART_ID uart1
 
-#define DEBUG_UART_DEFAULT_BAUDRATE     (115200)
+//#define DEBUG_UART_DEFAULT_BAUDRATE     (115200)
+#define DEBUG_UART_DEFAULT_BAUDRATE     (921600)
+//#define DEBUG_UART_DEFAULT_BAUDRATE     (3000000)
 
 enum baud {
     baud_300 = 0,

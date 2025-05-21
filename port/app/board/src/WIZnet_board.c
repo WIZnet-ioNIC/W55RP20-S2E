@@ -118,8 +118,9 @@ uint8_t get_uart_if_sel_pin(void)
 void init_tcpconnection_status_pin(void)
 {
   GPIO_Configuration(STATUS_TCPCONNECT_PIN, IO_OUTPUT, IO_NOPULL);
-  set_connection_status_io(STATUS_TCPCONNECT_PIN, OFF);
-
+  
+  // Pin initial state; Low
+  GPIO_Output_Reset(STATUS_TCPCONNECT_PIN);
 }
 
 

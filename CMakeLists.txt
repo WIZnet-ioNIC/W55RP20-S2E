@@ -109,13 +109,13 @@ add_definitions(-DPICO_FLASH_SPI_CLKDIV=4)
 add_definitions(-DPICO_DEFAULT_UART_BAUD_RATE=921600)
 
 # Set compile options
-add_compile_options(
-        -Wall
-        -Wno-format          # int != int32_t as far as the compiler is concerned because gcc has int32_t as long int
-        -Wno-unused-function # we have some for the docs that aren't called
-        -Wno-maybe-uninitialized
-        -O3
-        )
+#add_compile_options(
+#        -Wall
+#        -Wno-format          # int != int32_t as far as the compiler is concerned because gcc has int32_t as long int
+#        -Wno-unused-function # we have some for the docs that aren't called
+#        -Wno-maybe-uninitialized
+#        -O3
+#        )
 
 add_subdirectory(main)
 # Add libraries in subdirectories

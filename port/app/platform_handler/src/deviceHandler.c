@@ -415,7 +415,7 @@ void display_Dev_Info_main(void)
         printf("%d-", word_len_table[dev_config->serial_option.data_bits]);
         printf("%s-", parity_table[dev_config->serial_option.parity]);
         printf("%d / ", stop_bit_table[dev_config->serial_option.stop_bits]);
-        if((dev_config->serial_option.uart_interface == UART_IF_TTL) || (dev_config->serial_option.uart_interface == UART_IF_RS232))
+        if(dev_config->serial_option.uart_interface == UART_IF_RS232_TTL)
         {
             printf("Flow control: %s", flow_ctrl_table[dev_config->serial_option.flow_control]);
         }
