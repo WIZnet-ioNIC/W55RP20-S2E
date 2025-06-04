@@ -9,7 +9,8 @@
 #include "mbtimer.h"
 #include "mbserial.h"
 
-volatile uint8_t ucRTUBuf[MB_SER_PDU_SIZE_MAX];
+extern uint8_t g_send_buf[DATA_BUF_SIZE];
+volatile uint8_t *ucRTUBuf = g_send_buf + 7;
 static volatile uint16_t usRcvBufferPos;
 
 volatile uint8_t *pucTCPBufferCur;

@@ -67,7 +67,6 @@ uint8_t flag_inactivity = SEG_DISABLE;
 // User's buffer / size idx
 extern uint8_t g_send_buf[DATA_BUF_SIZE];
 extern uint8_t g_recv_buf[DATA_BUF_SIZE];
-extern uint8_t g_send_mqtt_buf[DATA_BUF_SIZE];
 extern uint8_t g_recv_mqtt_buf[DATA_BUF_SIZE];
 
 /*the flag of modbus*/
@@ -747,14 +746,6 @@ void proc_SEG_mqtt_client(uint8_t sock)
                     PRT_SEG(" > SEG:MQTT_CLIENT_MODE:SOCKOPEN\r\n");
             }
 
-#if 0            
-            NewNetwork(&mqtt_n, sock);
-            MQTTClientInit(&mqtt_c, &mqtt_n, MQTT_TIMEOUT_MS, g_send_mqtt_buf, DATA_BUF_SIZE, g_recv_mqtt_buf, DATA_BUF_SIZE);
-            
-            mqtt_data.username.cstring = mqtt_option->user_name;
-            mqtt_data.clientID.cstring = mqtt_option->client_id;
-            mqtt_data.password.cstring = mqtt_option->password;
-#endif
             ret = mqtt_transport_init(sock, &g_mqtt_config, true, 0, g_recv_mqtt_buf, 
                                       DATA_BUF_SIZE, &g_transport_interface, &g_network_context, 
                                       mqtt_option->client_id, mqtt_option->user_name, mqtt_option->password, mqtt_option->keepalive, mqtt_subscribeMessageHandler);
@@ -762,7 +753,6 @@ void proc_SEG_mqtt_client(uint8_t sock)
               PRT_SEG(" > SEG:MQTT_CLIENT_MODE:INITIALIZE FAILED\r\n");
               process_socket_termination(sock, SOCK_TERMINATION_DELAY);
             }
-
             break;
             
         default:

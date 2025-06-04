@@ -10,7 +10,7 @@ typedef enum
 } eMBRcvState;
 
 
-extern eMBRcvState eRcvState;
+extern volatile eMBRcvState eRcvState;
 extern volatile uint8_t mb_state_rtu_finish;
 
 void xMBPortTimersInit( uint32_t usTim1Timerout50us );

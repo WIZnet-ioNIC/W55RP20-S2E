@@ -2,7 +2,7 @@
 #include "mbtimer.h"
 #include "common.h"
 
-eMBRcvState eRcvState;
+volatile eMBRcvState eRcvState;
 repeating_timer_t g_mb_timer;
 
 volatile uint8_t mb_state_rtu_finish;
