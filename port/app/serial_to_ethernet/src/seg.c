@@ -51,6 +51,7 @@ volatile uint16_t modeswitch_time = 0;
 volatile uint16_t modeswitch_gap_time = DEFAULT_MODESWITCH_INTER_GAP;
 
 static uint8_t mixed_state = MIXED_SERVER;
+static uint8_t client_connect_flag = 0;
 static uint16_t client_any_port = 0;
 
 uint8_t enable_serial_input_timer = SEG_DISABLE;
@@ -67,7 +68,6 @@ uint8_t flag_inactivity = SEG_DISABLE;
 // User's buffer / size idx
 extern uint8_t g_send_buf[DATA_BUF_SIZE];
 extern uint8_t g_recv_buf[DATA_BUF_SIZE];
-extern uint8_t g_send_mqtt_buf[DATA_BUF_SIZE];
 extern uint8_t g_recv_mqtt_buf[DATA_BUF_SIZE];
 
 /*the flag of modbus*/
@@ -311,14 +311,33 @@ void proc_SEG_tcp_client(uint8_t sock)
     uint8_t state = getSn_SR(sock);
     uint16_t reg_val;
 
+#if 1 //Platypus
+    static uint8_t reconnection_count = 0;
+
     switch(state)
     {
         case SOCK_INIT:
-            if (tcp_option->reconnection) vTaskDelay(tcp_option->reconnection);
+            if (client_connect_flag == 0) return;
+            if(reconnection_count && tcp_option->reconnection)
+                  vTaskDelay(tcp_option->reconnection);
             // TCP connect exception checker; e.g., dns failed / zero srcip ... and etc.
-            if(check_tcp_connect_exception() == ON) return;
+            if(check_tcp_connect_exception() == ON) { 
+                reconnection_count = 0;
+                return;
+            }
             // TCP connect
             connect(sock, network_connection->remote_ip, network_connection->remote_port);
+            reconnection_count++;
+
+            if(reconnection_count >= MAX_RECONNECTION_COUNT)
+            {
+                PRT_SEG("reconnection_count >= MAX_RECONNECTION_COUNT\r\n");
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY);
+                reconnection_count = 0;
+                client_connect_flag = 0;
+                uart_rx_flush();
+            }
+#endif
 #ifdef _SEG_DEBUG_
             PRT_SEG(" > SEG:TCP_CLIENT_MODE:CLIENT_CONNECTION\r\n");
 #endif
@@ -342,9 +361,11 @@ void proc_SEG_tcp_client(uint8_t sock)
                     PRT_SEG(" > SEG:CONNECTED TO - %d.%d.%d.%d : %d\r\n", destip[0], destip[1], destip[2], destip[3], destport);
                 }
                 
+#if 0 // Platypus
                 if(serial_mode == SEG_SERIAL_PROTOCOL_NONE)                    
                     uart_rx_flush(); // UART Ring buffer clear
-                
+#endif
+
                 // Debug message enable flag: TCP client socket open
                 set_device_status(ST_CONNECT);
                 if(tcp_option->inactivity) {
@@ -363,6 +384,12 @@ void proc_SEG_tcp_client(uint8_t sock)
                         xTimerChangePeriod(seg_keepalive_timer, pdMS_TO_TICKS(tcp_option->keepalive_wait_time), 0);
                     }
                 }
+				
+#if 1 // Platypus
+                if(get_uart_buffer_usedsize() || u2e_size)
+                    xSemaphoreGive(seg_u2e_sem);                    
+                reconnection_count = 0;
+#endif
             }
             break;
         
@@ -381,8 +408,7 @@ void proc_SEG_tcp_client(uint8_t sock)
         case SOCK_CLOSED:
             set_device_status(ST_OPEN);
             process_socket_termination(sock, SOCK_TERMINATION_DELAY);
-
-            u2e_size = 0;
+            client_connect_flag = 0;
             e2u_size = 0;
             
             if(network_connection->fixed_local_port)
@@ -757,14 +783,6 @@ void proc_SEG_mqtt_client(uint8_t sock)
                     PRT_SEG(" > SEG:MQTT_CLIENT_MODE:SOCKOPEN\r\n");
             }
 
-#if 0            
-            NewNetwork(&mqtt_n, sock);
-            MQTTClientInit(&mqtt_c, &mqtt_n, MQTT_TIMEOUT_MS, g_send_mqtt_buf, DATA_BUF_SIZE, g_recv_mqtt_buf, DATA_BUF_SIZE);
-            
-            mqtt_data.username.cstring = mqtt_option->user_name;
-            mqtt_data.clientID.cstring = mqtt_option->client_id;
-            mqtt_data.password.cstring = mqtt_option->password;
-#endif
             ret = mqtt_transport_init(sock, &g_mqtt_config, true, 0, g_recv_mqtt_buf, 
                                       DATA_BUF_SIZE, &g_transport_interface, &g_network_context, 
                                       mqtt_option->client_id, mqtt_option->user_name, mqtt_option->password, mqtt_option->keepalive, mqtt_subscribeMessageHandler);
@@ -772,7 +790,6 @@ void proc_SEG_mqtt_client(uint8_t sock)
               PRT_SEG(" > SEG:MQTT_CLIENT_MODE:INITIALIZE FAILED\r\n");
               process_socket_termination(sock, SOCK_TERMINATION_DELAY);
             }
-
             break;
             
         default:
@@ -1796,7 +1813,11 @@ uint8_t check_serial_store_permitted(uint8_t ch)
     switch(network_connection->working_state)
     {
         case ST_OPEN:
-            if(network_connection->working_mode != TCP_MIXED_MODE) return ret;
+#if 1   //Platypus
+            if(network_connection->working_mode != TCP_MIXED_MODE && network_connection->working_mode != TCP_CLIENT_MODE) return ret;
+#else
+            if(network_connection->working_mode != TCP_CLIENT_MODE) return ret;
+#endif
         case ST_CONNECT:
         case ST_UDP:
         case ST_ATMODE:
@@ -2186,6 +2207,10 @@ void seg_u2e_task (void *argument)  {
                         process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
                         mixed_state = MIXED_CLIENT;
                     }
+#if 1 //Platypus
+                    else if (client_connect_flag == 0 && network_connection->working_mode == TCP_CLIENT_MODE && ST_OPEN == get_device_status())
+                        client_connect_flag = 1; 
+#endif
                     else if((ST_CONNECT == get_device_status()) || network_connection->working_mode == UDP_MODE)
                         uart_to_ether(SEG_DATA0_SOCK);
                 }

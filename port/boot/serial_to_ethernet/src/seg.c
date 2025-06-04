@@ -108,7 +108,6 @@ uint16_t get_tcp_any_port(void);
 
 void do_seg(uint8_t sock)
 {
-
     struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
     struct __serial_option *serial_option = (struct __serial_option *)&(get_DevConfig_pointer()->serial_option);
     struct __firmware_update *firmware_update = (struct __firmware_update *)&(get_DevConfig_pointer()->firmware_update);
@@ -128,7 +127,7 @@ void do_seg(uint8_t sock)
         sw_modeswitch_at_mode_on = SEG_DISABLE;
     }
     
-    if(opmode == DEVICE_GW_MODE) 
+    if(opmode == DEVICE_GW_MODE)
     {
         switch(network_connection->working_mode)
         {
