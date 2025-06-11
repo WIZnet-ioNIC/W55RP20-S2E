@@ -1528,7 +1528,8 @@ uint16_t proc_SEGCP_serial(uint8_t * segcp_req, uint8_t * segcp_rep)
             memcpy(get_data_buffer_ptr()+4, segcp_rep, len);
 
             GPIO_Output_Reset(DATA0_SPI_INT_PIN);
-            platform_spi_write_dma(get_data_buffer_ptr(), len+4);
+            //platform_spi_write_dma(get_data_buffer_ptr(), len+4);
+            platform_spi_write(get_data_buffer_ptr(), len+4);
             irq_set_enabled(SPI0_IRQ, true);
             GPIO_Output_Set(DATA0_SPI_INT_PIN);
         }
@@ -1667,11 +1668,11 @@ void segcp_serial_task(void *argument) {
         // Serial AT command mode enabled, initial settings
         if((opmode == DEVICE_GW_MODE) && (sw_modeswitch_at_mode_on == SEG_ENABLE))
         {
-            // Socket disconnect (TCP only) / close
-            process_socket_termination(SOCK_DATA, SOCK_TERMINATION_DELAY);
-
             // Mode switch
             init_trigger_modeswitch(DEVICE_AT_MODE);
+
+            // Socket disconnect (TCP only) / close
+            process_socket_termination(SOCK_DATA, SOCK_TERMINATION_DELAY);
             
             // Mode switch flag disabled
             sw_modeswitch_at_mode_on = SEG_DISABLE;

@@ -62,8 +62,8 @@
 #define SEG_TASK_STACK_SIZE (1024 * 8)
 #define SEG_TASK_PRIORITY 18
 
-#define SEG_SPI_TRANSFER_TASK_SIZE 256
-#define SEG_SPI_TRANSFER_PRIORITY 39
+#define SEG_SPI_TRANSFER_TASK_SIZE 1024
+#define SEG_SPI_TRANSFER_PRIORITY 61
 
 #define SEG_TIMER_TASK_STACK_SIZE 256
 #define SEG_TIMER_TASK_PRIORITY 45
@@ -106,6 +106,7 @@ xSemaphoreHandle flash_critical_sem = NULL;
 TimerHandle_t seg_inactivity_timer = NULL;
 TimerHandle_t seg_keepalive_timer = NULL;
 TimerHandle_t seg_auth_timer = NULL;
+TimerHandle_t spi_reset_timer = NULL;
 TimerHandle_t reset_timer = NULL;
 
 /**
@@ -199,6 +200,9 @@ void start_task(void *argument)
     if (get_uart_spi_if()) {
       PRT_INFO(" > Serial SPI Mode\r\n");
       DATA0_UART_Deinit();
+      gpio_init(DATA0_SPI_INT_PIN);
+      GPIO_Configuration(DATA0_SPI_INT_PIN, IO_OUTPUT, IO_PULLUP);
+      GPIO_Output_Set(DATA0_SPI_INT_PIN);
       DATA0_SPI_Configuration(PLL_SYS_KHZ * 1000);
       dev_config->serial_option.uart_interface = SPI_IF_SLAVE;
     }
@@ -254,6 +258,8 @@ void start_task(void *argument)
     seg_spi_pending_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_timer_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     
+    TaskHandle_t task_handle;
+    
     xTaskCreate(net_status_task, "Net_Status_Task", NET_TASK_STACK_SIZE, NULL, NET_TASK_PRIORITY, NULL);
     xTaskCreate(segcp_udp_task, "SEGCP_udp_Task", SEGCP_UDP_TASK_STACK_SIZE, NULL, SEGCP_UDP_TASK_PRIORITY, NULL);
     xTaskCreate(segcp_serial_task, "SEGCP_serial_Task", SEGCP_SERIAL_TASK_STACK_SIZE, NULL, SEGCP_SERIAL_TASK_PRIORITY, NULL);
@@ -261,7 +267,10 @@ void start_task(void *argument)
 
     xTaskCreate(eth_interrupt_task, "ETH_INTERRUPT_Task", ETH_INTERRUPT_TASK_STACK_SIZE, NULL, ETH_INTERRUPT_TASK_PRIORITY, NULL);    
     xTaskCreate(seg_task, "SEG_Task", SEG_TASK_STACK_SIZE, NULL, SEG_TASK_PRIORITY, NULL);
-    xTaskCreate(spi_data_transfer_task, "SPI_TRANSFER_TASK", SEG_SPI_TRANSFER_TASK_SIZE, NULL, SEG_SPI_TRANSFER_PRIORITY, NULL);
+    //xTaskCreate(spi_data_transfer_task, "SPI_TRANSFER_TASK", SEG_SPI_TRANSFER_TASK_SIZE, NULL, SEG_SPI_TRANSFER_PRIORITY, NULL);
+    xTaskCreate(spi_data_transfer_task, "SPI_TRANSFER_TASK", SEG_SPI_TRANSFER_TASK_SIZE, NULL, SEG_SPI_TRANSFER_PRIORITY, &task_handle);
+    vTaskCoreAffinitySet(task_handle, 1 << 1); // Set SPI transfer task to core 1
+
     xTaskCreate(seg_u2e_task, "SEG_U2E_Task", SEG_U2E_TASK_STACK_SIZE, NULL, SEG_U2E_TASK_PRIORITY, NULL);
     xTaskCreate(seg_recv_task, "SEG_Recv_Task", SEG_RECV_TASK_STACK_SIZE, NULL, SEG_RECV_TASK_PRIORITY, NULL);
     xTaskCreate(seg_timer_task, "SEG_Timer_task", SEG_TIMER_TASK_STACK_SIZE, NULL, SEG_TIMER_TASK_PRIORITY, NULL);

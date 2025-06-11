@@ -68,7 +68,6 @@ uint8_t flag_inactivity = SEG_DISABLE;
 // User's buffer / size idx
 extern uint8_t g_send_buf[DATA_BUF_SIZE];
 extern uint8_t g_recv_buf[DATA_BUF_SIZE];
-extern uint8_t g_send_mqtt_buf[DATA_BUF_SIZE];
 extern uint8_t g_recv_mqtt_buf[DATA_BUF_SIZE];
 
 /*the flag of modbus*/
@@ -85,6 +84,7 @@ extern xSemaphoreHandle segcp_uart_sem;
 extern TimerHandle_t seg_inactivity_timer;
 extern TimerHandle_t seg_keepalive_timer;
 extern TimerHandle_t seg_auth_timer;
+extern TimerHandle_t spi_reset_timer;
 
 uint16_t u2e_size = 0;
 uint16_t e2u_size = 0;
@@ -174,7 +174,7 @@ void do_seg(uint8_t sock)
 #ifdef __USE_S2E_OVER_TLS__                
             case MQTTS_CLIENT_MODE:
                 proc_SEG_mqtts_client(sock);
-                break;    
+                break;
 #endif
 
             default:
@@ -749,14 +749,6 @@ void proc_SEG_mqtt_client(uint8_t sock)
                     PRT_SEG(" > SEG:MQTT_CLIENT_MODE:SOCKOPEN\r\n");
             }
 
-#if 0            
-            NewNetwork(&mqtt_n, sock);
-            MQTTClientInit(&mqtt_c, &mqtt_n, MQTT_TIMEOUT_MS, g_send_mqtt_buf, DATA_BUF_SIZE, g_recv_mqtt_buf, DATA_BUF_SIZE);
-            
-            mqtt_data.username.cstring = mqtt_option->user_name;
-            mqtt_data.clientID.cstring = mqtt_option->client_id;
-            mqtt_data.password.cstring = mqtt_option->password;
-#endif
             ret = mqtt_transport_init(sock, &g_mqtt_config, true, 0, g_recv_mqtt_buf, 
                                       DATA_BUF_SIZE, &g_transport_interface, &g_network_context, 
                                       mqtt_option->client_id, mqtt_option->user_name, mqtt_option->password, mqtt_option->keepalive, mqtt_subscribeMessageHandler);
@@ -764,7 +756,6 @@ void proc_SEG_mqtt_client(uint8_t sock)
               PRT_SEG(" > SEG:MQTT_CLIENT_MODE:INITIALIZE FAILED\r\n");
               process_socket_termination(sock, SOCK_TERMINATION_DELAY);
             }
-
             break;
             
         default:
@@ -1657,6 +1648,11 @@ void ether_to_spi(uint8_t sock)
             //for(i = 0; i < e2u_size; i++) platform_uart_putc(g_recv_buf[i]);
             add_data_transfer_bytecount(SEG_ETHER_TX, e2u_size);
             //e2u_size = 0;
+            // Set timer period between 5ms (min) and 10ms (max) based on e2u_size
+            uint32_t period_ms = 5 + (e2u_size * 5) / 1024;
+            if (period_ms > 10) period_ms = 10;
+            xTimerChangePeriod(spi_reset_timer, pdMS_TO_TICKS(period_ms), 0);
+            xTimerStart(spi_reset_timer, 0);
             GPIO_Output_Reset(DATA0_SPI_INT_PIN);
         }
     }while(0);

@@ -29,6 +29,7 @@ void platform_spi_write(uint8_t *data, uint16_t data_len);
 void platform_spi_read(uint8_t *data, uint16_t data_len);
 void platform_spi_write_dma(uint8_t *data, uint16_t data_len);
 void platform_spi_read_dma(uint8_t *data, uint16_t data_len);
+void platform_spi_reset(void);
 void DATA0_SPI_Configuration(uint32_t main_clock);
 
 static void spi_slave_read_dma(uint8_t *pBuf, uint16_t len);
@@ -37,5 +38,6 @@ void platform_spi_transfer(uint8_t *write_data, uint8_t *read_data, uint16_t dat
 void spi_data_transfer_task(void *argument);
 void spi_send_ack(void);
 void spi_send_nack(void);
+void spi_reset_timer_callback(TimerHandle_t xTimer);
 
 #endif /* SPIHANDLER_H_ */

@@ -10,9 +10,13 @@
 #include "port_common.h"
 #include "WIZnet_board.h"
 
+#define SPI_RESET_TIMEOUT_MS 10
+
 extern xSemaphoreHandle seg_u2e_sem;
 extern xSemaphoreHandle seg_spi_pending_sem;
 extern xSemaphoreHandle segcp_uart_sem;
+
+extern TimerHandle_t spi_reset_timer;
 
 volatile spi_slave_state_t current_state = STATE_COMMAND;
 volatile uint8_t command = 0;
@@ -26,6 +30,7 @@ static uint dma_rx;
 static dma_channel_config dma_channel_config_tx;
 static dma_channel_config dma_channel_config_rx;
 uint16_t atcmd_size = 0;
+uint32_t spi_clock = 0; // SPI clock frequency in Hz
 
 //static uint8_t spi_buffer[2048];
 extern uint8_t g_send_buf[];
@@ -38,7 +43,7 @@ extern uint16_t u2e_size;
 void on_spi_rx(void)
 {
     //uartRxByte: // 1-byte character variable for UART Interrupt request handler
-    uint8_t received_byte = 0, input_flag = 0;
+    uint8_t received_byte = 0;
     signed portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
     static uint8_t length_bytes[2]; // Temporary buffer for length bytes
     static uint8_t length_index = 0;
@@ -125,7 +130,7 @@ void on_spi_rx(void)
                 break;
                 
             default:
-                printf("Invalid State current_state = %d recv = 0x%02X\n", current_state, received_byte);
+                //printf("Invalid State current_state = %d recv = 0x%02X\n", current_state, received_byte);
                 current_state = STATE_COMMAND;
                 break;
         }
@@ -137,7 +142,7 @@ void platform_spi_write(uint8_t *data, uint16_t data_len) {
 }
 
 void platform_spi_read(uint8_t *data, uint16_t data_len) {
-    spi_read_blocking(SPI_ID, 0xFF, data, data_len);
+    spi_read_blocking(SPI_ID, 0x00, data, data_len);
 }
 
 void platform_spi_write_dma(uint8_t *data, uint16_t data_len) {
@@ -152,23 +157,37 @@ void platform_spi_transfer(uint8_t *write_data, uint8_t *read_data, uint16_t dat
     spi_write_read_blocking(SPI_ID, write_data, read_data, data_len);
 }
 
+void platform_spi_reset(void) {
+    current_state = STATE_COMMAND;
+    e2u_size = 0;
+    u2e_size = 0;
+    GPIO_Output_Set(DATA0_SPI_INT_PIN);
+
+    dma_channel_cleanup(dma_tx);
+    dma_channel_cleanup(dma_rx);
+    dma_channel_unclaim(dma_tx);
+    dma_channel_unclaim(dma_rx);
+    spi_deinit(SPI_ID);
+    DATA0_SPI_Configuration(spi_clock * 12);
+}
+
 void DATA0_SPI_Configuration(uint32_t main_clock)
 {
-    spi_init(SPI_ID, main_clock / 12);
+    spi_clock = spi_init(SPI_ID, main_clock / 12);
     spi_set_slave(SPI_ID, true);
 
     gpio_init(DATA0_SPI_SCK_PIN);
     gpio_init(DATA0_SPI_RX_PIN);
     gpio_init(DATA0_SPI_TX_PIN);
     gpio_init(DATA0_SPI_CSn_PIN);
-    gpio_init(DATA0_SPI_INT_PIN);
+    //gpio_init(DATA0_SPI_INT_PIN);
     
     gpio_set_function(DATA0_SPI_SCK_PIN, GPIO_FUNC_SPI);
     gpio_set_function(DATA0_SPI_RX_PIN, GPIO_FUNC_SPI);
     gpio_set_function(DATA0_SPI_TX_PIN, GPIO_FUNC_SPI);
     gpio_set_function(DATA0_SPI_CSn_PIN, GPIO_FUNC_SPI);
-    GPIO_Configuration(DATA0_SPI_INT_PIN, IO_OUTPUT, IO_PULLUP);
-    GPIO_Output_Set(DATA0_SPI_INT_PIN);
+    //GPIO_Configuration(DATA0_SPI_INT_PIN, IO_OUTPUT, IO_PULLUP);
+    //GPIO_Output_Set(DATA0_SPI_INT_PIN);
     
     // Make the SPI pins available to picotool
     bi_decl(bi_4pins_with_func(DATA0_SPI_SCK_PIN, DATA0_SPI_RX_PIN, DATA0_SPI_TX_PIN, DATA0_SPI_CSn_PIN, GPIO_FUNC_SPI));
@@ -201,72 +220,27 @@ void DATA0_SPI_Configuration(uint32_t main_clock)
       channel_config_set_dreq(&dma_channel_config_rx, DREQ_SPI1_RX);
     //channel_config_set_dreq(&dma_channel_config_tx, spi_get_dreq(SPI_ID, false));
     channel_config_set_read_increment(&dma_channel_config_rx, false);
-    channel_config_set_write_increment(&dma_channel_config_rx, true);    
-}
-
-#if 0
-static void spi_slave_read_dma(uint8_t *pBuf, uint16_t len)
-{
-    uint8_t dummy_data = 0xFF;
-
-    channel_config_set_read_increment(&dma_channel_config_tx, false);
-    channel_config_set_write_increment(&dma_channel_config_tx, false);
-    dma_channel_configure(dma_tx, &dma_channel_config_tx,
-                          &spi_get_hw(SPI_ID)->dr, // write address
-                          &dummy_data,               // read address
-                          len,                       // element count (each element is of size transfer_data_size)
-                          false);                    // don't start yet
-
-    channel_config_set_read_increment(&dma_channel_config_rx, false);
     channel_config_set_write_increment(&dma_channel_config_rx, true);
-    dma_channel_configure(dma_rx, &dma_channel_config_rx,
-                          pBuf,                      // write address
-                          &spi_get_hw(SPI_ID)->dr, // read address
-                          len,                       // element count (each element is of size transfer_data_size)
-                          false);                    // don't start yet
 
-    dma_start_channel_mask((1u << dma_tx) | (1u << dma_rx));
-//    GPIO_Output_Reset(DATA0_SPI_INT_PIN);
-    dma_channel_wait_for_finish_blocking(dma_rx);
-//    GPIO_Output_Set(DATA0_SPI_INT_PIN);
+    if (spi_reset_timer == NULL) {
+        // Create a timer to reset the SPI state after a timeout
+        spi_reset_timer = xTimerCreate("spi_reset_timer", SPI_RESET_TIMEOUT_MS / portTICK_PERIOD_MS, pdFALSE, NULL, spi_reset_timer_callback);
+    }
 }
 
-static void spi_slave_write_dma(uint8_t *pBuf, uint16_t len)
-{
-    uint8_t dummy_data;
-
-    channel_config_set_read_increment(&dma_channel_config_tx, true);
-    channel_config_set_write_increment(&dma_channel_config_tx, false);
-    dma_channel_configure(dma_tx, &dma_channel_config_tx,
-                          &spi_get_hw(SPI_ID)->dr, // write address
-                          pBuf,                      // read address
-                          len,                       // element count (each element is of size transfer_data_size)
-                          false);                    // don't start yet
-
-    channel_config_set_read_increment(&dma_channel_config_rx, false);
-    channel_config_set_write_increment(&dma_channel_config_rx, false);
-    dma_channel_configure(dma_rx, &dma_channel_config_rx,
-                          &dummy_data,               // write address
-                          &spi_get_hw(SPI_ID)->dr, // read address
-                          len,                       // element count (each element is of size transfer_data_size)
-                          false);                    // don't start yet
-
-    dma_start_channel_mask((1u << dma_tx) | (1u << dma_rx));
-    dma_channel_wait_for_finish_blocking(dma_rx);
-}
-#else
 static void spi_slave_read_dma(uint8_t *pBuf, uint16_t len)
 {
-    
+    //dma_channel_wait_for_finish_blocking(dma_rx);
+
     dma_channel_configure(dma_rx, &dma_channel_config_rx,
                                 pBuf,                      // write address
                                 &spi_get_hw(SPI_ID)->dr, // read address
                                 len,                       // element count (each element is of size transfer_data_size)
-                                false);                    // don't start yet
+                                true);                    // don't start yet
                                 
-    dma_start_channel_mask(1u << dma_rx);
+    //dma_start_channel_mask(1u << dma_rx);
     dma_channel_wait_for_finish_blocking(dma_rx);
-    while(spi_is_busy(SPI_ID));
+    //while(spi_is_busy(SPI_ID));
 }
 
 static void spi_slave_write_dma(uint8_t *pBuf, uint16_t len)
@@ -275,13 +249,13 @@ static void spi_slave_write_dma(uint8_t *pBuf, uint16_t len)
                           &spi_get_hw(SPI_ID)->dr, // write address
                           pBuf,                      // read address
                           len,                       // element count (each element is of size transfer_data_size)
-                          false);                    // don't start yet
-
-    dma_start_channel_mask(1u << dma_tx);
+                          true);                    // don't start yet
+ 
+    //dma_start_channel_mask(1u << dma_tx);
     dma_channel_wait_for_finish_blocking(dma_tx);
     while(spi_is_busy(SPI_ID));
+    
 }
-#endif
 
 void spi_data_transfer_task(void *argument) {
     uint8_t header[4];
@@ -291,28 +265,40 @@ void spi_data_transfer_task(void *argument) {
         xSemaphoreTake(seg_spi_pending_sem, portMAX_DELAY);
         switch (current_state) {
             case STATE_SLAVE_DATA_WRITE:
+                xTimerStop(spi_reset_timer, 0);
                 header[0] = SPI_SLAVE_WRITE_LEN_CMD;
                 memcpy(&header[1], &e2u_size, 2);
                 header[3] = SPI_DUMMY;
-        
+                
                 if (e2u_size) {
                     memcpy(get_data_buffer_ptr(), header, 4);
                     memcpy(get_data_buffer_ptr() + 4, g_recv_buf, e2u_size);
-                    platform_spi_write_dma(get_data_buffer_ptr(), e2u_size + 4);
+                    vTaskEnterCritical();
+                    platform_spi_write(get_data_buffer_ptr(), e2u_size + 4);
+                    vTaskExitCritical();
+                    //platform_spi_write_dma(get_data_buffer_ptr(), e2u_size + 4);
                     e2u_size = 0;
                     current_state = STATE_COMMAND;
                     irq_set_enabled(SPI0_IRQ, true);
                     GPIO_Output_Set(DATA0_SPI_INT_PIN);
                 } else {
-                    platform_spi_write_dma(header, 4);
+                    vTaskEnterCritical();
+                    platform_spi_write(header, 4);
+                    vTaskExitCritical();
+                    //platform_spi_write_dma(header, 4);
                     current_state = STATE_COMMAND;
                     irq_set_enabled(SPI0_IRQ, true);
                 }
                 break;
         
             case STATE_SLAVE_DATA_READ:
+#if 1
+                vTaskEnterCritical();
                 spi_send_ack();
-                platform_spi_read_dma(g_send_buf, data_length);
+				platform_spi_read(g_send_buf, data_length);
+                //platform_spi_read_dma(g_send_buf, data_length);
+                vTaskExitCritical();
+#endif
                 u2e_size = data_length;
                 xSemaphoreGive(seg_u2e_sem);
                 current_state = STATE_COMMAND;
@@ -324,7 +310,8 @@ void spi_data_transfer_task(void *argument) {
                     atcmd_size = atcmd_bytes[2] | (atcmd_bytes[3] << 8);
                     memcpy(gSEGCPREQ, atcmd_bytes, 2);
                     spi_send_ack();
-                    platform_spi_read_dma(gSEGCPREQ + 2, atcmd_size);
+                    //platform_spi_read_dma(gSEGCPREQ + 2, atcmd_size);
+                    platform_spi_read(gSEGCPREQ + 2, atcmd_size);
                     atcmd_size += 2;
                 } else {
                     memcpy(gSEGCPREQ, atcmd_bytes, 4);
@@ -369,3 +356,8 @@ void spi_send_nack(void) {
     //platform_spi_write_dma(header, 4);
 }
 
+void spi_reset_timer_callback(TimerHandle_t xTimer) {
+    // Reset the SPI interface
+    //PRT_INFO("SPI reset due to timeout\r\n");
+    platform_spi_reset();
+}
