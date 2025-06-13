@@ -1643,7 +1643,6 @@ uint8_t process_socket_termination(uint8_t sock, uint32_t timeout)
     uint8_t sock_status = getSn_SR(sock);
     uint32_t tickStart = millis();
     uint16_t reg_val;
-    const char *taskName = pcTaskGetName(NULL);
     
     timers_stop();
     reset_SEG_timeflags();
@@ -1661,15 +1660,16 @@ uint8_t process_socket_termination(uint8_t sock, uint32_t timeout)
 
     if(network_connection->working_mode != UDP_MODE) // TCP_SERVER_MODE / TCP_CLIENT_MODE / TCP_MIXED_MODE
     {
+        if (network_connection->working_mode == TCP_MIXED_MODE)
+            mixed_state = MIXED_SERVER;
         if((sock_status == SOCK_ESTABLISHED) || (sock_status == SOCK_CLOSE_WAIT)) {
+            
             do {
               ret = disconnect(sock);
               if((ret == SOCK_OK) || (ret == SOCKERR_TIMEOUT)) break;
             } while ((millis() - tickStart) < timeout);
         }
-        if (network_connection->working_mode == TCP_MIXED_MODE) {
-            mixed_state = MIXED_SERVER;
-        }
+
     }
     close(sock);
     return sock;
@@ -1716,7 +1716,7 @@ void init_trigger_modeswitch(uint8_t mode)
         if(serial_common->serial_debug_en)
         {
             PRT_SEG(" > SEG:AT Mode\r\n");
-            platform_uart_puts((uint8_t *)"SEG:AT Mode\r\n", sizeof("SEG:AT Mode\r\n"));
+            platform_uart_puts((uint8_t *)"SEG:AT Mode\r\n", strlen("SEG:AT Mode\r\n"));
         }
     }
     else // DEVICE_GW_MODE
@@ -1732,7 +1732,7 @@ void init_trigger_modeswitch(uint8_t mode)
         if(serial_common->serial_debug_en)
         {
             PRT_SEG(" > SEG:GW Mode\r\n");
-            platform_uart_puts((uint8_t *)"SEG:GW Mode\r\n", sizeof("SEG:GW Mode\r\n"));
+            platform_uart_puts((uint8_t *)"SEG:GW Mode\r\n", strlen("SEG:GW Mode\r\n"));
         }
     }
     
@@ -2184,7 +2184,7 @@ void seg_task (void *argument)  {
             xSemaphoreTake(net_seg_sem, portMAX_DELAY);
         }
         do_seg(SEG_DATA0_SOCK);
-        vTaskDelay(10);
+        vTaskDelay(pdMS_TO_TICKS(10)); // wait for 10ms
     }
 }
 
