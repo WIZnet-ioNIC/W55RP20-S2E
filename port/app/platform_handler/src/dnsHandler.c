@@ -5,15 +5,19 @@
  *      Author: Hoon-Mac
  */
 
+#include <string.h>
+
 #include "ConfigData.h"
 #include "wizchip_conf.h"
 #include "socket.h"
 
 #include "dns.h"
+#include "dhcp.h"
 #include "dnsHandler.h"
 #include "common.h"
 #include "port_common.h"
 #include "timerHandler.h"
+#include "seg.h"
 
 /* Header for all domain messages */
 struct dhdr_handler
@@ -42,7 +46,7 @@ struct dhdr_handler
 };
 
 
-uint32_t (*getTick)(void);
+time_t (*getTick)(void);
 static uint8_t dns_state = STATE_DNS_STOP;
 
 extern uint8_t  DNS_SOCKET;
@@ -51,9 +55,11 @@ extern uint8_t  DNS_SOCKET;    // SOCKET number for DNS
 extern uint16_t DNS_MSGID;     // DNS message ID
 extern uint32_t dns_1s_tick;   // for timout of DNS processing
 
+extern int16_t dns_makequery(uint16_t op, char * name, uint8_t * buf, uint16_t len);
+extern int8_t parseDNSMSG(struct dhdr_handler * dhp, uint8_t * buf, uint8_t * ip_from_dns);
 
 /* DNS CLIENT INIT */
-void DNS_init_handler(uint8_t s, uint8_t * buf, uint32_t (*tickFunc)(void))
+void DNS_init_handler(uint8_t s, uint8_t * buf, time_t (*tickFunc)(void))
 {
     
     DNS_init(s, buf);

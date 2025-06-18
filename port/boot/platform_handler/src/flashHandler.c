@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <string.h>
 #include "port_common.h"
 #include "common.h"
@@ -62,7 +63,7 @@ void write_flash(uint32_t addr, uint8_t * data, uint32_t data_len)
 void read_flash(uint32_t addr, uint8_t *data, uint32_t data_len)
 {
     addr += XIP_BASE;
-    memcpy(data, addr, data_len);
+    memcpy(data, (void *)addr, data_len);
 }
 
 void erase_flash_sector(uint32_t addr)

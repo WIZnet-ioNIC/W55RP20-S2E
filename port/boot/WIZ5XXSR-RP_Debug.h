@@ -8,6 +8,8 @@
 #ifndef PLATFORMHANDLER_WIZ_DEBUG_H_
 #define PLATFORMHANDLER_WIZ_DEBUG_H_
 
+#include <stdio.h>
+
 /** Define the debugging switch: on */
 #define DBG_ON                  1
 /** Define the debugging switch: off */

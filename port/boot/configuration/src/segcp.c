@@ -1176,7 +1176,7 @@ uint16_t uart_get_commandline(uint8_t* buf, uint16_t maxSize)
 
     if(len >= 4) // Minimum of command: 4-bytes, e.g., MC\r\n (MC$0d$0a)
     {
-        memset(buf, NULL, CONFIG_BUF_SIZE);
+        memset(buf, 0, CONFIG_BUF_SIZE);
         for(i = 0; i < maxSize; i++)
         {
             buf[i] = platform_uart_getc();

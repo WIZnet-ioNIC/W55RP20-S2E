@@ -10,6 +10,7 @@
 #include "socket.h"
 #include "common.h"
 #include "ConfigData.h"
+#include "seg.h"
 
 extern volatile uint8_t* pucASCIIBufferCur;
 extern volatile uint16_t usASCIIBufferPos;

@@ -1,4 +1,5 @@
 
+#include <stdio.h>
 #include <string.h>
 #include "common.h"
 #include "WIZnet_board.h"
@@ -7,9 +8,7 @@
 #include "storageHandler.h"
 
 void read_storage(teDATASTORAGE stype, void *data, uint16_t size)
-{
-    uint32_t ret_len;
-    
+{    
     switch(stype)
     {
         case STORAGE_MAC:
@@ -22,8 +21,6 @@ void read_storage(teDATASTORAGE stype, void *data, uint16_t size)
         default:
             break;
     }
-    
-    return ret_len;
 }
 
 

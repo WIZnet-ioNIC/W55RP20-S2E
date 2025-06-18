@@ -8,10 +8,13 @@
 #include "segcp.h"
 #include "uartHandler.h"
 #include "netHandler.h"
+#include "flashHandler.h"
 
 #include "httpParser.h"
 #include "httpHandler.h"
 #include "Web_page.h"
+#include "socket.h"
+#include "httpServer.h"
 
 extern xSemaphoreHandle net_http_webserver_sem;
 extern TimerHandle_t reset_timer;

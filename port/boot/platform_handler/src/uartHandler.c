@@ -100,6 +100,11 @@ void DATA0_UART_Configuration(void)
     // Set up our UART with a basic baud rate.
     uart_init(UART_ID, 2400);
 
+    gpio_init(DATA0_UART_TX_PIN);
+    gpio_init(DATA0_UART_RX_PIN);
+    gpio_init(DATA0_UART_CTS_PIN);
+    gpio_init(DATA0_UART_RTS_PIN);
+
     // Set the TX and RX pins by using the function select on the GPIO
     // Set datasheet for more information on function select
     gpio_set_function(DATA0_UART_TX_PIN, GPIO_FUNC_UART);
@@ -432,13 +437,13 @@ void uart_rs485_enable(void)
     if(uart_if_mode == UART_IF_RS485)
     {
       GPIO_Output_Set(DATA0_UART_RTS_PIN);
-      delay_ms(1);
+      sleep_ms(1);
     }
     else if(uart_if_mode == UART_IF_RS485_REVERSE)
     {
         // RTS pin -> High
         GPIO_Output_Reset(DATA0_UART_RTS_PIN);
-        delay_ms(1);
+        sleep_ms(1);
     }    //UART_IF_RS422: None
 }
 
@@ -449,13 +454,13 @@ void uart_rs485_disable(void)
     {
         // RTS pin -> Low
         GPIO_Output_Reset(DATA0_UART_RTS_PIN);
-        delay_ms(1);
+        sleep_ms(1);
     }
     else if(uart_if_mode == UART_IF_RS485_REVERSE)
     {
         // RTS pin -> High
         GPIO_Output_Set(DATA0_UART_RTS_PIN);
-        delay_ms(1);
+        sleep_ms(1);
     }
     
     //UART_IF_RS422: None

@@ -59,10 +59,17 @@ void device_reboot(void);
 void device_raw_reboot(void);
 void disable_interrupts(void);
 void reset_peripherals(void);
+uint8_t device_bank_update(void);
 void jump_to_app(uint32_t app_addr);
+
+int8_t process_dhcp(void);
 
 int device_bank_check(uint8_t bank_num);
 int device_bank_copy(void);
+
+void display_Dev_Info_header(void);
+void display_Dev_Info_main(void);
+void display_Dev_Info_dhcp(void);
 
 uint8_t device_firmware_update(teDATASTORAGE stype); // Firmware update by Configuration tool / Flash to Flash
 

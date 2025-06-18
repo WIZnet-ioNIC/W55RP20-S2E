@@ -101,7 +101,7 @@ void GPIO_Output_Reset(uint16_t GPIO_Pin);
 uint8_t GPIO_Output_Read(uint16_t GPIO_Pin);
 void GPIO_Configuration_IRQ(uint16_t GPIO_Pin, USER_IO_IRQ GPIO_IRQ_Event);
 void GPIO_Configuration_Callback(void);
-static void platform_gpio_interrupt_callback(uint16_t GPIO_Pin, uint32_t events);
+static void platform_gpio_interrupt_callback(uint GPIO_Pin, uint32_t events);
 uint8_t GPIO_Output_Toggle(uint16_t GPIO_Pin);
 uint8_t GPIO_Input_Read(uint16_t GPIO_Pin);
 

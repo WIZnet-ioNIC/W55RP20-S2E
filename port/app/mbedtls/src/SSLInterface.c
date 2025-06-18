@@ -21,6 +21,7 @@
 #include "deviceHandler.h"
 #include "storageHandler.h"
 #include "common.h"
+#include "util.h"
 
 //unsigned char tempBuf[DEBUG_BUFFER_SIZE] = {0,};
 static int wiz_tls_init_state;
@@ -149,7 +150,7 @@ int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd)
     if (ssl_option->root_ca_option != MBEDTLS_SSL_VERIFY_NONE)
     {
         PRT_SSL(" Loading the CA root certificate len = %d\r\n", ssl_option->rootca_len);
-        rootca_addr = FLASH_ROOTCA_ADDR + XIP_BASE;
+        rootca_addr = (uint8_t *)(FLASH_ROOTCA_ADDR + XIP_BASE);
         ret = mbedtls_x509_crt_parse(tlsContext->cacert, (const char *)rootca_addr, ssl_option->rootca_len + 1);
         if(ret < 0) 
         {
@@ -178,9 +179,9 @@ int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd)
 
     if (ssl_option->client_cert_enable == ENABLE)
     {
-        clica_addr = FLASH_CLICA_ADDR + XIP_BASE;
-        pkey_addr = FLASH_PRIKEY_ADDR + XIP_BASE;
-       
+        clica_addr = (uint8_t *)(FLASH_CLICA_ADDR + XIP_BASE);
+        pkey_addr = (uint8_t *)(FLASH_PRIKEY_ADDR + XIP_BASE);
+
         ret = mbedtls_x509_crt_parse((tlsContext->clicert), (const char *)clica_addr, ssl_option->clica_len + 1);
         if(ret != 0) {
             PRT_SSL(" failed\r\n  !  mbedtls_x509_crt_parse returned -0x%x while parsing device cert\r\n", -ret);

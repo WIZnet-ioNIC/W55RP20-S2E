@@ -7,6 +7,7 @@
 
 #include "mqtt_transport_interface.h"
 #include "seg.h"
+#include "deviceHandler.h"
 #include "timerHandler.h"
 #include "uartHandler.h"
 #include "gpioHandler.h"
@@ -76,9 +77,11 @@ extern volatile uint8_t mb_state_ascii_finish;
 
 extern xSemaphoreHandle seg_e2u_sem;
 extern xSemaphoreHandle seg_u2e_sem;
+extern xSemaphoreHandle seg_sem;
 extern xSemaphoreHandle net_seg_sem;
 extern xSemaphoreHandle seg_timer_sem;
 extern xSemaphoreHandle segcp_uart_sem;
+extern xSemaphoreHandle seg_socket_sem;
 
 extern TimerHandle_t seg_inactivity_timer;
 extern TimerHandle_t seg_keepalive_timer;
@@ -113,6 +116,8 @@ void proc_SEG_tcp_client(uint8_t sock);
 void proc_SEG_tcp_server(uint8_t sock);
 void proc_SEG_tcp_mixed(uint8_t sock);
 void proc_SEG_udp(uint8_t sock);
+void proc_SEG_mqtt_client(uint8_t sock);
+void proc_SEG_mqtts_client(uint8_t sock);
 
 #ifdef __USE_S2E_OVER_TLS__
 void proc_SEG_tcp_client_over_tls(uint8_t sock);
@@ -133,7 +138,6 @@ uint16_t get_tcp_any_port(void);
 
 void do_seg(uint8_t sock)
 {
-
     struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
     struct __serial_option *serial_option = (struct __serial_option *)&(get_DevConfig_pointer()->serial_option);
     struct __firmware_update *firmware_update = (struct __firmware_update *)&(get_DevConfig_pointer()->firmware_update);
@@ -271,7 +275,11 @@ void proc_SEG_udp(uint8_t sock)
             u2e_size = 0;
             e2u_size = 0;
 
-            if(socket(sock, Sn_MR_UDP, network_connection->local_port, 0) == sock)
+            xSemaphoreTake(seg_socket_sem, portMAX_DELAY);
+            int8_t s = socket(sock, Sn_MR_UDP, network_connection->local_port, 0);
+            xSemaphoreGive(seg_socket_sem);
+
+            if(s == sock)
             {
                 set_device_status(ST_UDP);
                 
@@ -401,7 +409,8 @@ void proc_SEG_tcp_client(uint8_t sock)
                     ether_to_uart(sock); // receive remaining packets
                 }
             }
-            process_socket_termination(sock, SOCK_TERMINATION_DELAY);
+            //process_socket_termination(sock, SOCK_TERMINATION_DELAY);
+            disconnect(sock);
             break;
         
         case SOCK_FIN_WAIT:
@@ -424,10 +433,12 @@ void proc_SEG_tcp_client(uint8_t sock)
 #ifdef _SEG_DEBUG_
             PRT_SEG(" > TCP CLIENT: client_any_port = %d\r\n", client_any_port);
 #endif
-            // ## 20180208 Added by Eric, TCP Connect function in TCP client/mixed mode operates in non-block mode
-            if(socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK)) == sock)
+            xSemaphoreTake(seg_socket_sem, portMAX_DELAY);
+            int8_t s = socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
+            xSemaphoreGive(seg_socket_sem);
+            
+            if(s == sock)
             {
-                // Replace the command mode switch code GAP time (default: 500ms)
                 if((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time)
                     modeswitch_gap_time = serial_data_packing->packing_time;
                 
@@ -567,7 +578,8 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock)
                 while(getSn_RX_RSR(sock) || e2u_size)
                     ether_to_uart(sock); // receive remaining packets
             }
-            process_socket_termination(sock, SOCK_TERMINATION_DELAY); // including disconnect(sock) function
+            //process_socket_termination(sock, SOCK_TERMINATION_DELAY); // including disconnect(sock) function
+            disconnect(sock);
             break;
 
         case SOCK_FIN_WAIT:
@@ -578,7 +590,7 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock)
                 set_wiz_tls_init_state(DISABLE);
             }
 
-            if(wiz_tls_init(&s2e_tlsContext, sock) > 0)
+            if(wiz_tls_init(&s2e_tlsContext, (int *)sock) > 0)
             {
                 set_device_status(ST_OPEN);
 
@@ -756,7 +768,8 @@ void proc_SEG_mqtt_client(uint8_t sock)
             break;
         
         case SOCK_CLOSE_WAIT:
-            process_socket_termination(sock, SOCK_TERMINATION_DELAY);
+            disconnect(sock);
+            mqtt_transport_close(sock, &g_mqtt_config);
             break;
         
         case SOCK_FIN_WAIT:
@@ -773,7 +786,11 @@ void proc_SEG_mqtt_client(uint8_t sock)
                 source_port = get_tcp_any_port();
 
             PRT_SEG(" > MQTT CLIENT: client_any_port = %d\r\n", client_any_port);
-            if(socket(sock, Sn_MR_TCP, source_port, 0x00) == sock)
+            xSemaphoreTake(seg_socket_sem, portMAX_DELAY);
+            int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
+            xSemaphoreGive(seg_socket_sem);
+
+            if(s == sock)
             {
                 // Replace the command mode switch code GAP time (default: 500ms)
                 if((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time)
@@ -908,8 +925,6 @@ void proc_SEG_mqtts_client(uint8_t sock)
                 ///////////////////////////////////////////////////////////////////////////////////////////////////
                 // S2E: TCP client mode initialize after connection established (only once)
                 ///////////////////////////////////////////////////////////////////////////////////////////////////
-                //reg_val = SIK_ALL & 0x00FF;
-                //ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
 
                 // Serial debug message printout
                 if(serial_common->serial_debug_en)
@@ -946,6 +961,7 @@ void proc_SEG_mqtts_client(uint8_t sock)
             break;
         
         case SOCK_CLOSE_WAIT:
+            disconnect(sock);
             mqtt_transport_close(sock, &g_mqtt_config);
             break;
         
@@ -957,7 +973,7 @@ void proc_SEG_mqtts_client(uint8_t sock)
                 set_wiz_tls_init_state(DISABLE);
             }
 
-            if(wiz_tls_init(&s2e_tlsContext, sock) > 0)
+            if(wiz_tls_init(&s2e_tlsContext, (int *)sock) > 0)
             {
                 set_device_status(ST_OPEN);
 
@@ -1100,7 +1116,8 @@ void proc_SEG_tcp_server(uint8_t sock)
                 while(getSn_RX_RSR(sock) || e2u_size)
                     ether_to_uart(sock); // receive remaining packets
             }
-            process_socket_termination(sock, SOCK_TERMINATION_DELAY);
+            disconnect(sock);
+            //process_socket_termination(sock, SOCK_TERMINATION_DELAY);
             break;
         
         case SOCK_FIN_WAIT:
@@ -1111,7 +1128,11 @@ void proc_SEG_tcp_server(uint8_t sock)
             u2e_size = 0;
             e2u_size = 0;
 
-            if(socket(sock, Sn_MR_TCP, network_connection->local_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK)) == sock)
+            xSemaphoreTake(seg_socket_sem, portMAX_DELAY);
+            int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
+            xSemaphoreGive(seg_socket_sem);
+
+            if(s == sock)
             {
                 // Replace the command mode switch code GAP time (default: 500ms)
                 if((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time)
@@ -1130,7 +1151,6 @@ void proc_SEG_tcp_server(uint8_t sock)
     }
 }
 
-
 void proc_SEG_tcp_mixed(uint8_t sock)
 {
     struct __tcp_option *tcp_option = (struct __tcp_option *)&(get_DevConfig_pointer()->tcp_option);
@@ -1138,7 +1158,6 @@ void proc_SEG_tcp_mixed(uint8_t sock)
     struct __serial_common *serial_common = (struct __serial_common *)&get_DevConfig_pointer()->serial_common;
     struct __serial_command *serial_command = (struct __serial_command *)&get_DevConfig_pointer()->serial_command;
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *)&(get_DevConfig_pointer()->serial_data_packing);
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
 
     uint16_t source_port = 0;
     uint8_t destip[4] = {0, };
@@ -1154,12 +1173,9 @@ void proc_SEG_tcp_mixed(uint8_t sock)
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
     static uint8_t reconnection_count = 0;
 #endif
-
-//    PRT_SEG("getSn_SR = 0x%02X\r\n", state);
     switch(state)
     {
         case SOCK_INIT:
-            PRT_SEG("case SOCK_LISTEN\r\n");
             if(mixed_state == MIXED_CLIENT)
             {
                 if(reconnection_count && tcp_option->reconnection)
@@ -1198,7 +1214,6 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                     PRT_SEG(" > SEG:TCP_MIXED_MODE:CLIENT_CONNECTION_RETRY FAILED\r\n");
 #endif
 #endif
-            
             }
             break;
         
@@ -1275,7 +1290,8 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                 while(getSn_RX_RSR(sock) || e2u_size)
                     ether_to_uart(sock); // receive remaining packets
             }
-            process_socket_termination(sock, SOCK_TERMINATION_DELAY);
+            //process_socket_termination(sock, SOCK_TERMINATION_DELAY);
+            disconnect(sock);
             break;
         
         case SOCK_FIN_WAIT:
@@ -1289,8 +1305,11 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                 u2e_size = 0;
                 e2u_size = 0;
                 
-                // ## 20180208 Added by Eric, TCP Connect function in TCP client/mixed mode operates in non-block mode
-                if(socket(sock, Sn_MR_TCP, network_connection->local_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK)) == sock)
+                xSemaphoreTake(seg_socket_sem, portMAX_DELAY);
+                int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
+                xSemaphoreGive(seg_socket_sem);
+
+                if(s == sock)
                 {
                     // Replace the command mode switch code GAP time (default: 500ms)
                     if((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time)
@@ -1315,7 +1334,10 @@ void proc_SEG_tcp_mixed(uint8_t sock)
 #ifdef _SEG_DEBUG_
                 PRT_SEG(" > TCP CLIENT: any_port = %d\r\n", source_port);
 #endif
-                if(socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK)) == sock)
+                xSemaphoreTake(seg_socket_sem, portMAX_DELAY);
+                int8_t s = socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
+                xSemaphoreGive(seg_socket_sem);
+                if(s == sock)
                 {
                     // Replace the command mode switch code GAP time (default: 500ms)
                     if((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time)
@@ -1657,21 +1679,23 @@ uint8_t process_socket_termination(uint8_t sock, uint32_t timeout)
 #endif
 
     if(sock_status == SOCK_CLOSED) return sock;
-
+    xSemaphoreTake(seg_socket_sem, portMAX_DELAY);
     if(network_connection->working_mode != UDP_MODE) // TCP_SERVER_MODE / TCP_CLIENT_MODE / TCP_MIXED_MODE
     {
         if (network_connection->working_mode == TCP_MIXED_MODE)
             mixed_state = MIXED_SERVER;
+
         if((sock_status == SOCK_ESTABLISHED) || (sock_status == SOCK_CLOSE_WAIT)) {
-            
             do {
               ret = disconnect(sock);
               if((ret == SOCK_OK) || (ret == SOCKERR_TIMEOUT)) break;
             } while ((millis() - tickStart) < timeout);
         }
-
     }
+
     close(sock);
+    xSemaphoreGive(seg_socket_sem);
+	xSemaphoreGive(seg_sem);
     return sock;
 }
 
@@ -2184,14 +2208,15 @@ void seg_task (void *argument)  {
             xSemaphoreTake(net_seg_sem, portMAX_DELAY);
         }
         do_seg(SEG_DATA0_SOCK);
-        vTaskDelay(pdMS_TO_TICKS(10)); // wait for 10ms
+        xSemaphoreTake(seg_sem, pdMS_TO_TICKS(10));
+        //vTaskDelay(pdMS_TO_TICKS(10)); // wait for 10ms
     }
 }
 
 void seg_u2e_task (void *argument)  {
     uint8_t serial_mode = get_serial_communation_protocol();
     struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
-    struct __tcp_option *tcp_option = (struct tcp_option *)&(get_DevConfig_pointer()->tcp_option);
+    struct __tcp_option *tcp_option = (struct __tcp_option *)&(get_DevConfig_pointer()->tcp_option);
 
     PRT_SEG("Running Task\r\n");
     while(1) {
@@ -2335,5 +2360,3 @@ void seg_timer_task (void *argument)  {
         }
     }
 }
-
-

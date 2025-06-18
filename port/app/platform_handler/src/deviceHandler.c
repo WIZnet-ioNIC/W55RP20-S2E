@@ -14,9 +14,11 @@
 #include "deviceHandler.h"
 #include "uartHandler.h"
 #include "timerHandler.h"
+#include "netHandler.h"
 #include "util.h"
 
 #include "dns.h"
+#include "dhcp.h"
 
 uint16_t get_firmware_from_network(uint8_t sock, uint8_t * buf);
 uint16_t get_firmware_from_server(uint8_t sock, uint8_t * server_ip, uint8_t * buf);

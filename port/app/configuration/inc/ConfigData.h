@@ -193,6 +193,7 @@ void display_Net_Info(void);
 void Mac_Conf(void);
 void Net_Conf(void);
 void set_dhcp_mode(void);
+void check_mac_address(void);
 
 uint8_t get_hex(uint8_t b0, uint8_t b1);
 char atonum(char ch);

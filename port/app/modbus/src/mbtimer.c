@@ -10,11 +10,12 @@ volatile uint32_t mb_timeout;
 
 extern xSemaphoreHandle seg_u2e_sem;
 
-void vMBPortTimersCallback(struct repeating_timer *t)
+bool vMBPortTimersCallback(struct repeating_timer *t)
 {
   xMBRTUTimerT35Expired();
+  return true;
 }
- 
+
 void xMBPortTimersInit(uint32_t usTim1Timerout50us)
 {
     /* Calculate mb_timeout in μs: T3.5 + 50ms response timeout */

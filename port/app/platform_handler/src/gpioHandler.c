@@ -6,6 +6,7 @@
 #include "gpioHandler.h"
 #include "wizchip_conf.h"
 #include "w5x00_spi.h"
+#include "seg.h"
 
 #ifdef __USE_USERS_GPIO__
   const uint16_t USER_IO_PIN[USER_IOn] =     {USER_IO_A_PIN, USER_IO_B_PIN};
@@ -92,7 +93,7 @@ void GPIO_Configuration_Callback(void)
     irq_set_enabled(IO_IRQ_BANK0, true);
 }
 
-static void platform_gpio_interrupt_callback(uint16_t GPIO_Pin, uint32_t events)
+static void platform_gpio_interrupt_callback(uint GPIO_Pin, uint32_t events)
 {
     if (GPIO_Pin == WIZCHIP_PIN_IRQ) {
         signed portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
