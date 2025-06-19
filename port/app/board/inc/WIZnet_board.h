@@ -134,7 +134,9 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
   void init_uart_if_sel_pin(void);
   uint8_t get_uart_if_sel_pin(void);
   void init_factory_reset_pin(void);
-  
+  uint8_t get_phylink(void);
+  uint8_t get_factory_reset_pin(void);
+
 #ifdef __USE_BOOT_ENTRY__
   void init_boot_entry_pin(void);
   uint8_t get_boot_entry_pin(void);

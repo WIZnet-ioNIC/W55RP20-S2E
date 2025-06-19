@@ -8,7 +8,10 @@
 #ifndef PLATFORMHANDLER_WIZ_DEBUG_H_
 #define PLATFORMHANDLER_WIZ_DEBUG_H_
 
+#include <stdio.h>
+
 #include "port_common.h"
+#include "timerHandler.h"
 
 /** Define the debugging switch: on */
 #define DBG_ON                  1

@@ -7,6 +7,8 @@
 #include "uartHandler.h"
 #include "gpioHandler.h"
 
+#include "wizchip_conf.h"
+
 volatile uint16_t phylink_check_time_msec = 0;
 uint8_t flag_check_phylink = 0;
 uint8_t flag_hw_trig_enable = 0;
@@ -73,7 +75,7 @@ uint8_t get_hw_trig_pin(void)
     {
         hw_trig = GPIO_Input_Read(HW_TRIG_PIN);
         if(hw_trig != 0) return 1; // High
-        vTaskDelay(5);
+        sleep_ms(5);
     }
     return 0; // Low
 }

@@ -8,6 +8,7 @@
 #ifndef PLATFORMHANDLER_DNSHANDLER_H_
 #define PLATFORMHANDLER_DNSHANDLER_H_
 
+#include <time.h>
 
 // DNS non-block mode: DNS op states
 #define STATE_DNS_INIT            0
@@ -26,7 +27,7 @@ enum
     DNS_RET_STOPPED = 2
 };
 
-void DNS_init_handler(uint8_t s, uint8_t * buf, uint32_t (*tickFunc)(void));
+void DNS_init_handler(uint8_t s, uint8_t * buf, time_t (*tickFunc)(void));
 int8_t DNS_run_handler(uint8_t * dns_ip, uint8_t * name, uint8_t * ip_from_dns, uint32_t timeout);
 int8_t process_dns(void);
 int8_t get_ipaddr_from_dns(uint8_t * domain, uint8_t * ip_from_dns, uint32_t timeout);

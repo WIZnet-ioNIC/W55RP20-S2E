@@ -65,9 +65,13 @@ void disable_interrupts(void);
 void reset_peripherals(void);
 void jump_to_app(uint32_t app_addr);
 
+void display_Dev_Info_main(void);
+void display_Dev_Info_dhcp(void);
+void display_Dev_Info_dns(void);
+
 int device_bank_check(uint8_t bank_num);
 int device_bank_copy(void);
-
+uint8_t device_bank_update(void);
 uint8_t device_firmware_update(teDATASTORAGE stype); // Firmware update by Configuration tool / Flash to Flash
 
 // function for timer

@@ -1,3 +1,5 @@
+#include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include "common.h"
 #include "wizchip_conf.h"
@@ -1382,7 +1384,7 @@ void init_trigger_modeswitch(uint8_t mode)
         if(serial_common->serial_debug_en)
         {
             printf(" > SEG:AT Mode\r\n");
-            platform_uart_puts((uint8_t *)"SEG:AT Mode\r\n", sizeof("SEG:AT Mode\r\n"));
+            platform_uart_puts((uint8_t *)"SEG:AT Mode\r\n", strlen("SEG:AT Mode\r\n"));
         }
     }
     else // DEVICE_GW_MODE
@@ -1398,7 +1400,7 @@ void init_trigger_modeswitch(uint8_t mode)
         if(serial_common->serial_debug_en)
         {
             printf(" > SEG:GW Mode\r\n");
-            platform_uart_puts((uint8_t *)"SEG:GW Mode\r\n", sizeof("SEG:GW Mode\r\n"));
+            platform_uart_puts((uint8_t *)"SEG:GW Mode\r\n", strlen("SEG:GW Mode\r\n"));
         }
     }
     

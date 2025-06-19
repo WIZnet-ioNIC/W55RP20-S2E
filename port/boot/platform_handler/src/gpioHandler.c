@@ -5,6 +5,7 @@
 #include "ConfigData.h"
 #include "gpioHandler.h"
 #include "wizchip_conf.h"
+#include "seg.h"
 
 #ifdef __USE_USERS_GPIO__
   const uint16_t USER_IO_PIN[USER_IOn] =     {USER_IO_A_PIN, USER_IO_B_PIN};
@@ -83,16 +84,16 @@ void GPIO_Configuration_IRQ(uint16_t GPIO_Pin, USER_IO_IRQ GPIO_IRQ_Event)
     gpio_set_irq_enabled(GPIO_Pin, dev_irq_event, true);
 }
 
+static void platform_gpio_interrupt_callback(uint GPIO_Pin, uint32_t events)
+{
+    if (GPIO_Pin == FAC_RSTn_PIN)
+      factory_reset_pin_callback();
+}
+
 void GPIO_Configuration_Callback(void)
 {   
     gpio_set_irq_callback(platform_gpio_interrupt_callback);
     irq_set_enabled(IO_IRQ_BANK0, true);
-}
-
-static void platform_gpio_interrupt_callback(uint16_t GPIO_Pin, uint32_t events)
-{
-    if (GPIO_Pin == FAC_RSTn_PIN)
-      factory_reset_pin_callback();
 }
 
 /**

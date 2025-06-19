@@ -121,7 +121,6 @@ uint16_t debugSerial_dataTransfer(uint8_t * buf, uint16_t size, teDEBUGTYPE type
 // UART tx/rx and Ethernet tx/rx data transfer bytes counter
 void add_data_transfer_bytecount(teDATADIR dir, uint16_t len);
 
-
 // UART tx/rx and Ethernet tx/rx data transfer bytes counter
 void clear_data_transfer_bytecount(teDATADIR dir);
 void clear_data_transfer_megacount(teDATADIR dir);

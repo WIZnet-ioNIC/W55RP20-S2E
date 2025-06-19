@@ -1,6 +1,7 @@
 #include <string.h>
 #include "common.h"
 #include "ConfigData.h"
+#include "deviceHandler.h"
 #include "uartHandler.h"
 #include "gpioHandler.h"
 #include "seg.h"
@@ -107,6 +108,11 @@ void DATA0_UART_Configuration(void)
 
     // Set the TX and RX pins by using the function select on the GPIO
     // Set datasheet for more information on function select
+    gpio_init(DATA0_UART_TX_PIN);
+    gpio_init(DATA0_UART_RX_PIN);
+    gpio_init(DATA0_UART_CTS_PIN);
+    gpio_init(DATA0_UART_RTS_PIN);
+
     gpio_set_function(DATA0_UART_TX_PIN, GPIO_FUNC_UART);
     gpio_set_function(DATA0_UART_RX_PIN, GPIO_FUNC_UART);
     gpio_set_function(DATA0_UART_CTS_PIN, GPIO_FUNC_UART);

@@ -24,7 +24,7 @@ To develop and modify W55RP20-S2E, the development environment must be configure
 We recommend the following versions for successful build and development:
 
 - **pico-sdk**: `2.0.0`  
-- **ARM GCC Toolchain**: `13.2.Rel1`
+- **ARM GCC Toolchain**: `14.2.Rel1`
 
 > Using other versions of the toolchain may result in build errors.  
 

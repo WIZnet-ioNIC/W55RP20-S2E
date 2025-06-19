@@ -6,6 +6,7 @@
 #include "timerHandler.h"
 #include "uartHandler.h"
 #include "gpioHandler.h"
+#include "wizchip_conf.h"
 
 volatile uint16_t phylink_check_time_msec = 0;
 uint8_t flag_check_phylink = 0;

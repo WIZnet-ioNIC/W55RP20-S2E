@@ -2,6 +2,7 @@
 #include "common.h"
 #include "WIZnet_board.h"
 #include "timerHandler.h"
+#include "SSLInterface.h"
 #include "seg.h"
 #include "segcp.h"
 #include "deviceHandler.h"

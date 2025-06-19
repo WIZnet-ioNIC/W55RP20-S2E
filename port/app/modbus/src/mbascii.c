@@ -2,6 +2,7 @@
 #include "mbascii.h"
 #include "mbtcp.h"
 #include "common.h"
+#include "mbserial.h"
 
 volatile uint8_t mb_state_ascii_finish;
 extern uint8_t plus_count;

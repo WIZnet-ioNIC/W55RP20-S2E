@@ -3,7 +3,10 @@
 #include <task.h>
 #include <semphr.h>
 
+#include "port_common.h"
 #include "netHandler.h"
+#include "deviceHandler.h"
+#include "dnsHandler.h"
 #include "common.h"
 #include "ConfigData.h"
 #include "wizchip_conf.h"
@@ -12,6 +15,10 @@
 #include "seg.h"
 #include "WIZ5XXSR-RP_Debug.h"
 #include "socket.h"
+#include "w5x00_spi.h"
+#include "w5x00_gpio_irq.h"
+
+#include "gpioHandler.h"
 
 extern xSemaphoreHandle net_segcp_udp_sem;
 extern xSemaphoreHandle net_segcp_tcp_sem;
@@ -77,6 +84,7 @@ void net_status_task(void *argument)
                         if(process_dhcp() == DHCP_IP_LEASED) // DHCP success
                             flag_process_dhcp_success = ON;
                         else // DHCP failed
+                            dev_config->network_option.dhcp_use = 0;
                             Net_Conf(); // Set default static IP settings
                     }
                     display_Net_Info();

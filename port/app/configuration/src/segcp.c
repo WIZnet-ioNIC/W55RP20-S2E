@@ -1020,7 +1020,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         {
                             temp_buf = pvPortMalloc(ROOTCA_BUF_SIZE);
                             tmp_ptr = temp_buf;
-                            memset(tmp_ptr, NULL, ROOTCA_BUF_SIZE);
+                            memset(tmp_ptr, 0, ROOTCA_BUF_SIZE);
                             sprintf(tmp_ptr, "%s", treq+SEGCP_CMD_MAX);
                             tmp_ptr += strlen(tmp_ptr);
 
@@ -1056,7 +1056,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                                 }
                                 
                                 dev_config->ssl_option.rootca_len = tmp_ptr - temp_buf;
-                                temp_buf[dev_config->ssl_option.rootca_len] = NULL;
+                                temp_buf[dev_config->ssl_option.rootca_len] = 0;
 
                                 PRT_SEGCP("rootca_data = \r\n%s\r\n", temp_buf);
                                 
@@ -1083,7 +1083,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         {
                             temp_buf = pvPortMalloc(CLICA_BUF_SIZE);
                             tmp_ptr = temp_buf;
-                            memset(tmp_ptr, NULL, CLICA_BUF_SIZE);
+                            memset(tmp_ptr, 0, CLICA_BUF_SIZE);
                             sprintf(tmp_ptr, "%s", treq+SEGCP_CMD_MAX);
 
                             tmp_ptr += strlen(tmp_ptr);
@@ -1120,7 +1120,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                                 }
                             
                                 dev_config->ssl_option.clica_len = tmp_ptr - temp_buf;
-                                temp_buf[dev_config->ssl_option.clica_len] = NULL;
+                                temp_buf[dev_config->ssl_option.clica_len] = 0;
                                 ret_2 = check_ca(temp_buf, dev_config->ssl_option.clica_len);
                                 if (ret_2 < 0)
                                     ret |= SEGCP_RET_ERR_INVALIDPARAM;
@@ -1145,7 +1145,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         {
                             temp_buf = pvPortMalloc(PKEY_BUF_SIZE);
                             tmp_ptr = temp_buf;
-                            memset(tmp_ptr, NULL, PKEY_BUF_SIZE);
+                            memset(tmp_ptr, 0, PKEY_BUF_SIZE);
                             sprintf(tmp_ptr, "%s", treq+SEGCP_CMD_MAX);
 
                             tmp_ptr += strlen(tmp_ptr);
@@ -1182,7 +1182,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                                 }
                                     
                                 dev_config->ssl_option.pkey_len = tmp_ptr - temp_buf;
-                                temp_buf[dev_config->ssl_option.pkey_len] = NULL;
+                                temp_buf[dev_config->ssl_option.pkey_len] = 0;
                                 ret_2 = check_pkey(&s2e_tlsContext, temp_buf, dev_config->ssl_option.pkey_len);
                                 if (ret_2 < 0)
                                     ret |= SEGCP_RET_ERR_INVALIDPARAM;
@@ -1535,7 +1535,7 @@ uint16_t uart_get_commandline(uint8_t* buf, uint16_t maxSize)
 
     if(len >= 4) // Minimum of command: 4-bytes, e.g., MC\r\n (MC$0d$0a)
     {
-        memset(buf, NULL, CONFIG_BUF_SIZE);
+        memset(buf, 0, CONFIG_BUF_SIZE);
         for(i = 0; i < maxSize; i++)
         {
             buf[i] = platform_uart_getc();

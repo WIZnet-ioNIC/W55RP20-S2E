@@ -42,6 +42,8 @@
 #include "gpioHandler.h"
 #include "storageHandler.h"
 #include "wizchip_conf.h"
+#include "w5x00_spi.h"
+#include "seg.h"
 
 /* Private typedef -----------------------------------------------------------*/
 
