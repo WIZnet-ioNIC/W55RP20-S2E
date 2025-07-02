@@ -64,6 +64,7 @@ uint8_t flag_auth_time = SEG_DISABLE; // TCP_SERVER_MODE only
 uint8_t flag_send_keepalive = SEG_DISABLE;
 uint8_t flag_first_keepalive = SEG_DISABLE;
 uint8_t flag_inactivity = SEG_DISABLE;
+uint8_t flag_first_data_after_connect = SEG_DISABLE; // For immediate transmission of first data after connection
 
 // User's buffer / size idx
 extern uint8_t g_send_buf[DATA_BUF_SIZE];
@@ -1237,9 +1238,13 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                 else
                 {
                     if(get_uart_buffer_usedsize() || u2e_size)
+                    {
+                        // Set flag to enable immediate transmission of first data after connection
+                        flag_first_data_after_connect = SEG_ENABLE;
                         xSemaphoreGive(seg_u2e_sem);
+                    }
                 }
-                
+
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
                 reconnection_count = 0;
 #endif
@@ -1440,11 +1445,15 @@ uint16_t get_serial_data(void)
     }
     
     // Packing delimiter: time option
-    if((serial_data_packing->packing_time != 0) && (u2e_size != 0) && (flag_serial_input_time_elapse))
+    if((serial_data_packing->packing_time != 0) && (u2e_size != 0) && (flag_serial_input_time_elapse || flag_first_data_after_connect))
     {
         if(get_uart_buffer_usedsize() == 0)
             flag_serial_input_time_elapse = SEG_DISABLE; // ##
         
+        // Clear the first data flag after using it
+        if(flag_first_data_after_connect) {
+            flag_first_data_after_connect = SEG_DISABLE;
+        }
         return u2e_size;
     }
     
@@ -1742,7 +1751,7 @@ uint8_t check_modeswitch_trigger(uint8_t ch)
     switch(triggercode_idx)
     {
         case 0:
-            if((ch == serial_command->serial_trigger[triggercode_idx]) && (modeswitch_time == modeswitch_gap_time)) // comparison succeed
+            if((ch == serial_command->serial_trigger[triggercode_idx]) && (modeswitch_time >= modeswitch_gap_time)) // comparison succeed
             {
                 ch_tmp[triggercode_idx] = ch;
                 triggercode_idx++;
@@ -2122,6 +2131,10 @@ void seg_timer_msec(void)
             enable_serial_input_timer = 0;
             flag_serial_input_time_elapse = SEG_ENABLE;
 
+            // Debug: packing_time 만료 시 로그 출력
+            PRT_SEG(" > PACKING_TIME EXPIRED: u2e_size=%d, mode=%d\r\n",
+                    u2e_size, network_connection->working_mode);
+
             switch (network_connection->working_mode)
             {
                 case TCP_CLIENT_MODE:
@@ -2142,7 +2155,7 @@ void seg_timer_msec(void)
     // Mode switch timer: Time count routine (msec) (GW mode <-> Serial command mode, for s/w mode switch trigger code)
     if(modeswitch_time < modeswitch_gap_time) modeswitch_time++;
 
-    if((enable_modeswitch_timer) && (modeswitch_time == modeswitch_gap_time))
+    if((enable_modeswitch_timer) && (modeswitch_time >= modeswitch_gap_time))
     {
         // result of command mode trigger code comparison
         if(triggercode_idx == 3) {
@@ -2185,8 +2198,15 @@ void seg_u2e_task (void *argument)  {
         switch (serial_mode)
         {
             case SEG_SERIAL_PROTOCOL_NONE :
-                if(get_uart_buffer_usedsize() || u2e_size)
+                if(get_uart_buffer_usedsize() || u2e_size || flag_serial_input_time_elapse)
                 {
+                    // Debug: packing_time 만료 시 로그 출력
+                    if(flag_serial_input_time_elapse)
+                    {
+                        PRT_SEG(" > PACKING_TIME EXPIRED: uart_buf=%d, u2e_size=%d\r\n", 
+                                get_uart_buffer_usedsize(), u2e_size);
+                    }
+
                     if ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state == MIXED_SERVER) && (ST_OPEN == get_device_status())) {
                         process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
                         mixed_state = MIXED_CLIENT;
