@@ -64,7 +64,6 @@ uint8_t flag_auth_time = SEG_DISABLE; // TCP_SERVER_MODE only
 uint8_t flag_send_keepalive = SEG_DISABLE;
 uint8_t flag_first_keepalive = SEG_DISABLE;
 uint8_t flag_inactivity = SEG_DISABLE;
-uint8_t flag_first_data_after_connect = SEG_DISABLE; // For immediate transmission of first data after connection
 
 // User's buffer / size idx
 extern uint8_t g_send_buf[DATA_BUF_SIZE];
@@ -1238,11 +1237,7 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                 else
                 {
                     if(get_uart_buffer_usedsize() || u2e_size)
-                    {
-                        // Set flag to enable immediate transmission of first data after connection
-                        flag_first_data_after_connect = SEG_ENABLE;
                         xSemaphoreGive(seg_u2e_sem);
-                    }
                 }
 
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
@@ -1394,6 +1389,7 @@ void uart_to_ether(uint8_t sock)
 uint16_t get_serial_data(void)
 {
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *)&(get_DevConfig_pointer()->serial_data_packing);
+    struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
 
     uint16_t i;
     uint16_t len;
@@ -1445,15 +1441,13 @@ uint16_t get_serial_data(void)
     }
     
     // Packing delimiter: time option
-    if((serial_data_packing->packing_time != 0) && (u2e_size != 0) && (flag_serial_input_time_elapse || flag_first_data_after_connect))
+    // Allow immediate transmission for first data after connection (when serial_input_time is very small) or when packing_time expires
+    if((serial_data_packing->packing_time != 0) && (u2e_size != 0) && 
+       (flag_serial_input_time_elapse || serial_input_time <= 1))
     {
         if(get_uart_buffer_usedsize() == 0)
             flag_serial_input_time_elapse = SEG_DISABLE; // ##
         
-        // Clear the first data flag after using it
-        if(flag_first_data_after_connect) {
-            flag_first_data_after_connect = SEG_DISABLE;
-        }
         return u2e_size;
     }
     
