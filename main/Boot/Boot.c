@@ -148,7 +148,7 @@ int main(void)
     printf("jump addr = 0x%08X\r\n", FLASH_START_ADDR_BANK0);
     sleep_ms(100);
 
-    disable_interrupts();
+    device_disable_interrupts();
     reset_peripherals();
     jump_to_app(FLASH_START_ADDR_BANK0);
 
