@@ -1441,16 +1441,13 @@ uint16_t get_serial_data(void)
     }
     
     // Packing delimiter: time option
-    // Allow immediate transmission for first data after connection (when serial_input_time is very small) or when packing_time expires
-    if((serial_data_packing->packing_time != 0) && (u2e_size != 0) && 
-       (flag_serial_input_time_elapse || serial_input_time <= 1))
+    if((serial_data_packing->packing_time != 0) && (u2e_size != 0) && (get_uart_buffer_usedsize() == 0))
     {
-        if(get_uart_buffer_usedsize() == 0)
-            flag_serial_input_time_elapse = SEG_DISABLE; // ##
-        
+        if(flag_serial_input_time_elapse)
+                flag_serial_input_time_elapse = SEG_DISABLE; // ##
         return u2e_size;
     }
-    
+
     return 0;
 }
 
@@ -2125,10 +2122,6 @@ void seg_timer_msec(void)
             enable_serial_input_timer = 0;
             flag_serial_input_time_elapse = SEG_ENABLE;
 
-            // Debug: packing_time 만료 시 로그 출력
-            PRT_SEG(" > PACKING_TIME EXPIRED: u2e_size=%d, mode=%d\r\n",
-                    u2e_size, network_connection->working_mode);
-
             switch (network_connection->working_mode)
             {
                 case TCP_CLIENT_MODE:
@@ -2194,13 +2187,6 @@ void seg_u2e_task (void *argument)  {
             case SEG_SERIAL_PROTOCOL_NONE :
                 if(get_uart_buffer_usedsize() || u2e_size || flag_serial_input_time_elapse)
                 {
-                    // Debug: packing_time 만료 시 로그 출력
-                    if(flag_serial_input_time_elapse)
-                    {
-                        PRT_SEG(" > PACKING_TIME EXPIRED: uart_buf=%d, u2e_size=%d\r\n", 
-                                get_uart_buffer_usedsize(), u2e_size);
-                    }
-
                     if ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state == MIXED_SERVER) && (ST_OPEN == get_device_status())) {
                         process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
                         mixed_state = MIXED_CLIENT;
