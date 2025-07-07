@@ -1434,7 +1434,7 @@ uint8_t check_modeswitch_trigger(uint8_t ch)
     switch(triggercode_idx)
     {
         case 0:
-            if((ch == serial_command->serial_trigger[triggercode_idx]) && (modeswitch_time >= modeswitch_gap_time)) // comparison succeed
+            if((ch == serial_command->serial_trigger[triggercode_idx]) && (modeswitch_time == modeswitch_gap_time)) // comparison succeed
             {
                 ch_tmp[triggercode_idx] = ch;
                 triggercode_idx++;
@@ -1830,19 +1830,6 @@ void seg_timer_msec(void)
             serial_input_time = 0;
             enable_serial_input_timer = 0;
             flag_serial_input_time_elapse = SEG_ENABLE;
-
-            // Force trigger data transmission when packing time expires
-            if(u2e_size > 0)
-            {
-                struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
-
-                // Trigger uart_to_ether based on current network mode and status
-                if(((get_device_status() == ST_CONNECT) || (network_connection->working_mode == UDP_MODE)) &&
-                   (opmode == DEVICE_GW_MODE))
-                {
-                    uart_to_ether(0);  // SOCK_DATA = 0
-                }
-            }
         }
     }
 
@@ -1858,7 +1845,7 @@ void seg_timer_msec(void)
     // Mode switch timer: Time count routine (msec) (GW mode <-> Serial command mode, for s/w mode switch trigger code)
     if(modeswitch_time < modeswitch_gap_time) modeswitch_time++;
 
-    if((enable_modeswitch_timer) && (modeswitch_time >= modeswitch_gap_time))
+    if((enable_modeswitch_timer) && (modeswitch_time == modeswitch_gap_time))
     {
         // result of command mode trigger code comparison
         if(triggercode_idx == 3)
