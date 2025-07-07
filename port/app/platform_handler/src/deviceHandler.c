@@ -86,7 +86,7 @@ uint8_t get_reset_flag(void)
   return reset_flag;
 }
 
-void device_disable_interrupts(void)
+void disable_interrupts(void)
 {
   SysTick->CTRL &= ~1;
 

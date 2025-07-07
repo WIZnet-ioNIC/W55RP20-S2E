@@ -61,7 +61,7 @@ void device_raw_reboot(void);
 void device_wdt_reset(void);
 void reset_timer_callback( TimerHandle_t xTimer );
 uint8_t get_reset_flag(void);
-void device_disable_interrupts(void);
+void disable_interrupts(void);
 void reset_peripherals(void);
 void jump_to_app(uint32_t app_addr);
 

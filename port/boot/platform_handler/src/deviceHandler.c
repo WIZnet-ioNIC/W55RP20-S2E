@@ -75,7 +75,7 @@ void device_raw_reboot(void)
     while(1);
 }
 
-void device_disable_interrupts(void)
+void disable_interrupts(void)
 {
   SysTick->CTRL &= ~1;
 
