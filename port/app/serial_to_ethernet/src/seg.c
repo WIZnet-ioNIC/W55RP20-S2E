@@ -378,6 +378,12 @@ void proc_SEG_tcp_client(uint8_t sock)
         case SOCK_FIN_WAIT:
         case SOCK_CLOSED:
             set_device_status(ST_OPEN);
+            // Send remaining data in UART buffer or u2e_size if any
+            while(get_uart_buffer_usedsize() || u2e_size || flag_serial_input_time_elapse)
+            {
+                uart_to_ether(sock);
+                if(get_uart_buffer_usedsize() == 0 && u2e_size == 0) break;
+            }
             process_socket_termination(sock, SOCK_TERMINATION_DELAY);
 
             u2e_size = 0;
@@ -1239,7 +1245,7 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                     if(get_uart_buffer_usedsize() || u2e_size)
                         xSemaphoreGive(seg_u2e_sem);
                 }
-                
+
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
                 reconnection_count = 0;
 #endif
@@ -1389,6 +1395,7 @@ void uart_to_ether(uint8_t sock)
 uint16_t get_serial_data(void)
 {
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *)&(get_DevConfig_pointer()->serial_data_packing);
+    struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
 
     uint16_t i;
     uint16_t len;
@@ -1440,14 +1447,13 @@ uint16_t get_serial_data(void)
     }
     
     // Packing delimiter: time option
-    if((serial_data_packing->packing_time != 0) && (u2e_size != 0) && (flag_serial_input_time_elapse))
+    if((serial_data_packing->packing_time != 0) && (u2e_size != 0) && (get_uart_buffer_usedsize() == 0))
     {
-        if(get_uart_buffer_usedsize() == 0)
-            flag_serial_input_time_elapse = SEG_DISABLE; // ##
-        
+        if(flag_serial_input_time_elapse)
+                flag_serial_input_time_elapse = SEG_DISABLE; // ##
         return u2e_size;
     }
-    
+
     return 0;
 }
 
@@ -1742,7 +1748,7 @@ uint8_t check_modeswitch_trigger(uint8_t ch)
     switch(triggercode_idx)
     {
         case 0:
-            if((ch == serial_command->serial_trigger[triggercode_idx]) && (modeswitch_time == modeswitch_gap_time)) // comparison succeed
+            if((ch == serial_command->serial_trigger[triggercode_idx]) && (modeswitch_time >= modeswitch_gap_time)) // comparison succeed
             {
                 ch_tmp[triggercode_idx] = ch;
                 triggercode_idx++;
@@ -2142,7 +2148,7 @@ void seg_timer_msec(void)
     // Mode switch timer: Time count routine (msec) (GW mode <-> Serial command mode, for s/w mode switch trigger code)
     if(modeswitch_time < modeswitch_gap_time) modeswitch_time++;
 
-    if((enable_modeswitch_timer) && (modeswitch_time == modeswitch_gap_time))
+    if((enable_modeswitch_timer) && (modeswitch_time >= modeswitch_gap_time))
     {
         // result of command mode trigger code comparison
         if(triggercode_idx == 3) {
@@ -2185,7 +2191,7 @@ void seg_u2e_task (void *argument)  {
         switch (serial_mode)
         {
             case SEG_SERIAL_PROTOCOL_NONE :
-                if(get_uart_buffer_usedsize() || u2e_size)
+                if(get_uart_buffer_usedsize() || u2e_size || flag_serial_input_time_elapse)
                 {
                     if ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state == MIXED_SERVER) && (ST_OPEN == get_device_status())) {
                         process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
