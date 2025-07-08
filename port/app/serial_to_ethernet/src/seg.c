@@ -378,6 +378,12 @@ void proc_SEG_tcp_client(uint8_t sock)
         case SOCK_FIN_WAIT:
         case SOCK_CLOSED:
             set_device_status(ST_OPEN);
+            // Send remaining data in UART buffer or u2e_size if any
+            while(get_uart_buffer_usedsize() || u2e_size || flag_serial_input_time_elapse)
+            {
+                uart_to_ether(sock);
+                if(get_uart_buffer_usedsize() == 0 && u2e_size == 0) break;
+            }
             process_socket_termination(sock, SOCK_TERMINATION_DELAY);
 
             u2e_size = 0;
