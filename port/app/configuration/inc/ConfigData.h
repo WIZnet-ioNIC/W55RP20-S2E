@@ -107,7 +107,6 @@ struct __serial_command {
     uint8_t serial_command;         // Serial Command Mode enable
     uint8_t serial_trigger[3];      // Serial Command mode entry trigger code (default: +++)
     uint8_t serial_command_echo;    // Serial Command echoback enable
-    uint8_t serial_connect_data[4]; // Serial Send data when connected
 } __attribute__((packed));
 
 struct __user_io_info {
@@ -132,6 +131,7 @@ struct __device_option {
     uint8_t pw_setting[10];
     uint8_t device_alias[DEVICE_ALIAS_SIZE];
     uint8_t device_group[DEVICE_GROUP_SIZE];
+    uint8_t device_connect_data[4]; // Serial Send data when connected
 //    uint8_t ntp_domain_name[NTP_SERVER_DOMAIN_CNT][NTP_SERVER_DOMAIN_SIZE];
 } __attribute__((packed));
 #endif
