@@ -44,6 +44,7 @@ void set_DevConfig_to_factory_value(void)
     // WIZ5XXSR-RP : 401
     // W55RP20-S2E : 411
     // W232N       : 421
+    // IP20        : 431
 
     dev_config.device_common.device_type[0] = 0x04;
 #if (DEVICE_BOARD_NAME == WIZ5XXSR_RP)
@@ -52,6 +53,8 @@ void set_DevConfig_to_factory_value(void)
     dev_config.device_common.device_type[1] = 0x01;
 #elif (DEVICE_BOARD_NAME == W232N)
     dev_config.device_common.device_type[1] = 0x02;
+#elif (DEVICE_BOARD_NAME == IP20)
+    dev_config.device_common.device_type[1] = 0x03;
 #endif
     dev_config.device_common.device_type[2] = 0x01;
 

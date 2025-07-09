@@ -129,6 +129,24 @@ void net_status_task(void *argument)
 #else   //device reset
                         device_raw_reboot();
 #endif
+                        PRT_INFO("PHY_LINK_OFF W5500 RESET\r\n");
+                        wizchip_reset();
+                        wizchip_initialize();
+                        Net_Conf();
+
+                        switch(dev_config->network_connection.working_mode)
+                        {
+                            case TCP_CLIENT_MODE:
+                            case TCP_SERVER_MODE:
+                            case TCP_MIXED_MODE:
+                            case SSL_TCP_CLIENT_MODE:
+                            case UDP_MODE:
+                              wizchip_gpio_interrupt_initialize(SEG_DATA0_SOCK, SIK_RECEIVED);
+                              break;
+
+                            default:
+                              break;
+                        }
                         break;
                     }
                     vTaskDelay(2000);

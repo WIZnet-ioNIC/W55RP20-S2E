@@ -107,6 +107,7 @@ struct __serial_command {
     uint8_t serial_command;         // Serial Command Mode enable
     uint8_t serial_trigger[3];      // Serial Command mode entry trigger code (default: +++)
     uint8_t serial_command_echo;    // Serial Command echoback enable
+    uint8_t serial_connect_data[4]; // Serial Send data when connected
 } __attribute__((packed));
 
 struct __user_io_info {

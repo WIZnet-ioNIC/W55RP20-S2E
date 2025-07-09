@@ -649,7 +649,11 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         break;
                     case SEGCP_OP: 
                         tmp_byte = is_hex(*param);
+#ifdef __USE_S2E_OVER_TLS__
                         if(param_len != 1 || tmp_byte > MQTTS_CLIENT_MODE)
+#else
+                        if(param_len != 1 || tmp_byte == SSL_TCP_CLIENT_MODE || tmp_byte >= MQTTS_CLIENT_MODE)
+#endif
                             ret |= SEGCP_RET_ERR_INVALIDPARAM;
                         else
                         {
@@ -1016,6 +1020,8 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         if (0 == device_bank_check(tmp_byte))
                           dev_config->firmware_update.fwup_copy_flag = tmp_byte;
                         break;
+
+#ifdef __USE_S2E_OVER_TLS__
                     case SEGCP_OC: // rootca
                         {
                             temp_buf = pvPortMalloc(ROOTCA_BUF_SIZE);
@@ -1202,7 +1208,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                             return ret;
                         }
                         break;
-
+#endif // __USE_S2E_OVER_TLS__
 
                     case SEGCP_FW: // f/w update
                         tmp_long = atol(param);

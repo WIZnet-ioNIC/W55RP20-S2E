@@ -139,7 +139,13 @@ uint8_t set_devinfo(uint8_t * uri)
 	if((param = get_http_param_value((char *)uri, "opmode", temp_buf)))
 	{
 	  dev_config->network_connection.working_mode = ATOI(param, 10);
-	}
+#ifndef __USE_S2E_OVER_TLS__
+    if(dev_config->network_connection.working_mode == SSL_TCP_CLIENT_MODE || dev_config->network_connection.working_mode == MQTTS_CLIENT_MODE)
+    {
+      dev_config->network_connection.working_mode = TCP_SERVER_MODE;
+    }
+#endif
+  }
 
   if((param = get_http_param_value((char *)uri, "lport", temp_buf)))
   {

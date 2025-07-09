@@ -168,11 +168,15 @@ int8_t mqtt_transport_init(uint8_t sock, mqtt_config_t *mqtt_config, uint8_t cle
         transport_interface->send = mqtt_write;
         transport_interface->recv = mqtt_read;
     }
+
+#ifdef __USE_S2E_OVER_TLS__
     else
     {
         transport_interface->send = mqtts_write;
         transport_interface->recv = mqtts_read;
     }
+#endif
+
     mqtt_config->mqtt_fixed_buf.pBuffer = recv_buf;
     mqtt_config->mqtt_fixed_buf.size = recv_buf_len;
     
@@ -260,23 +264,22 @@ int mqtt_transport_close(uint8_t sock, mqtt_config_t *mqtt_config)
 {
     int ret;
 
+#ifdef __USE_S2E_OVER_TLS__
     if (mqtt_config->ssl_flag == true)
     {
         wiz_tls_close_notify(&s2e_tlsContext);
         wiz_tls_session_reset(&s2e_tlsContext);
         wiz_tls_deinit(&s2e_tlsContext);
     }
+#endif
     mqtt_config->subscribe_count = 0;
 //    ret = disconnect(sock);
     close(sock);
-    set_wiz_tls_init_state(DISABLE);
 
-#if 0
-    if (ret == SOCK_OK)
-        return 0;
-    else
-        return -1;
+#ifdef __USE_S2E_OVER_TLS__
+    set_wiz_tls_init_state(DISABLE);
 #endif
+
     return 0;
 }
 
@@ -350,6 +353,7 @@ int32_t mqtt_read(NetworkContext_t *pNetworkContext, void *pBuffer, size_t bytes
     return size;
 }
 
+#ifdef __USE_S2E_OVER_TLS__
 int32_t mqtts_write(NetworkContext_t *pNetworkContext, const void *pBuffer, size_t bytesToSend)
 {
     int32_t size = 0;
@@ -369,3 +373,4 @@ int32_t mqtts_read(NetworkContext_t *pNetworkContext, void *pBuffer, size_t byte
 
     return size;
 }
+#endif

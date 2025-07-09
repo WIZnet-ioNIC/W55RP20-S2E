@@ -30,7 +30,7 @@ target_sources(BOOT_IOLIBRARY_FILES PUBLIC
         ${BOOT_PORT_DIR}/ioLibrary_Driver/src/w5x00_spi.c
         )
 
-if(${BOARD_NAME} STREQUAL W55RP20_S2E OR ${BOARD_NAME} STREQUAL W232N)
+if(${BOARD_NAME} STREQUAL W55RP20_S2E OR ${BOARD_NAME} STREQUAL W232N OR ${BOARD_NAME} STREQUAL IP20)
 pico_generate_pio_header(BOOT_IOLIBRARY_FILES ${BOOT_PORT_DIR}/ioLibrary_Driver/src/wiznet_spi_pio.pio)
 
 target_sources(BOOT_IOLIBRARY_FILES PUBLIC 

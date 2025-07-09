@@ -1,3 +1,4 @@
+#include <stdlib.h>
 #include <string.h>
 #include "common.h"
 #include "wizchip_conf.h"
@@ -175,7 +176,7 @@ void do_seg(uint8_t sock)
 #ifdef __USE_S2E_OVER_TLS__                
             case MQTTS_CLIENT_MODE:
                 proc_SEG_mqtts_client(sock);
-                break;    
+                break;
 #endif
 
             default:
@@ -595,6 +596,8 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock)
                     wiz_tls_deinit(&s2e_tlsContext);
                     set_wiz_tls_init_state(DISABLE);
                 }
+                network_connection->working_mode = TCP_SERVER_MODE; // Change to TCP_SERVER_MODE
+                PRT_SEG("Operation mode changed to TCP_SERVER_MODE\r\n");
             }
             break;
 
@@ -777,6 +780,7 @@ void proc_SEG_mqtt_client(uint8_t sock)
     }
 }
 
+#ifdef __USE_S2E_OVER_TLS__
 void proc_SEG_mqtts_client(uint8_t sock)
 {
     struct __tcp_option *tcp_option = (struct __tcp_option *)&(get_DevConfig_pointer()->tcp_option);
@@ -985,6 +989,8 @@ void proc_SEG_mqtts_client(uint8_t sock)
                     wiz_tls_deinit(&s2e_tlsContext);
                     set_wiz_tls_init_state(DISABLE);
                 }
+                network_connection->working_mode = TCP_SERVER_MODE; // Change to TCP_SERVER_MODE
+                PRT_SEG("Operation mode changed to TCP_SERVER_MODE\r\n");
             }
             break;
 
@@ -993,6 +999,7 @@ void proc_SEG_mqtts_client(uint8_t sock)
             break;
     }
 }
+#endif // __USE_S2E_OVER_TLS__
 
 void proc_SEG_tcp_server(uint8_t sock)
 {
@@ -1226,6 +1233,7 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                 if(mixed_state == MIXED_SERVER)
                 {
                     // Connection Password option: TCP server mode only (+ mixed_server)
+                    uart_rx_flush();
                     flag_auth_time = SEG_DISABLE;
                     if(tcp_option->pw_connect_en == SEG_ENABLE)
                     {
@@ -1236,6 +1244,8 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                 }
                 else
                 {
+                    // Mixed-mode flag switching in advance
+					mixed_state = MIXED_SERVER;
                     if(get_uart_buffer_usedsize() || u2e_size)
                         xSemaphoreGive(seg_u2e_sem);
                 }
@@ -1499,8 +1509,8 @@ void ether_to_uart(uint8_t sock)
 #ifdef __USE_S2E_OVER_TLS__
                     if (network_connection->working_mode == SSL_TCP_CLIENT_MODE)
                         e2u_size = wiz_tls_read(&s2e_tlsContext, g_recv_buf, len);
-#endif
                     else
+#endif
                         e2u_size = recv(sock, g_recv_buf, len);
                 }
                 reg_val = SIK_RECEIVED & 0x00FF;
@@ -1627,10 +1637,11 @@ uint8_t process_socket_termination(uint8_t sock, uint32_t timeout)
     int8_t ret;
     uint8_t sock_status = getSn_SR(sock);
     uint32_t tickStart = millis();
-    uint16_t reg_val;
     
     timers_stop();
-    reset_SEG_timeflags();
+    if (!(network_connection->working_mode == TCP_MIXED_MODE && mixed_state == MIXED_CLIENT)) {
+        reset_SEG_timeflags();
+    }
     
 #ifdef __USE_S2E_OVER_TLS__
     if(get_wiz_tls_init_state() == ENABLE) {
@@ -1742,7 +1753,7 @@ uint8_t check_modeswitch_trigger(uint8_t ch)
     switch(triggercode_idx)
     {
         case 0:
-            if((ch == serial_command->serial_trigger[triggercode_idx]) && (modeswitch_time == modeswitch_gap_time)) // comparison succeed
+            if((ch == serial_command->serial_trigger[triggercode_idx]) && (modeswitch_time >= modeswitch_gap_time)) // comparison succeed
             {
                 ch_tmp[triggercode_idx] = ch;
                 triggercode_idx++;
@@ -1752,7 +1763,7 @@ uint8_t check_modeswitch_trigger(uint8_t ch)
             
         case 1:
         case 2:
-            if((ch == serial_command->serial_trigger[triggercode_idx]) && (modeswitch_time < modeswitch_gap_time)) // comparison succeed
+            if((ch == serial_command->serial_trigger[triggercode_idx]) && (modeswitch_time <= modeswitch_gap_time)) // comparison succeed
             {
                 ch_tmp[triggercode_idx] = ch;
                 triggercode_idx++;
@@ -2142,7 +2153,7 @@ void seg_timer_msec(void)
     // Mode switch timer: Time count routine (msec) (GW mode <-> Serial command mode, for s/w mode switch trigger code)
     if(modeswitch_time < modeswitch_gap_time) modeswitch_time++;
 
-    if((enable_modeswitch_timer) && (modeswitch_time == modeswitch_gap_time))
+    if((enable_modeswitch_timer) && (modeswitch_time >= modeswitch_gap_time))
     {
         // result of command mode trigger code comparison
         if(triggercode_idx == 3) {
@@ -2190,6 +2201,7 @@ void seg_u2e_task (void *argument)  {
                     if ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state == MIXED_SERVER) && (ST_OPEN == get_device_status())) {
                         process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
                         mixed_state = MIXED_CLIENT;
+                        xSemaphoreGive(seg_sem);
                     }
                     else if((ST_CONNECT == get_device_status()) || network_connection->working_mode == UDP_MODE)
                         uart_to_ether(SEG_DATA0_SOCK);
