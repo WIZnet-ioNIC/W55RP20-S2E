@@ -19,12 +19,15 @@
 #include "SSLInterface.h"
 #include "timerHandler.h"
 #include "util.h"
+#include "core_mqtt_state.h"
 
 /**
  * ----------------------------------------------------------------------------------------------------
  * Macros
  * ----------------------------------------------------------------------------------------------------
  */
+#define MQTT_INCOMING_PUB_RECORD_MAX 16
+#define MQTT_OUTGOING_PUBREL_RECORD_MAX 16
 
 /**
  * ----------------------------------------------------------------------------------------------------
@@ -34,6 +37,8 @@
 extern wiz_tls_context s2e_tlsContext;
 void (*user_sub_callback)(uint8_t *, uint32_t);
 
+MQTTPubAckInfo_t incomingPubAckRecords[MQTT_INCOMING_PUB_RECORD_MAX];
+MQTTPubAckInfo_t outgoingPubRelRecords[MQTT_OUTGOING_PUBREL_RECORD_MAX];
 
 /**
  * ----------------------------------------------------------------------------------------------------
@@ -201,6 +206,19 @@ int8_t mqtt_transport_init(uint8_t sock, mqtt_config_t *mqtt_config, uint8_t cle
     else
     {
         printf("MQTT initialization is success\n");
+    }
+
+    ret = MQTT_InitStatefulQoS(
+            &mqtt_config->mqtt_context,
+            incomingPubAckRecords, MQTT_INCOMING_PUB_RECORD_MAX,
+            outgoingPubRelRecords, MQTT_OUTGOING_PUBREL_RECORD_MAX
+        );
+
+    if (ret != 0)
+    {
+        mqtt_transport_close(sock, mqtt_config);
+        printf("MQTT_InitStatefulQoS error : %d\n", ret);
+        return -1;
     }
     return 0;
 }
