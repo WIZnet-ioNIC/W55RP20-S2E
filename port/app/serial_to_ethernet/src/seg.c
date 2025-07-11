@@ -112,6 +112,7 @@ TransportInterface_t g_transport_interface;
 mqtt_config_t g_mqtt_config;
 
 /* Private functions prototypes ----------------------------------------------*/
+void send_device_connect_data(const char* mode_str);
 void proc_SEG_tcp_client(uint8_t sock);
 void proc_SEG_tcp_server(uint8_t sock);
 void proc_SEG_tcp_mixed(uint8_t sock);
@@ -361,6 +362,10 @@ void proc_SEG_tcp_client(uint8_t sock)
                         xTimerChangePeriod(seg_keepalive_timer, pdMS_TO_TICKS(tcp_option->keepalive_wait_time), 0);
                     }
                 }
+
+                // Send device_connect_data if configured (immediately after connection)
+                send_device_connect_data("tcpcl");
+
             }
             break;
         
@@ -532,6 +537,9 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock)
                     }
                 }
                 
+                // Send device_connect_data if configured (immediately after connection)
+                send_device_connect_data("ssl_tcpcl");
+
                 first_established = 0;
             }
             break;
@@ -900,7 +908,7 @@ void proc_SEG_mqtts_client(uint8_t sock)
                     getsockopt(sock, SO_DESTPORT, &destport);
                     PRT_SEG(" > SEG:CONNECTED TO - %d.%d.%d.%d : %d\r\n", destip[0], destip[1], destip[2], destip[3], destport);
                 }
-                
+
                 if(serial_mode == SEG_SERIAL_PROTOCOL_NONE)
                     uart_rx_flush();
                 set_device_status(ST_CONNECT);
@@ -921,6 +929,7 @@ void proc_SEG_mqtts_client(uint8_t sock)
                         xTimerChangePeriod(seg_keepalive_timer, pdMS_TO_TICKS(tcp_option->keepalive_wait_time), 0);
                     }
                 }
+
 
                 first_established = 0;
             }
@@ -1077,6 +1086,8 @@ void proc_SEG_tcp_server(uint8_t sock)
                       seg_auth_timer = xTimerCreate("seg_auth_timer", pdMS_TO_TICKS(MAX_CONNECTION_AUTH_TIME), pdFALSE, 0, auth_timer_callback);
                     xTimerStart(seg_auth_timer, 0);
                 }
+                // Send device_connect_data if configured (immediately after connection)
+                send_device_connect_data("tcpsv");
             }
             break;
 
@@ -1241,11 +1252,18 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                           seg_auth_timer = xTimerCreate("seg_auth_timer", pdMS_TO_TICKS(MAX_CONNECTION_AUTH_TIME), pdTRUE, 0, auth_timer_callback);
                         xTimerStart(seg_auth_timer, 0);
                     }
+
+                    // Send device_connect_data if configured (immediately after connection in server mode)
+                    send_device_connect_data("tcpmixed_server");
                 }
                 else
                 {
                     // Mixed-mode flag switching in advance
 					mixed_state = MIXED_SERVER;
+
+                    // Send device_connect_data if configured (immediately after connection in client mode)
+                    send_device_connect_data("tcpmixed_client");
+
                     if(get_uart_buffer_usedsize() || u2e_size)
                         xSemaphoreGive(seg_u2e_sem);
                 }
@@ -1589,6 +1607,24 @@ void ether_to_uart(uint8_t sock)
             }
         }
     }while(e2u_size);
+}
+
+
+void send_device_connect_data(const char* mode_str)
+{
+    struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *)&(get_DevConfig_pointer()->serial_data_packing);
+    struct __serial_common *serial_common = (struct __serial_common *)&(get_DevConfig_pointer()->serial_common);
+
+    // Check if device_connect_data is configured
+    if(serial_data_packing->device_connect_data[0] != 0)
+    {
+        // Send the device_connect_data to UART
+        uint16_t len = strlen((char *)serial_data_packing->device_connect_data);
+        platform_uart_puts(serial_data_packing->device_connect_data, len);
+
+        if(serial_common->serial_debug_en)
+            PRT_SEG(" > SEG: Send device_connect_data [%s](%d)\r\n", serial_data_packing->device_connect_data, len);
+    }
 }
 
 

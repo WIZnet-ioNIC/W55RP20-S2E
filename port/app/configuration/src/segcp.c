@@ -55,7 +55,7 @@ uint8_t * tbSEGCPCMD[] = {"MC", "VR", "MN", "IM", "OP", "DD", "CP", "PO", "DG", 
                           "E1", "NT", "NS", "ND", "CR", "NR", "AB", "TR", "BU", "LF",
                           "AE", "AP", "MB", "SE", "CE", "CT", "N0", "N1", "N2", "AL",
                           "GR", "AM", "QF", "MM", "CS", "CM", "C0", "C1", "C2", "C3",
-                          0};
+                          "SD", 0};
 #else
 
 uint8_t * tbSEGCPCMD[] = {"MC", "VR", "MN", "IM", "OP", "CP", "DG", "KA", "KI", "KE",
@@ -65,7 +65,7 @@ uint8_t * tbSEGCPCMD[] = {"MC", "VR", "MN", "IM", "OP", "CP", "DG", "KA", "KI", 
                           "FR", "EC", "GA", "GB", "GC", "GD", "CA", "CB", "CC", "CD",
                           "SC", "S0", "S1", "RX", "UI", "TR", "QU", "QP", "QC", "QK",
                           "PU", "U0", "U1", "U2", "QO", "RC", "CE", "OC", "LC", "PK",
-                          "UF", "FW", "SO", 0};
+                          "UF", "FW", "SO", "SD", 0};
 
 #endif
 uint8_t * tbSEGCPERR[] = {"ERNULL", "ERNOTAVAIL", "ERNOPARAM", "ERIGNORED", "ERNOCOMMAND", "ERINVALIDPARAM", "ERNOPRIVILEGE"};
@@ -458,6 +458,10 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     case SEGCP_PS: sprintf(trep, "%d", dev_config->serial_data_packing.packing_size);
                         break;
                     case SEGCP_PD: sprintf(trep, "%02X", dev_config->serial_data_packing.packing_delimiter[0]);
+                        break;
+                    case SEGCP_SD: sprintf(trep, "%s", dev_config->serial_data_packing.device_connect_data);
+                        if(dev_config->serial_data_packing.device_connect_data[0] == 0) sprintf(trep,"%c",SEGCP_NULL);
+                        else sprintf(trep, "%s", dev_config->serial_data_packing.device_connect_data);
                         break;
                     case SEGCP_TE: sprintf(trep, "%d", dev_config->serial_command.serial_command);
                         break;
@@ -852,6 +856,17 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                                 dev_config->serial_data_packing.packing_delimiter_length = 0;
                             else 
                                 dev_config->serial_data_packing.packing_delimiter_length = 1;
+                        }
+                        break;
+                    case SEGCP_SD:
+                        if(param_len > sizeof(dev_config->serial_data_packing.device_connect_data)-1)
+                            ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                        else
+                        {
+                            if(param[0] == SEGCP_NULL)
+                                dev_config->serial_data_packing.device_connect_data[0] = 0;
+                            else
+                                sprintf(dev_config->serial_data_packing.device_connect_data, "%s", param);
                         }
                         break;
                     case SEGCP_TE:
