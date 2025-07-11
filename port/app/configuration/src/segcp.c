@@ -65,7 +65,7 @@ uint8_t * tbSEGCPCMD[] = {"MC", "VR", "MN", "IM", "OP", "CP", "DG", "KA", "KI", 
                           "FR", "EC", "GA", "GB", "GC", "GD", "CA", "CB", "CC", "CD",
                           "SC", "S0", "S1", "RX", "UI", "TR", "QU", "QP", "QC", "QK",
                           "PU", "U0", "U1", "U2", "QO", "RC", "CE", "OC", "LC", "PK",
-                          "UF", "FW", "SO", 0};
+                          "UF", "FW", "SO", "SD", 0};
 
 #endif
 uint8_t * tbSEGCPERR[] = {"ERNULL", "ERNOTAVAIL", "ERNOPARAM", "ERIGNORED", "ERNOCOMMAND", "ERINVALIDPARAM", "ERNOPRIVILEGE"};
@@ -610,7 +610,12 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     case SEGCP_UF: // fw bank copy flag
                         sprintf(trep, "%d", dev_config->firmware_update.fwup_copy_flag);
                         break;
-                        
+
+                    case SEGCP_SD: // device connect data
+                        if(dev_config->device_option.device_connect_data[0] == 0) sprintf(trep,"%c",SEGCP_NULL);
+                        else sprintf(trep, "%s", dev_config->device_option.device_connect_data);
+                        break;
+
                     default:
                         //ret |= SEGCP_RET_ERR_NOCOMMAND;
                         //sprintf(trep,"%s", strDEVSTATUS[dev_config->network_connection[0].working_state]);
@@ -961,7 +966,6 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                             sprintf(dev_config->mqtt_option.password, "%s", param);
                         break;
 
-
                     case SEGCP_QC: // mqtt client id
                         if(param[0] == SEGCP_NULL)
                             dev_config->mqtt_option.client_id[0] = 0;
@@ -1235,6 +1239,14 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                             PRT_SEGCP("SEGCP_FW:OK\r\n");
                         }
                         break;
+
+                    case SEGCP_SD: // device connect data
+                        if(param[0] == SEGCP_NULL)
+                            dev_config->device_option.device_connect_data[0] = 0;
+                        else
+                            sprintf(dev_config->device_option.device_connect_data, "%s", param);
+                        break;
+
 #ifdef __USE_USERS_GPIO__
                     // SET GPIOs Status / Value (Digital output only)
                     case SEGCP_GA:

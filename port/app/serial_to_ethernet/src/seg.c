@@ -195,6 +195,7 @@ void do_seg(uint8_t sock)
 void set_device_status(teDEVSTATUS status)
 {
     struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
+    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
 
     switch(status)
     {
@@ -225,8 +226,28 @@ void set_device_status(teDEVSTATUS status)
     }
     
     // Status indicator pins
-    if(network_connection->working_state == ST_CONNECT)
+    if(network_connection->working_state == ST_CONNECT) {
+        if (device_option->device_connect_data[0] != 0) {
+            struct __mqtt_option *mqtt_option = (struct __mqtt_option *)&(get_DevConfig_pointer()->mqtt_option);
+            struct __tcp_option *tcp_option = (struct __tcp_option *)&(get_DevConfig_pointer()->tcp_option);
+
+            if (network_connection->working_mode == MQTT_CLIENT_MODE || network_connection->working_mode == MQTTS_CLIENT_MODE)
+                wizchip_mqtt_publish(&g_mqtt_config, mqtt_option->pub_topic, mqtt_option->qos, device_option->device_connect_data, strlen((char *)device_option->device_connect_data));
+#ifdef __USE_S2E_OVER_TLS__
+            else if (network_connection->working_mode == SSL_TCP_CLIENT_MODE)
+                wiz_tls_write(&s2e_tlsContext, device_option->device_connect_data, strlen((char *)device_option->device_connect_data));
+#endif
+            else
+                (int16_t)send(SEG_DATA0_SOCK, device_option->device_connect_data, strlen((char *)device_option->device_connect_data));
+
+            if(tcp_option->keepalive_en == ENABLE && flag_first_keepalive == DISABLE)
+            {
+                flag_first_keepalive = ENABLE;
+                xTimerStart(seg_keepalive_timer, 0);
+            }
+        }
         set_connection_status_io(STATUS_TCPCONNECT_PIN, ON); // Status I/O pin to low
+    }
     else
         set_connection_status_io(STATUS_TCPCONNECT_PIN, OFF); // Status I/O pin to high
 }
@@ -343,8 +364,6 @@ void proc_SEG_tcp_client(uint8_t sock)
                 if(serial_mode == SEG_SERIAL_PROTOCOL_NONE)                    
                     uart_rx_flush(); // UART Ring buffer clear
                 
-                // Debug message enable flag: TCP client socket open
-                set_device_status(ST_CONNECT);
                 if(tcp_option->inactivity) {
                     flag_inactivity = SEG_DISABLE;
                     if (seg_inactivity_timer == NULL) 
@@ -361,6 +380,7 @@ void proc_SEG_tcp_client(uint8_t sock)
                         xTimerChangePeriod(seg_keepalive_timer, pdMS_TO_TICKS(tcp_option->keepalive_wait_time), 0);
                     }
                 }
+                set_device_status(ST_CONNECT);
             }
             break;
         
@@ -513,8 +533,6 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock)
                 if(serial_mode == SEG_SERIAL_PROTOCOL_NONE)
                     uart_rx_flush(); // UART Ring buffer clear
 
-                // Debug message enable flag: TCP client socket open
-                set_device_status(ST_CONNECT);
                 if(tcp_option->inactivity) {
                   flag_inactivity = SEG_DISABLE;
                   if (seg_inactivity_timer == NULL) 
@@ -531,8 +549,8 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock)
                         xTimerChangePeriod(seg_keepalive_timer, pdMS_TO_TICKS(tcp_option->keepalive_wait_time), 0);
                     }
                 }
-                
                 first_established = 0;
+                set_device_status(ST_CONNECT);
             }
             break;
 
@@ -711,7 +729,6 @@ void proc_SEG_mqtt_client(uint8_t sock)
                 if(serial_mode == SEG_SERIAL_PROTOCOL_NONE)
                     uart_rx_flush(); // UART Ring buffer clear
                     
-                set_device_status(ST_CONNECT);
                 if(tcp_option->inactivity) {
                   flag_inactivity = SEG_DISABLE;
                   if (seg_inactivity_timer == NULL) 
@@ -729,6 +746,7 @@ void proc_SEG_mqtt_client(uint8_t sock)
                     }
                 }
                 first_established = 0;
+                set_device_status(ST_CONNECT);
             }
             mqtt_transport_yield(&g_mqtt_config);
             break;
@@ -903,7 +921,6 @@ void proc_SEG_mqtts_client(uint8_t sock)
                 
                 if(serial_mode == SEG_SERIAL_PROTOCOL_NONE)
                     uart_rx_flush();
-                set_device_status(ST_CONNECT);
                                 
                 if(tcp_option->inactivity) {
                   flag_inactivity = SEG_DISABLE;
@@ -921,8 +938,8 @@ void proc_SEG_mqtts_client(uint8_t sock)
                         xTimerChangePeriod(seg_keepalive_timer, pdMS_TO_TICKS(tcp_option->keepalive_wait_time), 0);
                     }
                 }
-
                 first_established = 0;
+                set_device_status(ST_CONNECT);
             }
             mqtt_transport_yield(&g_mqtt_config);
             break;
@@ -1052,7 +1069,6 @@ void proc_SEG_tcp_server(uint8_t sock)
                 if(serial_mode == SEG_SERIAL_PROTOCOL_NONE)
                     uart_rx_flush(); // UART Ring buffer clear
                     
-                set_device_status(ST_CONNECT);
                 if(tcp_option->inactivity) {
                   flag_inactivity = SEG_DISABLE;
                   if (seg_inactivity_timer == NULL) 
@@ -1077,6 +1093,7 @@ void proc_SEG_tcp_server(uint8_t sock)
                       seg_auth_timer = xTimerCreate("seg_auth_timer", pdMS_TO_TICKS(MAX_CONNECTION_AUTH_TIME), pdFALSE, 0, auth_timer_callback);
                     xTimerStart(seg_auth_timer, 0);
                 }
+                set_device_status(ST_CONNECT);
             }
             break;
 
@@ -1211,7 +1228,6 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                         PRT_SEG(" > SEG:CONNECTED TO - %d.%d.%d.%d : %d\r\n", destip[0], destip[1], destip[2], destip[3], destport);
                 }
 
-                set_device_status(ST_CONNECT);
                 if(tcp_option->inactivity) {
                   flag_inactivity = SEG_DISABLE;
                   if (seg_inactivity_timer == NULL) 
@@ -1253,6 +1269,7 @@ void proc_SEG_tcp_mixed(uint8_t sock)
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
                 reconnection_count = 0;
 #endif
+                set_device_status(ST_CONNECT);
             }
             break;
         
