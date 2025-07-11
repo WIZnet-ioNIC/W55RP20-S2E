@@ -101,6 +101,7 @@ struct __serial_data_packing {
     uint8_t packing_delimiter[4];
     uint8_t packing_delimiter_length;   // 0~4
     uint8_t packing_data_appendix;      // 0~2
+    uint8_t device_connect_data[16];     // Serial Send data when connected
 } __attribute__((packed));
 
 struct __serial_command {
