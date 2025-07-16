@@ -20,6 +20,7 @@
 #include "timerHandler.h"
 #include "util.h"
 #include "core_mqtt_state.h"
+#include "WIZnet_board.h"
 
 /**
  * ----------------------------------------------------------------------------------------------------
@@ -259,7 +260,6 @@ int8_t mqtt_transport_connect(mqtt_config_t *mqtt_config, uint32_t mqtt_conn_tim
 {
     bool session_present;
     int ret = -1;
-    int packet_id = 0;
 
     /* Connect to the MQTT broker */
     if (mqtt_conn_timeout == 0)
@@ -280,7 +280,6 @@ int8_t mqtt_transport_connect(mqtt_config_t *mqtt_config, uint32_t mqtt_conn_tim
 
 int mqtt_transport_close(uint8_t sock, mqtt_config_t *mqtt_config)
 {
-    int ret;
 
 #ifdef __USE_S2E_OVER_TLS__
     if (mqtt_config->ssl_flag == true)
@@ -352,22 +351,6 @@ int32_t mqtt_read(NetworkContext_t *pNetworkContext, void *pBuffer, size_t bytes
 
     if (getSn_RX_RSR(pNetworkContext->socketDescriptor) > 0)
         size = recv(pNetworkContext->socketDescriptor, pBuffer, bytesToRecv);
-
-#if 0
-    uint32_t tickStart = millis();
-
-    do
-    {
-        if (getSn_RX_RSR(pNetworkContext->socketDescriptor) > 0)
-            size = recv(pNetworkContext->socketDescriptor, pBuffer, bytesToRecv);
-        if (size != 0)
-        {
-            break;
-        }
-        sleep_ms(10);
-    } while ((millis() - tickStart) <= MQTT_TIMEOUT);
-#endif
-
     return size;
 }
 

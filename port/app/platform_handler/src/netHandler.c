@@ -83,9 +83,10 @@ void net_status_task(void *argument)
                         set_stop_dhcp_flag(0);
                         if(process_dhcp() == DHCP_IP_LEASED) // DHCP success
                             flag_process_dhcp_success = ON;
-                        else // DHCP failed
+                        else {    // DHCP failed
                             dev_config->network_option.dhcp_use = 0;
                             Net_Conf(); // Set default static IP settings
+                        }
                     }
                     display_Net_Info();
                     display_Dev_Info_dhcp();

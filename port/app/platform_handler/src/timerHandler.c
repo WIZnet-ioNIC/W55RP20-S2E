@@ -66,14 +66,6 @@ bool repeating_timer_callback(struct repeating_timer *t)
 #endif
     }
 
-#if 0
-    /* Minute Process */
-    if(!(devtime_msec % 5000))
-    {
-        PRT_INFO("5 sec\r\n");
-    }
-#endif
-
     /* Minute Process */
     if(sec_cnt >= 60)
     {

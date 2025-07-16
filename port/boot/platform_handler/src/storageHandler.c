@@ -58,13 +58,6 @@ void write_storage(teDATASTORAGE stype, uint32_t addr, void *data, uint16_t size
 
 void erase_storage(teDATASTORAGE stype)
 {
-    uint16_t i;
-    uint32_t address;
-    
-    uint8_t blocks = 0;
-    uint32_t sectors = 0, remainder = 0;
-    int ret;
-    
     switch(stype)
     {
         case STORAGE_MAC:

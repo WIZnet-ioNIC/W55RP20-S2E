@@ -65,7 +65,7 @@ uint8_t * tbSEGCPCMD[] = {"MC", "VR", "MN", "IM", "OP", "CP", "DG", "KA", "KI", 
                           "FR", "EC", "GA", "GB", "GC", "GD", "CA", "CB", "CC", "CD",
                           "SC", "S0", "S1", "RX", "UI", "TR", "QU", "QP", "QC", "QK",
                           "PU", "U0", "U1", "U2", "QO", "RC", "CE", "OC", "LC", "PK",
-                          "UF", "FW", "SO", "SD", 0};
+                          "UF", "FW", "SO", "SD", "DD", 0};
 
 #endif
 uint8_t * tbSEGCPERR[] = {"ERNULL", "ERNOTAVAIL", "ERNOPARAM", "ERIGNORED", "ERNOCOMMAND", "ERINVALIDPARAM", "ERNOPRIVILEGE"};
@@ -91,7 +91,6 @@ extern wiz_tls_context s2e_tlsContext;
 
 void do_segcp_udp(void)
 {
-    DevConfig *dev_config = get_DevConfig_pointer();
     uint16_t segcp_ret = 0;
     
     segcp_ret = proc_SEGCP_udp(gSEGCPREQ, gSEGCPREP);
@@ -100,7 +99,6 @@ void do_segcp_udp(void)
 
 void do_segcp_tcp(void)
 {
-    DevConfig *dev_config = get_DevConfig_pointer();
     uint16_t segcp_ret = 0;
 
     segcp_ret |= proc_SEGCP_tcp(gSEGCPREQ, gSEGCPREP);
@@ -125,7 +123,6 @@ void segcp_ret_handler(uint16_t segcp_ret)
     DevConfig *dev_config = get_DevConfig_pointer();
 
     uint8_t ret = 0;
-    uint8_t i;
     teDEVSTATUS status_bak;
 
     if(segcp_ret && ((segcp_ret & SEGCP_RET_ERR) != SEGCP_RET_ERR)) // Command parsing success
@@ -614,6 +611,11 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     case SEGCP_SD: // device connect data
                         if(dev_config->device_option.device_connect_data[0] == 0) sprintf(trep,"%c",SEGCP_NULL);
                         else sprintf(trep, "%s", dev_config->device_option.device_connect_data);
+                        break;
+
+                    case SEGCP_DD: // device disconnect data
+                        if(dev_config->device_option.device_disconnect_data[0] == 0) sprintf(trep,"%c",SEGCP_NULL);
+                        else sprintf(trep, "%s", dev_config->device_option.device_disconnect_data);
                         break;
 
                     default:
@@ -1247,6 +1249,13 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                             sprintf(dev_config->device_option.device_connect_data, "%s", param);
                         break;
 
+                    case SEGCP_DD: // device disconnect data
+                        if(param[0] == SEGCP_NULL)
+                            dev_config->device_option.device_disconnect_data[0] = 0;
+                        else
+                            sprintf(dev_config->device_option.device_disconnect_data, "%s", param);
+                        break;
+
 #ifdef __USE_USERS_GPIO__
                     // SET GPIOs Status / Value (Digital output only)
                     case SEGCP_GA:
@@ -1341,7 +1350,6 @@ uint16_t proc_SEGCP_udp(uint8_t* segcp_req, uint8_t* segcp_rep)
     
     uint8_t* treq;
     uint8_t* trep;
-    uint16_t reg_val;
     uint8_t segcp_privilege = SEGCP_PRIVILEGE_CLR;
 
     switch(getSn_SR(SEGCP_UDP_SOCK))

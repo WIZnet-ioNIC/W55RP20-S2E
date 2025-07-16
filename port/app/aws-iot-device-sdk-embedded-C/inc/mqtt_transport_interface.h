@@ -17,6 +17,7 @@
 #include "core_mqtt.h"
 #include "core_mqtt_state.h"
 #include "core_mqtt_config.h"
+#include "WIZnet_board.h"
 
 /**
  * ----------------------------------------------------------------------------------------------------
@@ -58,7 +59,10 @@ int mqtt_transport_close(uint8_t sock, mqtt_config_t *mqtt_config);
 int mqtt_transport_publish(mqtt_config_t *mqtt_config, uint8_t *pub_topic, uint8_t *pub_data, uint32_t pub_data_len, uint8_t qos);
 int32_t mqtt_write(NetworkContext_t *pNetworkContext, const void *pBuffer, size_t bytesToSend);
 int32_t mqtt_read(NetworkContext_t *pNetworkContext, void *pBuffer, size_t bytesToRecv);
+
+#ifdef __USE_S2E_OVER_TLS__
 int32_t mqtts_write(NetworkContext_t *pNetworkContext, const void *pBuffer, size_t bytesToSend);
 int32_t mqtts_read(NetworkContext_t *pNetworkContext, void *pBuffer, size_t bytesToRecv);
+#endif
 
 #endif /* _MQTT_TRANSPORT_INTERFACE_H_ */

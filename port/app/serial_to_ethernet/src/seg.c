@@ -140,8 +140,6 @@ void do_seg(uint8_t sock)
 {
     struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
     struct __serial_option *serial_option = (struct __serial_option *)&(get_DevConfig_pointer()->serial_option);
-    struct __firmware_update *firmware_update = (struct __firmware_update *)&(get_DevConfig_pointer()->firmware_update);
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
     
     if(opmode == DEVICE_GW_MODE)
     {
@@ -196,6 +194,7 @@ void set_device_status(teDEVSTATUS status)
 {
     struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
     struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
+    uint8_t prev_working_state = network_connection->working_state;
 
     switch(status)
     {
@@ -225,29 +224,20 @@ void set_device_status(teDEVSTATUS status)
             break;
     }
     
-    // Status indicator pins
     if(network_connection->working_state == ST_CONNECT) {
-        if (device_option->device_connect_data[0] != 0) {
-            struct __mqtt_option *mqtt_option = (struct __mqtt_option *)&(get_DevConfig_pointer()->mqtt_option);
-            struct __tcp_option *tcp_option = (struct __tcp_option *)&(get_DevConfig_pointer()->tcp_option);
-
-            if (network_connection->working_mode == MQTT_CLIENT_MODE || network_connection->working_mode == MQTTS_CLIENT_MODE)
-                wizchip_mqtt_publish(&g_mqtt_config, mqtt_option->pub_topic, mqtt_option->qos, device_option->device_connect_data, strlen((char *)device_option->device_connect_data));
-#ifdef __USE_S2E_OVER_TLS__
-            else if (network_connection->working_mode == SSL_TCP_CLIENT_MODE)
-                wiz_tls_write(&s2e_tlsContext, device_option->device_connect_data, strlen((char *)device_option->device_connect_data));
-#endif
-            else
-                (int16_t)send(SEG_DATA0_SOCK, device_option->device_connect_data, strlen((char *)device_option->device_connect_data));
-
-            if(tcp_option->keepalive_en == ENABLE && flag_first_keepalive == DISABLE)
-            {
-                flag_first_keepalive = ENABLE;
-                xTimerStart(seg_keepalive_timer, 0);
-            }
-        }
+        if (device_option->device_connect_data[0] != 0)
+            platform_uart_puts((const char *)device_option->device_connect_data, strlen((const char *)device_option->device_connect_data));
+        // Status indicator pins
         set_connection_status_io(STATUS_TCPCONNECT_PIN, ON); // Status I/O pin to low
     }
+
+    else if (prev_working_state == ST_CONNECT && network_connection->working_state == ST_OPEN) {
+        if (device_option->device_disconnect_data[0] != 0)
+            platform_uart_puts((const char *)device_option->device_disconnect_data, strlen((const char *)device_option->device_disconnect_data));
+        // Status indicator pins
+        set_connection_status_io(STATUS_TCPCONNECT_PIN, OFF); // Status I/O pin to low
+    }
+
     else
         set_connection_status_io(STATUS_TCPCONNECT_PIN, OFF); // Status I/O pin to high
 }
@@ -317,7 +307,6 @@ void proc_SEG_tcp_client(uint8_t sock)
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *)&(get_DevConfig_pointer()->serial_data_packing);
     struct __serial_common *serial_common = (struct __serial_common *)&(get_DevConfig_pointer()->serial_common);
     struct __serial_command *serial_command = (struct __serial_command *)&(get_DevConfig_pointer()->serial_command);
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
 
     uint16_t source_port;
     uint8_t destip[4] = {0, };
@@ -445,7 +434,6 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock)
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *)&(get_DevConfig_pointer()->serial_data_packing);
     struct __serial_common *serial_common = (struct __serial_common *)&get_DevConfig_pointer()->serial_common;
     struct __serial_command *serial_command = (struct __serial_command *)&get_DevConfig_pointer()->serial_command;
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
 
     uint16_t source_port;
     uint8_t destip[4] = {0, };
@@ -634,9 +622,7 @@ void proc_SEG_mqtt_client(uint8_t sock)
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *)&(get_DevConfig_pointer()->serial_data_packing);
     struct __serial_common *serial_common = (struct __serial_common *)&get_DevConfig_pointer()->serial_common;
     struct __serial_command *serial_command = (struct __serial_command *)&get_DevConfig_pointer()->serial_command;
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
     struct __mqtt_option *mqtt_option = (struct __mqtt_option *)&(get_DevConfig_pointer()->mqtt_option);
-    struct __ssl_option *ssl_option = (struct __ssl_option *)&(get_DevConfig_pointer()->ssl_option);
 
     uint16_t source_port;
     uint8_t destip[4] = {0, };
@@ -771,7 +757,7 @@ void proc_SEG_mqtt_client(uint8_t sock)
 
             PRT_SEG(" > MQTT CLIENT: client_any_port = %d\r\n", client_any_port);
             xSemaphoreTake(seg_socket_sem, portMAX_DELAY);
-            int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
+            int8_t s = socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
             xSemaphoreGive(seg_socket_sem);
 
             if(s == sock)
@@ -806,9 +792,7 @@ void proc_SEG_mqtts_client(uint8_t sock)
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *)&(get_DevConfig_pointer()->serial_data_packing);
     struct __serial_common *serial_common = (struct __serial_common *)&get_DevConfig_pointer()->serial_common;
     struct __serial_command *serial_command = (struct __serial_command *)&get_DevConfig_pointer()->serial_command;
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
     struct __mqtt_option *mqtt_option = (struct __mqtt_option *)&(get_DevConfig_pointer()->mqtt_option);
-    struct __ssl_option *ssl_option = (struct __ssl_option *)&(get_DevConfig_pointer()->ssl_option);
 
     uint16_t source_port;
     uint8_t destip[4] = {0, };
@@ -1025,7 +1009,6 @@ void proc_SEG_tcp_server(uint8_t sock)
     struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
     struct __serial_command *serial_command = (struct __serial_command *)&(get_DevConfig_pointer()->serial_command);
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *)&(get_DevConfig_pointer()->serial_data_packing);
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
     
     uint8_t destip[4] = {0, };
     uint16_t destport = 0;
@@ -1245,6 +1228,7 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                     }
                 }
 
+                set_device_status(ST_CONNECT);
                 // Check the connection password auth timer
                 if(mixed_state == MIXED_SERVER)
                 {
@@ -1260,16 +1244,17 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                 }
                 else
                 {
-                    // Mixed-mode flag switching in advance
-					mixed_state = MIXED_SERVER;
                     if(get_uart_buffer_usedsize() || u2e_size)
                         xSemaphoreGive(seg_u2e_sem);
+                        //uart_to_ether(sock);
+                        
+                    // Mixed-mode flag switching in advance
+					mixed_state = MIXED_SERVER;
                 }
                 
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
                 reconnection_count = 0;
 #endif
-                set_device_status(ST_CONNECT);
             }
             break;
         
@@ -1353,8 +1338,6 @@ void uart_to_ether(uint8_t sock)
     struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
     struct __serial_common *serial_common = (struct __serial_common *)&get_DevConfig_pointer()->serial_common;
     struct __tcp_option *tcp_option = (struct __tcp_option *)&(get_DevConfig_pointer()->tcp_option);
-
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
     struct __mqtt_option *mqtt_option = (struct __mqtt_option *)&(get_DevConfig_pointer()->mqtt_option);
 
     uint16_t len;
@@ -1366,6 +1349,9 @@ void uart_to_ether(uint8_t sock)
     
     if(len > 0)
     {
+        if (seg_inactivity_timer != NULL)
+            xTimerReset(seg_inactivity_timer, 0);
+
         add_data_transfer_bytecount(SEG_UART_RX, len);
         if((serial_common->serial_debug_en == SEG_DEBUG_S2E) || (serial_common->serial_debug_en == SEG_DEBUG_ALL))
             debugSerial_dataTransfer(g_send_buf, len, SEG_DEBUG_S2E);
@@ -1407,9 +1393,6 @@ void uart_to_ether(uint8_t sock)
         }
         if(sent_len > 0) u2e_size-=sent_len;
         add_data_transfer_bytecount(SEG_UART_TX, len);
-
-        if (seg_inactivity_timer != NULL)
-            xTimerReset(seg_inactivity_timer, 0);
     }
 }
 
@@ -1484,7 +1467,6 @@ void ether_to_uart(uint8_t sock)
     struct __serial_common *serial_common = (struct __serial_common *)&(get_DevConfig_pointer()->serial_common);
     struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
     struct __tcp_option *tcp_option = (struct __tcp_option *)&(get_DevConfig_pointer()->tcp_option);
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
 
     uint16_t len;
     uint16_t i;
@@ -1673,8 +1655,8 @@ uint8_t process_socket_termination(uint8_t sock, uint32_t timeout)
     xSemaphoreTake(seg_socket_sem, portMAX_DELAY);
     if(network_connection->working_mode != UDP_MODE) // TCP_SERVER_MODE / TCP_CLIENT_MODE / TCP_MIXED_MODE
     {
-        if (network_connection->working_mode == TCP_MIXED_MODE)
-            mixed_state = MIXED_SERVER;
+        //if (network_connection->working_mode == TCP_MIXED_MODE)
+        //    mixed_state = MIXED_SERVER;
 
         if((sock_status == SOCK_ESTABLISHED) || (sock_status == SOCK_CLOSE_WAIT)) {
             do {
@@ -2026,8 +2008,6 @@ int wizchip_mqtt_publish(mqtt_config_t *mqtt_config, uint8_t *pub_topic, uint8_t
 
 void mqtt_subscribeMessageHandler(uint8_t *data, uint32_t data_len)
 {
-    struct __serial_common *serial_common = (struct __serial_common *)&(get_DevConfig_pointer()->serial_common);
-
     e2u_size = data_len;
     memcpy(g_recv_buf, data, data_len);
     ether_to_uart(SOCK_DATA); //socket parameter is not used in mqtt
@@ -2203,7 +2183,6 @@ void seg_task (void *argument)  {
 void seg_u2e_task (void *argument)  {
     uint8_t serial_mode = get_serial_communation_protocol();
     struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
-    struct __tcp_option *tcp_option = (struct __tcp_option *)&(get_DevConfig_pointer()->tcp_option);
 
     PRT_SEG("Running Task\r\n");
     while(1) {
@@ -2304,7 +2283,6 @@ void auth_timer_callback( TimerHandle_t xTimer )
 
 void seg_timer_task (void *argument)  {
     struct __tcp_option *tcp_option = (struct __tcp_option *)&(get_DevConfig_pointer()->tcp_option);
-    struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
 
     while(1) {
         xSemaphoreTake(seg_timer_sem, portMAX_DELAY);

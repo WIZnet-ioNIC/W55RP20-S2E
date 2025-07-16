@@ -189,8 +189,6 @@ void set_DevConfig_to_factory_value(void)
 
 void load_boot_DevConfig_from_storage(void)
 {
-    int ret = -1;
-
     read_storage(STORAGE_CONFIG, &dev_config, sizeof(DevConfig));
     read_storage(STORAGE_MAC, dev_config.network_common.mac, 6);
 
@@ -243,8 +241,7 @@ void save_DevConfig_to_storage(void)
     DevConfig dev_config_tmp;
     uint8_t update_success = SEGCP_DISABLE;
     uint8_t retry_cnt = 0;
-    int ret;
-    
+
     do {
         write_storage(STORAGE_CONFIG, 0, (uint8_t *)&dev_config, sizeof(DevConfig));
         read_storage(STORAGE_CONFIG, &dev_config_tmp, sizeof(DevConfig));
@@ -384,7 +381,6 @@ void set_dhcp_mode(void)
 void check_mac_address(void)
 {
     DevConfig *dev_config = get_DevConfig_pointer();
-    int ret;
     uint8_t buf[12], vt, temp;
     uint32_t vi, vj;
     uint8_t temp_buf[] = "INPUT MAC ? ";

@@ -203,13 +203,12 @@ void set_DevConfig_to_factory_value(void)
                                                        dev_config.network_common.mac[4],
                                                        dev_config.network_common.mac[5]);
     memset(dev_config.device_option.device_connect_data, 0x00, sizeof(dev_config.device_option.device_connect_data));
+    memset(dev_config.device_option.device_disconnect_data, 0x00, sizeof(dev_config.device_option.device_disconnect_data));
     dev_config.devConfigVer = DEV_CONFIG_VER;//DEV_CONFIG_VER;
 }
 
 void load_DevConfig_from_storage(void)
 {
-    int ret = -1;
-
     read_storage(STORAGE_CONFIG, &dev_config, sizeof(DevConfig));
     read_storage(STORAGE_MAC, dev_config.network_common.mac, 6);
 
@@ -261,7 +260,6 @@ void save_DevConfig_to_storage(void)
     DevConfig *dev_config_tmp = pvPortMalloc(sizeof(DevConfig));
     uint8_t update_success = SEGCP_DISABLE;
     uint8_t retry_cnt = 0;
-    int ret;
 
     if (dev_config_tmp == NULL) {
         PRT_SEGCP(" > Error: Memory allocation failed for dev_config_tmp\r\n");
@@ -408,7 +406,6 @@ void set_dhcp_mode(void)
 void check_mac_address(void)
 {
     DevConfig *dev_config = get_DevConfig_pointer();
-    int ret;
     uint8_t buf[12], vt, temp;
     uint32_t vi, vj;
     uint8_t temp_buf[] = "INPUT MAC ? ";

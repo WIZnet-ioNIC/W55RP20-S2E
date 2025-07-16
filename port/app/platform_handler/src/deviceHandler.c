@@ -123,11 +123,9 @@ uint8_t device_bank_update(void)
 
     uint8_t ret = DEVICE_FWUP_RET_PROGRESS;
     uint16_t recv_len = 0;
-    uint16_t write_len = 0;
     static uint32_t write_fw_len;
     uint32_t f_addr;
     uint32_t remain_len = 0, buf_len = 0;
-    int err;
     uint8_t *temp_buf;
     
     if((fwupdate->fwup_size == 0) || (fwupdate->fwup_size > FLASH_APP_BANK_SIZE))
@@ -213,7 +211,6 @@ int device_bank_copy(void)
 
     uint32_t write_fw_len;
     uint32_t f_addr_src, f_addr_dst;
-    int err;
     
     if((fwupdate->fwup_size == 0) || (fwupdate->fwup_size > FLASH_APP_BANK_SIZE))
     {

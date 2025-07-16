@@ -112,9 +112,6 @@ void do_seg(uint8_t sock)
 {
     struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
     struct __serial_option *serial_option = (struct __serial_option *)&(get_DevConfig_pointer()->serial_option);
-    struct __firmware_update *firmware_update = (struct __firmware_update *)&(get_DevConfig_pointer()->firmware_update);
-    
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
 
     // Serial AT command mode enabled, initial settings
     if((opmode == DEVICE_GW_MODE) && (sw_modeswitch_at_mode_on == SEG_ENABLE))
@@ -281,7 +278,6 @@ void proc_SEG_tcp_client(uint8_t sock)
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *)&(get_DevConfig_pointer()->serial_data_packing);
     struct __serial_common *serial_common = (struct __serial_common *)&(get_DevConfig_pointer()->serial_common);
     struct __serial_command *serial_command = (struct __serial_command *)&(get_DevConfig_pointer()->serial_command);
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
 
     uint16_t source_port;
     uint8_t destip[4] = {0, };
@@ -486,8 +482,7 @@ void proc_SEG_tcp_server(uint8_t sock)
     struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
     struct __serial_command *serial_command = (struct __serial_command *)&(get_DevConfig_pointer()->serial_command);
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *)&(get_DevConfig_pointer()->serial_data_packing);
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
-    
+
     uint8_t destip[4] = {0, };
     uint16_t destport = 0;
     
@@ -674,7 +669,6 @@ void proc_SEG_tcp_mixed(uint8_t sock)
     struct __serial_common *serial_common = (struct __serial_common *)&get_DevConfig_pointer()->serial_common;
     struct __serial_command *serial_command = (struct __serial_command *)&get_DevConfig_pointer()->serial_command;
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *)&(get_DevConfig_pointer()->serial_data_packing);
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
 
     uint16_t source_port = 0;
     uint8_t destip[4] = {0, };
@@ -969,9 +963,6 @@ void uart_to_ether(uint8_t sock)
     struct __serial_common *serial_common = (struct __serial_common *)&get_DevConfig_pointer()->serial_common;
     struct __tcp_option *tcp_option = (struct __tcp_option *)&(get_DevConfig_pointer()->tcp_option);
 
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
-    struct __mqtt_option *mqtt_option = (struct __mqtt_option *)&(get_DevConfig_pointer()->mqtt_option);
-
     uint16_t len;
     int16_t sent_len = 0;
 
@@ -1135,8 +1126,6 @@ void ether_to_uart(uint8_t sock)
     struct __serial_common *serial_common = (struct __serial_common *)&(get_DevConfig_pointer()->serial_common);
     struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
     struct __tcp_option *tcp_option = (struct __tcp_option *)&(get_DevConfig_pointer()->tcp_option);
-
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
 
     uint16_t len;
     uint16_t i;

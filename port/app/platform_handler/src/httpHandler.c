@@ -91,7 +91,6 @@ uint8_t set_devinfo(uint8_t * uri)
 	uint8_t * param;
 	uint8_t str_size;
 	DevConfig *dev_config = get_DevConfig_pointer();
-  uint8_t uart_sel = 0;
   uint8_t *temp_buf;
 
   temp_buf = pvPortMalloc(256);
@@ -225,7 +224,6 @@ uint8_t set_devreset(uint8_t * uri)
 uint8_t set_devfacreset(uint8_t * uri)
 {
 	uint8_t ret = 0;
-	uint8_t * param;
 
   device_set_factory_default();
 
@@ -259,19 +257,6 @@ uint8_t update_module_firmware(st_http_request * p_http_request, uint8_t *buf)
     body += 4;
     body_len = p_http_request->recv_len - (body - pHTTP_RX);
 
-#if 0
-    for(uint32_t i=0; i<body_len; i++)
-    {
-      if(!(i % 8))
-        printf(" ");
-        
-      if(!(i % 16))
-        printf("\r\n");  
-      printf("0x%02X ", *((uint8_t *)(body  + i)));
-    
-    }
-    printf("\r\n");
-#endif
     temp_buf = pvPortMalloc(FLASH_SECTOR_SIZE);
     memset(temp_buf, 0x00, FLASH_SECTOR_SIZE);
 
@@ -286,21 +271,6 @@ uint8_t update_module_firmware(st_http_request * p_http_request, uint8_t *buf)
         xTimerReset(reset_timer, 0);
         memset(pHTTP_RX, 0x00, CONFIG_BUF_SIZE);
         body_len = recv(sock, (uint8_t *)pHTTP_RX, body_len);
-
-#if 0
-        for(uint32_t i=0; i<body_len; i++)
-        {
-          
-          if(!(i % 8))
-            printf(" ");
-            
-          if(!(i % 16))
-            printf("\r\n");  
-          printf("0x%02X ", *((uint8_t *)(pHTTP_RX + i)));
-
-        }
-        printf("\r\n");
-#endif
 
         if (!(memcmp(pHTTP_RX + (body_len - boundary_len - 4), boundary, boundary_len)))  //end boundary = "\r\n--boundary--\r\n"
         {

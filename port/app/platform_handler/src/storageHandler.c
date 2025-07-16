@@ -26,8 +26,6 @@ void read_storage(teDATASTORAGE stype, void *data, uint16_t size)
 
 void write_storage(teDATASTORAGE stype, uint32_t addr, void *data, uint16_t size)
 {
-    uint32_t ret_len;
-
     switch(stype)
     {
         case STORAGE_MAC:
@@ -62,10 +60,7 @@ void erase_storage(teDATASTORAGE stype)
 {
     uint16_t i;
     uint32_t address, working_address;
-    
-    uint8_t blocks = 0;
-    uint32_t sectors = 0, remainder = 0;
-    int ret;
+    uint32_t sectors = 0;
     
     switch(stype)
     {

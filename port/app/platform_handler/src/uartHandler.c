@@ -45,7 +45,6 @@ static uint8_t xonoff_status = UART_XON;
 
 // UART Interface selector; RS-422 or RS-485 use only
 static uint8_t uart_if_mode = UART_IF_RS422;
-static uint8_t uart_recv;
 
 extern xSemaphoreHandle seg_u2e_sem;
 extern xSemaphoreHandle segcp_uart_sem;
@@ -418,8 +417,6 @@ int8_t is_uart_buffer_full(void)
 #ifdef __USE_UART_485_422__
 uint8_t get_uart_rs485_sel(void)
 {
-    struct __serial_option *serial_option = (struct __serial_option *)&(get_DevConfig_pointer()->serial_option);
-
     GPIO_Configuration(DATA0_UART_RTS_PIN, GPIO_IN, IO_PULLUP);// UART0 RTS pin: GPIO / Input
     if(GPIO_Input_Read(DATA0_UART_RTS_PIN) == IO_LOW)
         uart_if_mode = UART_IF_RS422;

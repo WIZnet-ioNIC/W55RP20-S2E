@@ -413,8 +413,6 @@ int8_t is_uart_buffer_full(void)
 #ifdef __USE_UART_485_422__
 uint8_t get_uart_rs485_sel(void)
 {
-    struct __serial_option *serial_option = (struct __serial_option *)&(get_DevConfig_pointer()->serial_option);
-
     GPIO_Configuration(DATA0_UART_RTS_PIN, GPIO_IN, IO_NOPULL); // UART0 RTS pin: GPIO / Input
     GPIO_Output_Set(DATA0_UART_RTS_PIN);
     
