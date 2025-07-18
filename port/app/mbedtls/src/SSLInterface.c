@@ -180,9 +180,20 @@ int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd)
         clica_addr = (uint8_t *)(FLASH_CLICA_ADDR + XIP_BASE);
         pkey_addr = (uint8_t *)(FLASH_PRIKEY_ADDR + XIP_BASE);
 
+        // check certificate before parsing
+        if (ssl_option->clica_len == 0 || clica_addr == NULL) {
+            PRT_SSL("No client certificate provided\r\n");
+            return -1;
+        }
+
+        // parse certificate
         ret = mbedtls_x509_crt_parse((tlsContext->clicert), (const char *)clica_addr, ssl_option->clica_len + 1);
-        if(ret != 0) {
+        // if parsing fails, free the memory and return error
+        if (ret != 0) {
             PRT_SSL(" failed\r\n  !  mbedtls_x509_crt_parse returned -0x%x while parsing device cert\r\n", -ret);
+            mbedtls_x509_crt_free(tlsContext->clicert);
+            vPortFree(tlsContext->clicert);
+            tlsContext->clicert = NULL;
             return -1;
         }
         PRT_SSL("ok! mbedtls_x509_crt_parse returned -0x%x while parsing device cert\r\n", -ret);
