@@ -90,10 +90,6 @@ extern TimerHandle_t seg_auth_timer;
 uint16_t u2e_size = 0;
 uint16_t e2u_size = 0;
 
-// S2E Data byte count variables
-volatile uint32_t seg_byte_cnt[4] = {0, };
-volatile uint32_t seg_mega_cnt[4] = {0, };
-
 // UDP: Peer netinfo
 uint8_t peerip[4] = {0, };
 uint8_t peerip_tmp[4] = {0xff, };
@@ -225,19 +221,39 @@ void set_device_status(teDEVSTATUS status)
     }
     
     if(network_connection->working_state == ST_CONNECT) {
-        if (device_option->device_connect_data[0] != 0)
-            platform_uart_puts((const char *)device_option->device_connect_data, strlen((const char *)device_option->device_connect_data));
+        if (device_option->device_eth_connect_data[0] != 0) {
+            struct __mqtt_option *mqtt_option = (struct __mqtt_option *)&(get_DevConfig_pointer()->mqtt_option);
+            struct __tcp_option *tcp_option = (struct __tcp_option *)&(get_DevConfig_pointer()->tcp_option);
+
+            if (network_connection->working_mode == MQTT_CLIENT_MODE || network_connection->working_mode == MQTTS_CLIENT_MODE)
+                wizchip_mqtt_publish(&g_mqtt_config, mqtt_option->pub_topic, mqtt_option->qos, device_option->device_eth_connect_data, strlen((char *)device_option->device_eth_connect_data));
+#ifdef __USE_S2E_OVER_TLS__
+            else if (network_connection->working_mode == SSL_TCP_CLIENT_MODE)
+                wiz_tls_write(&s2e_tlsContext, device_option->device_eth_connect_data, strlen((char *)device_option->device_eth_connect_data));
+#endif
+            else
+                (int16_t)send(SEG_DATA0_SOCK, device_option->device_eth_connect_data, strlen((char *)device_option->device_eth_connect_data));
+
+            if(tcp_option->keepalive_en == ENABLE && flag_first_keepalive == DISABLE)
+            {
+                flag_first_keepalive = ENABLE;
+                xTimerStart(seg_keepalive_timer, 0);
+            }
+        }
+        
+        if (device_option->device_serial_connect_data[0] != 0)
+            platform_uart_puts((const char *)device_option->device_serial_connect_data, strlen((const char *)device_option->device_serial_connect_data));
+
         // Status indicator pins
         set_connection_status_io(STATUS_TCPCONNECT_PIN, ON); // Status I/O pin to low
     }
 
     else if (prev_working_state == ST_CONNECT && network_connection->working_state == ST_OPEN) {
-        if (device_option->device_disconnect_data[0] != 0)
-            platform_uart_puts((const char *)device_option->device_disconnect_data, strlen((const char *)device_option->device_disconnect_data));
+        if (device_option->device_serial_disconnect_data[0] != 0)
+            platform_uart_puts((const char *)device_option->device_serial_disconnect_data, strlen((const char *)device_option->device_serial_disconnect_data));
         // Status indicator pins
         set_connection_status_io(STATUS_TCPCONNECT_PIN, OFF); // Status I/O pin to low
     }
-
     else
         set_connection_status_io(STATUS_TCPCONNECT_PIN, OFF); // Status I/O pin to high
 }
@@ -1352,7 +1368,6 @@ void uart_to_ether(uint8_t sock)
         if (seg_inactivity_timer != NULL)
             xTimerReset(seg_inactivity_timer, 0);
 
-        add_data_transfer_bytecount(SEG_UART_RX, len);
         if((serial_common->serial_debug_en == SEG_DEBUG_S2E) || (serial_common->serial_debug_en == SEG_DEBUG_ALL))
             debugSerial_dataTransfer(g_send_buf, len, SEG_DEBUG_S2E);
         
@@ -1392,7 +1407,6 @@ void uart_to_ether(uint8_t sock)
             }
         }
         if(sent_len > 0) u2e_size-=sent_len;
-        add_data_transfer_bytecount(SEG_UART_TX, len);
     }
 }
 
@@ -1492,7 +1506,6 @@ void ether_to_uart(uint8_t sock)
             {
                 if (seg_inactivity_timer != NULL)
                   xTimerReset(seg_inactivity_timer, 0);
-                add_data_transfer_bytecount(SEG_ETHER_RX, e2u_size);
 
                 if (network_connection->working_mode == UDP_MODE) {
                     e2u_size = recvfrom(sock, g_recv_buf, len, peerip, &peerport);
@@ -1557,7 +1570,6 @@ void ether_to_uart(uint8_t sock)
                 for(i = 0; i < e2u_size; i++) platform_uart_putc(g_recv_buf[i]);
                 uart_rs485_disable();
                 
-                add_data_transfer_bytecount(SEG_ETHER_TX, e2u_size);
                 e2u_size = 0;
             }
     //////////////////////////////////////////////////////////////////////
@@ -1572,7 +1584,6 @@ void ether_to_uart(uint8_t sock)
                         debugSerial_dataTransfer(g_recv_buf, e2u_size, SEG_DEBUG_E2S);
                     
                     for(i = 0; i < e2u_size; i++) platform_uart_putc(g_recv_buf[i]);
-                    add_data_transfer_bytecount(SEG_ETHER_TX, e2u_size);
                     e2u_size = 0;
                 }
             }
@@ -1582,8 +1593,6 @@ void ether_to_uart(uint8_t sock)
                     debugSerial_dataTransfer(g_recv_buf, e2u_size, SEG_DEBUG_E2S);
 
                 for(i = 0; i < e2u_size; i++) platform_uart_putc(g_recv_buf[i]);
-                
-                add_data_transfer_bytecount(SEG_ETHER_TX, e2u_size);
                 e2u_size = 0;
             }
         }
@@ -1933,69 +1942,6 @@ uint8_t check_tcp_connect_exception(void)
     return ret;
 }
 
-void clear_data_transfer_bytecount(teDATADIR dir)
-{
-    switch(dir)
-    {
-        case SEG_ALL:
-            seg_byte_cnt[SEG_UART_RX] = 0;
-            seg_byte_cnt[SEG_UART_TX] = 0;
-            seg_byte_cnt[SEG_ETHER_RX] = 0;
-            seg_byte_cnt[SEG_ETHER_TX] = 0;
-            break;
-        
-        case SEG_UART_RX:
-        case SEG_UART_TX:
-        case SEG_ETHER_RX:
-        case SEG_ETHER_TX:
-            seg_byte_cnt[dir] = 0;
-            break;
-
-        default:
-            break;
-    }
-}
-
-
-void clear_data_transfer_megacount(teDATADIR dir)
-{
-    switch(dir)
-    {
-        case SEG_ALL:
-            seg_mega_cnt[SEG_UART_RX] = 0;
-            seg_mega_cnt[SEG_UART_TX] = 0;
-            seg_mega_cnt[SEG_ETHER_RX] = 0;
-            seg_mega_cnt[SEG_ETHER_TX] = 0;
-            break;
-        
-        case SEG_UART_RX:
-        case SEG_UART_TX:
-        case SEG_ETHER_RX:
-        case SEG_ETHER_TX:
-            seg_mega_cnt[dir] = 0;
-            break;
-
-        default:
-            break;
-    }
-}
-
-void add_data_transfer_bytecount(teDATADIR dir, uint16_t len)
-{
-    if(dir >= SEG_ALL) return;
-
-    if(len > 0)
-    {
-        if(seg_byte_cnt[dir] < SEG_MEGABYTE)
-            seg_byte_cnt[dir] += len;
-        else
-        {
-            seg_mega_cnt[dir]++;
-            seg_byte_cnt[dir] = 0;
-        }
-    }
-}
-
 int wizchip_mqtt_publish(mqtt_config_t *mqtt_config, uint8_t *pub_topic, uint8_t qos, uint8_t *pub_data, uint32_t pub_data_len)
 {
 //    PRT_SEG("MQTT PUB Len = %d\r\n", pub_data_len);
@@ -2012,18 +1958,6 @@ void mqtt_subscribeMessageHandler(uint8_t *data, uint32_t data_len)
     memcpy(g_recv_buf, data, data_len);
     ether_to_uart(SOCK_DATA); //socket parameter is not used in mqtt
 }
-
-uint32_t get_data_transfer_bytecount(teDATADIR dir)
-{
-    return seg_byte_cnt[dir];
-}
-
-
-uint32_t get_data_transfer_megacount(teDATADIR dir)
-{
-    return seg_mega_cnt[dir];
-}
-
 
 uint16_t debugSerial_dataTransfer(uint8_t * buf, uint16_t size, teDEBUGTYPE type)
 {

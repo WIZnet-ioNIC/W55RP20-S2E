@@ -202,8 +202,10 @@ void set_DevConfig_to_factory_value(void)
                                                        dev_config.network_common.mac[3],
                                                        dev_config.network_common.mac[4],
                                                        dev_config.network_common.mac[5]);
-    memset(dev_config.device_option.device_connect_data, 0x00, sizeof(dev_config.device_option.device_connect_data));
-    memset(dev_config.device_option.device_disconnect_data, 0x00, sizeof(dev_config.device_option.device_disconnect_data));
+    memset(dev_config.device_option.device_serial_connect_data, 0x00, sizeof(dev_config.device_option.device_serial_connect_data));
+    memset(dev_config.device_option.device_serial_disconnect_data, 0x00, sizeof(dev_config.device_option.device_serial_disconnect_data));
+    memset(dev_config.device_option.device_eth_connect_data, 0x00, sizeof(dev_config.device_option.device_eth_connect_data));
+
     dev_config.devConfigVer = DEV_CONFIG_VER;//DEV_CONFIG_VER;
 }
 

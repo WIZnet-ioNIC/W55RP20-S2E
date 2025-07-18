@@ -65,7 +65,7 @@ uint8_t * tbSEGCPCMD[] = {"MC", "VR", "MN", "IM", "OP", "CP", "DG", "KA", "KI", 
                           "FR", "EC", "GA", "GB", "GC", "GD", "CA", "CB", "CC", "CD",
                           "SC", "S0", "S1", "RX", "UI", "TR", "QU", "QP", "QC", "QK",
                           "PU", "U0", "U1", "U2", "QO", "RC", "CE", "OC", "LC", "PK",
-                          "UF", "FW", "SO", "SD", "DD", 0};
+                          "UF", "FW", "SO", "SD", "DD", "SE", 0};
 
 #endif
 uint8_t * tbSEGCPERR[] = {"ERNULL", "ERNOTAVAIL", "ERNOPARAM", "ERIGNORED", "ERNOCOMMAND", "ERINVALIDPARAM", "ERNOPRIVILEGE"};
@@ -608,14 +608,19 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         sprintf(trep, "%d", dev_config->firmware_update.fwup_copy_flag);
                         break;
 
-                    case SEGCP_SD: // device connect data
-                        if(dev_config->device_option.device_connect_data[0] == 0) sprintf(trep,"%c",SEGCP_NULL);
-                        else sprintf(trep, "%s", dev_config->device_option.device_connect_data);
+                    case SEGCP_SD: // device connect serial data
+                        if(dev_config->device_option.device_serial_connect_data[0] == 0) sprintf(trep,"%c",SEGCP_NULL);
+                        else sprintf(trep, "%s", dev_config->device_option.device_serial_connect_data);
                         break;
 
-                    case SEGCP_DD: // device disconnect data
-                        if(dev_config->device_option.device_disconnect_data[0] == 0) sprintf(trep,"%c",SEGCP_NULL);
-                        else sprintf(trep, "%s", dev_config->device_option.device_disconnect_data);
+                    case SEGCP_DD: // device disconnect serial data
+                        if(dev_config->device_option.device_serial_disconnect_data[0] == 0) sprintf(trep,"%c",SEGCP_NULL);
+                        else sprintf(trep, "%s", dev_config->device_option.device_serial_disconnect_data);
+                        break;
+
+                    case SEGCP_SE: // device connect eth data
+                        if(dev_config->device_option.device_eth_connect_data[0] == 0) sprintf(trep,"%c",SEGCP_NULL);
+                        else sprintf(trep, "%s", dev_config->device_option.device_eth_connect_data);
                         break;
 
                     default:
@@ -1242,18 +1247,25 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         }
                         break;
 
-                    case SEGCP_SD: // device connect data
+                    case SEGCP_SD: // device serial connect data
                         if(param[0] == SEGCP_NULL)
-                            dev_config->device_option.device_connect_data[0] = 0;
+                            dev_config->device_option.device_serial_connect_data[0] = 0;
                         else
-                            sprintf(dev_config->device_option.device_connect_data, "%s", param);
+                            sprintf(dev_config->device_option.device_serial_connect_data, "%s", param);
                         break;
 
-                    case SEGCP_DD: // device disconnect data
+                    case SEGCP_DD: // device serial disconnect data
                         if(param[0] == SEGCP_NULL)
-                            dev_config->device_option.device_disconnect_data[0] = 0;
+                            dev_config->device_option.device_serial_disconnect_data[0] = 0;
                         else
-                            sprintf(dev_config->device_option.device_disconnect_data, "%s", param);
+                            sprintf(dev_config->device_option.device_serial_disconnect_data, "%s", param);
+                        break;
+
+                    case SEGCP_SE: // device eth connect data
+                        if(param[0] == SEGCP_NULL)
+                            dev_config->device_option.device_eth_connect_data[0] = 0;
+                        else
+                            sprintf(dev_config->device_option.device_eth_connect_data, "%s", param);
                         break;
 
 #ifdef __USE_USERS_GPIO__

@@ -69,10 +69,6 @@ extern uint8_t g_recv_mqtt_buf[DATA_BUF_SIZE];
 uint16_t u2e_size = 0;
 uint16_t e2u_size = 0;
 
-// S2E Data byte count variables
-volatile uint32_t seg_byte_cnt[4] = {0, };
-volatile uint32_t seg_mega_cnt[4] = {0, };
-
 // UDP: Peer netinfo
 uint8_t peerip[4] = {0, };
 uint8_t peerip_tmp[4] = {0xff, };
@@ -971,8 +967,6 @@ void uart_to_ether(uint8_t sock)
 
     if(len > 0)
     {
-        add_data_transfer_bytecount(SEG_UART_RX, len);
-
         if((serial_common->serial_debug_en == SEG_DEBUG_S2E) || (serial_common->serial_debug_en == SEG_DEBUG_ALL))
         {
             debugSerial_dataTransfer(g_send_buf, len, SEG_DEBUG_S2E);
@@ -1012,11 +1006,8 @@ void uart_to_ether(uint8_t sock)
                 // Connection password is only checked in the TCP SERVER MODE / TCP MIXED MODE (MIXED_SERVER)
                 if(flag_connect_pw_auth == SEG_ENABLE)
                 {
-                                            sent_len = (int16_t)send(sock, g_send_buf, len);
-                                        if(sent_len > 0) u2e_size-=sent_len;
-                    
-                    add_data_transfer_bytecount(SEG_UART_TX, len);
-                    
+                    sent_len = (int16_t)send(sock, g_send_buf, len);
+                    if(sent_len > 0) u2e_size-=sent_len;                    
                     if(tcp_option->keepalive_en == ENABLE)
                     {
                         if(flag_sent_first_keepalive == DISABLE)
@@ -1173,8 +1164,6 @@ void ether_to_uart(uint8_t sock)
         inactivity_time = 0;
         keepalive_time = 0;
         flag_sent_first_keepalive = DISABLE;
-        
-        add_data_transfer_bytecount(SEG_ETHER_RX, e2u_size);
     }
     
     if((network_connection->working_state == TCP_SERVER_MODE) ||
@@ -1222,8 +1211,6 @@ void ether_to_uart(uint8_t sock)
             uart_rs485_enable();
             for(i = 0; i < e2u_size; i++) platform_uart_putc(g_recv_buf[i]);
             uart_rs485_disable();
-            
-            add_data_transfer_bytecount(SEG_ETHER_TX, e2u_size);
             e2u_size = 0;
         }
 //////////////////////////////////////////////////////////////////////
@@ -1240,7 +1227,6 @@ void ether_to_uart(uint8_t sock)
                 }
                 
                 for(i = 0; i < e2u_size; i++) platform_uart_putc(g_recv_buf[i]);
-                add_data_transfer_bytecount(SEG_ETHER_TX, e2u_size);
                 e2u_size = 0;
             }
         }
@@ -1252,8 +1238,6 @@ void ether_to_uart(uint8_t sock)
             }
             
             for(i = 0; i < e2u_size; i++) platform_uart_putc(g_recv_buf[i]);
-            
-            add_data_transfer_bytecount(SEG_ETHER_TX, e2u_size);
             e2u_size = 0;
         }
     }
@@ -1614,85 +1598,6 @@ uint8_t check_tcp_connect_exception(void)
     
     return ret;
 }
-    
-
-void clear_data_transfer_bytecount(teDATADIR dir)
-{
-    switch(dir)
-    {
-        case SEG_ALL:
-            seg_byte_cnt[SEG_UART_RX] = 0;
-            seg_byte_cnt[SEG_UART_TX] = 0;
-            seg_byte_cnt[SEG_ETHER_RX] = 0;
-            seg_byte_cnt[SEG_ETHER_TX] = 0;
-            break;
-        
-        case SEG_UART_RX:
-        case SEG_UART_TX:
-        case SEG_ETHER_RX:
-        case SEG_ETHER_TX:
-            seg_byte_cnt[dir] = 0;
-            break;
-
-        default:
-            break;
-    }
-}
-
-
-void clear_data_transfer_megacount(teDATADIR dir)
-{
-    switch(dir)
-    {
-        case SEG_ALL:
-            seg_mega_cnt[SEG_UART_RX] = 0;
-            seg_mega_cnt[SEG_UART_TX] = 0;
-            seg_mega_cnt[SEG_ETHER_RX] = 0;
-            seg_mega_cnt[SEG_ETHER_TX] = 0;
-            break;
-        
-        case SEG_UART_RX:
-        case SEG_UART_TX:
-        case SEG_ETHER_RX:
-        case SEG_ETHER_TX:
-            seg_mega_cnt[dir] = 0;
-            break;
-
-        default:
-            break;
-    }
-}
-
-void add_data_transfer_bytecount(teDATADIR dir, uint16_t len)
-{
-    if(dir >= SEG_ALL) return;
-
-    if(len > 0)
-    {
-        if(seg_byte_cnt[dir] < SEG_MEGABYTE)
-        {
-            seg_byte_cnt[dir] += len;
-        }
-        else
-        {
-            seg_mega_cnt[dir]++;
-            seg_byte_cnt[dir] = 0;
-        }
-    }
-}
-
-
-uint32_t get_data_transfer_bytecount(teDATADIR dir)
-{
-    return seg_byte_cnt[dir];
-}
-
-
-uint32_t get_data_transfer_megacount(teDATADIR dir)
-{
-    return seg_mega_cnt[dir];
-}
-
 
 uint16_t debugSerial_dataTransfer(uint8_t * buf, uint16_t size, teDEBUGTYPE type)
 {

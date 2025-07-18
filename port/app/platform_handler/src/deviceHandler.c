@@ -51,11 +51,7 @@ void device_socket_termination(void)
 
 void device_reboot(void)
 {
-    device_socket_termination();
-    
-    clear_data_transfer_bytecount(SEG_ALL);
-    clear_data_transfer_megacount(SEG_ALL);
-    
+    device_socket_termination();    
     device_raw_reboot();
     while(1);
 }

@@ -118,14 +118,5 @@ void send_sid(uint8_t sock, uint8_t link_message);
 // Serial debug messages for verifying data transfer
 uint16_t debugSerial_dataTransfer(uint8_t * buf, uint16_t size, teDEBUGTYPE type);
 
-// UART tx/rx and Ethernet tx/rx data transfer bytes counter
-void add_data_transfer_bytecount(teDATADIR dir, uint16_t len);
-
-// UART tx/rx and Ethernet tx/rx data transfer bytes counter
-void clear_data_transfer_bytecount(teDATADIR dir);
-void clear_data_transfer_megacount(teDATADIR dir);
-uint32_t get_data_transfer_bytecount(teDATADIR dir);
-uint32_t get_data_transfer_megacount(teDATADIR dir);
-
 #endif /* SEG_H_ */
 
