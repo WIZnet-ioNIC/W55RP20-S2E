@@ -272,7 +272,6 @@ void start_task(void *argument)
 
 void eth_interrupt_task(void *argument)
 {
-    uint8_t socket_num = SEG_DATA0_SOCK;
     uint16_t reg_val;
 
     while (1) {

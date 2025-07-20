@@ -123,8 +123,6 @@ void Device_IO_Init(void)
 // This function is intended only for output connection status pins; PHYlink, TCPconnection
 void set_connection_status_io(uint16_t pin, uint8_t set)
 {
-    struct __serial_option *serial_option = (struct __serial_option *)&(get_DevConfig_pointer()->serial_option);
-
     if(pin == STATUS_PHYLINK_PIN)
     {
         //PRT_INFO("pin = PHY, set = %d\r\n", set);
@@ -198,8 +196,6 @@ uint8_t get_flowcontrol_dsr_pin(void)
 
 void init_connection_status_io(void)
 {
-    struct __serial_option *serial_option = (struct __serial_option *)&(get_DevConfig_pointer()->serial_option);
-
     init_phylink_status_pin();
     init_tcpconnection_status_pin();
 }

@@ -69,10 +69,6 @@ extern uint8_t g_recv_mqtt_buf[DATA_BUF_SIZE];
 uint16_t u2e_size = 0;
 uint16_t e2u_size = 0;
 
-// S2E Data byte count variables
-volatile uint32_t seg_byte_cnt[4] = {0, };
-volatile uint32_t seg_mega_cnt[4] = {0, };
-
 // UDP: Peer netinfo
 uint8_t peerip[4] = {0, };
 uint8_t peerip_tmp[4] = {0xff, };
@@ -112,9 +108,6 @@ void do_seg(uint8_t sock)
 {
     struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
     struct __serial_option *serial_option = (struct __serial_option *)&(get_DevConfig_pointer()->serial_option);
-    struct __firmware_update *firmware_update = (struct __firmware_update *)&(get_DevConfig_pointer()->firmware_update);
-    
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
 
     // Serial AT command mode enabled, initial settings
     if((opmode == DEVICE_GW_MODE) && (sw_modeswitch_at_mode_on == SEG_ENABLE))
@@ -281,7 +274,6 @@ void proc_SEG_tcp_client(uint8_t sock)
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *)&(get_DevConfig_pointer()->serial_data_packing);
     struct __serial_common *serial_common = (struct __serial_common *)&(get_DevConfig_pointer()->serial_common);
     struct __serial_command *serial_command = (struct __serial_command *)&(get_DevConfig_pointer()->serial_command);
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
 
     uint16_t source_port;
     uint8_t destip[4] = {0, };
@@ -486,8 +478,7 @@ void proc_SEG_tcp_server(uint8_t sock)
     struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
     struct __serial_command *serial_command = (struct __serial_command *)&(get_DevConfig_pointer()->serial_command);
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *)&(get_DevConfig_pointer()->serial_data_packing);
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
-    
+
     uint8_t destip[4] = {0, };
     uint16_t destport = 0;
     
@@ -674,7 +665,6 @@ void proc_SEG_tcp_mixed(uint8_t sock)
     struct __serial_common *serial_common = (struct __serial_common *)&get_DevConfig_pointer()->serial_common;
     struct __serial_command *serial_command = (struct __serial_command *)&get_DevConfig_pointer()->serial_command;
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *)&(get_DevConfig_pointer()->serial_data_packing);
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
 
     uint16_t source_port = 0;
     uint8_t destip[4] = {0, };
@@ -969,9 +959,6 @@ void uart_to_ether(uint8_t sock)
     struct __serial_common *serial_common = (struct __serial_common *)&get_DevConfig_pointer()->serial_common;
     struct __tcp_option *tcp_option = (struct __tcp_option *)&(get_DevConfig_pointer()->tcp_option);
 
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
-    struct __mqtt_option *mqtt_option = (struct __mqtt_option *)&(get_DevConfig_pointer()->mqtt_option);
-
     uint16_t len;
     int16_t sent_len = 0;
 
@@ -980,8 +967,6 @@ void uart_to_ether(uint8_t sock)
 
     if(len > 0)
     {
-        add_data_transfer_bytecount(SEG_UART_RX, len);
-
         if((serial_common->serial_debug_en == SEG_DEBUG_S2E) || (serial_common->serial_debug_en == SEG_DEBUG_ALL))
         {
             debugSerial_dataTransfer(g_send_buf, len, SEG_DEBUG_S2E);
@@ -1021,11 +1006,8 @@ void uart_to_ether(uint8_t sock)
                 // Connection password is only checked in the TCP SERVER MODE / TCP MIXED MODE (MIXED_SERVER)
                 if(flag_connect_pw_auth == SEG_ENABLE)
                 {
-                                            sent_len = (int16_t)send(sock, g_send_buf, len);
-                                        if(sent_len > 0) u2e_size-=sent_len;
-                    
-                    add_data_transfer_bytecount(SEG_UART_TX, len);
-                    
+                    sent_len = (int16_t)send(sock, g_send_buf, len);
+                    if(sent_len > 0) u2e_size-=sent_len;                    
                     if(tcp_option->keepalive_en == ENABLE)
                     {
                         if(flag_sent_first_keepalive == DISABLE)
@@ -1136,8 +1118,6 @@ void ether_to_uart(uint8_t sock)
     struct __network_connection *network_connection = (struct __network_connection *)&(get_DevConfig_pointer()->network_connection);
     struct __tcp_option *tcp_option = (struct __tcp_option *)&(get_DevConfig_pointer()->tcp_option);
 
-    struct __device_option *device_option = (struct __device_option *)&(get_DevConfig_pointer()->device_option);
-
     uint16_t len;
     uint16_t i;
 
@@ -1184,8 +1164,6 @@ void ether_to_uart(uint8_t sock)
         inactivity_time = 0;
         keepalive_time = 0;
         flag_sent_first_keepalive = DISABLE;
-        
-        add_data_transfer_bytecount(SEG_ETHER_RX, e2u_size);
     }
     
     if((network_connection->working_state == TCP_SERVER_MODE) ||
@@ -1233,8 +1211,6 @@ void ether_to_uart(uint8_t sock)
             uart_rs485_enable();
             for(i = 0; i < e2u_size; i++) platform_uart_putc(g_recv_buf[i]);
             uart_rs485_disable();
-            
-            add_data_transfer_bytecount(SEG_ETHER_TX, e2u_size);
             e2u_size = 0;
         }
 //////////////////////////////////////////////////////////////////////
@@ -1251,7 +1227,6 @@ void ether_to_uart(uint8_t sock)
                 }
                 
                 for(i = 0; i < e2u_size; i++) platform_uart_putc(g_recv_buf[i]);
-                add_data_transfer_bytecount(SEG_ETHER_TX, e2u_size);
                 e2u_size = 0;
             }
         }
@@ -1263,8 +1238,6 @@ void ether_to_uart(uint8_t sock)
             }
             
             for(i = 0; i < e2u_size; i++) platform_uart_putc(g_recv_buf[i]);
-            
-            add_data_transfer_bytecount(SEG_ETHER_TX, e2u_size);
             e2u_size = 0;
         }
     }
@@ -1625,85 +1598,6 @@ uint8_t check_tcp_connect_exception(void)
     
     return ret;
 }
-    
-
-void clear_data_transfer_bytecount(teDATADIR dir)
-{
-    switch(dir)
-    {
-        case SEG_ALL:
-            seg_byte_cnt[SEG_UART_RX] = 0;
-            seg_byte_cnt[SEG_UART_TX] = 0;
-            seg_byte_cnt[SEG_ETHER_RX] = 0;
-            seg_byte_cnt[SEG_ETHER_TX] = 0;
-            break;
-        
-        case SEG_UART_RX:
-        case SEG_UART_TX:
-        case SEG_ETHER_RX:
-        case SEG_ETHER_TX:
-            seg_byte_cnt[dir] = 0;
-            break;
-
-        default:
-            break;
-    }
-}
-
-
-void clear_data_transfer_megacount(teDATADIR dir)
-{
-    switch(dir)
-    {
-        case SEG_ALL:
-            seg_mega_cnt[SEG_UART_RX] = 0;
-            seg_mega_cnt[SEG_UART_TX] = 0;
-            seg_mega_cnt[SEG_ETHER_RX] = 0;
-            seg_mega_cnt[SEG_ETHER_TX] = 0;
-            break;
-        
-        case SEG_UART_RX:
-        case SEG_UART_TX:
-        case SEG_ETHER_RX:
-        case SEG_ETHER_TX:
-            seg_mega_cnt[dir] = 0;
-            break;
-
-        default:
-            break;
-    }
-}
-
-void add_data_transfer_bytecount(teDATADIR dir, uint16_t len)
-{
-    if(dir >= SEG_ALL) return;
-
-    if(len > 0)
-    {
-        if(seg_byte_cnt[dir] < SEG_MEGABYTE)
-        {
-            seg_byte_cnt[dir] += len;
-        }
-        else
-        {
-            seg_mega_cnt[dir]++;
-            seg_byte_cnt[dir] = 0;
-        }
-    }
-}
-
-
-uint32_t get_data_transfer_bytecount(teDATADIR dir)
-{
-    return seg_byte_cnt[dir];
-}
-
-
-uint32_t get_data_transfer_megacount(teDATADIR dir)
-{
-    return seg_mega_cnt[dir];
-}
-
 
 uint16_t debugSerial_dataTransfer(uint8_t * buf, uint16_t size, teDEBUGTYPE type)
 {

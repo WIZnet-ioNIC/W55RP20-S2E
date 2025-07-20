@@ -276,7 +276,6 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep)
     
     //uint8_t  i = 0;
     uint16_t ret = 0;
-    int ret_2;
     uint8_t  cmdnum = 0;
     uint8_t* treq;
     
@@ -293,13 +292,9 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep)
     uint16_t tmp_int = 0;
     uint32_t tmp_long = 0;
 
-    uint16_t tmp_port;
     uint8_t tmp_ip[4];
     uint8_t param[SEGCP_PARAM_MAX*2];
 
-    uint32_t len;
-    uint8_t *tmp_ptr;
-    
     PRT_SEGCP("SEGCP_REQ : %s\r\n",segcp_req);
 
     memset(trep, 0, sizeof(trep));

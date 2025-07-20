@@ -28,7 +28,6 @@ static int wiz_tls_init_state;
 
 int WIZnetRecvTimeOut(void *ctx, unsigned char *buf, size_t len, uint32_t timeout)
 {
-    int ret;
     uint32_t start_ms = millis();
     do
     {
@@ -87,7 +86,6 @@ int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd)
     struct __ssl_option *ssl_option = (struct __ssl_option *)&(get_DevConfig_pointer()->ssl_option);
     int ret = 1;
     const char *pers = "ssl_client1";
-    const char *alpnProtocols[] = { "x-amzn-mqtt-ca", NULL };
     uint8_t *rootca_addr = NULL;
     uint8_t *clica_addr = NULL;
     uint8_t *pkey_addr = NULL;
@@ -276,8 +274,7 @@ int wiz_tls_socket(wiz_tls_context* tlsContext, uint8_t sock, unsigned int port)
 int wiz_tls_connect(wiz_tls_context* tlsContext, char * addr, unsigned int port)
 {
     int ret;
-    uint32_t start_ms = millis(), flags;
-    uint8_t sock = (uint8_t)(tlsContext->socket_fd);
+    uint32_t flags;
     struct __ssl_option *ssl_option = (struct __ssl_option *)&(get_DevConfig_pointer()->ssl_option);
 
     PRT_SSL(" Performing the SSL/TLS handshake...\r\n");

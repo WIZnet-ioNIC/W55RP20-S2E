@@ -6,7 +6,6 @@ typedef enum
   NET_LINK_DISCONNECTED = 0,
   NET_LINK_CONNECTED,
   NET_IP_UP,
-  NET_DNS_DONE
 } NetStatus;
 
 #define DHCP_RETRY_COUNT 5

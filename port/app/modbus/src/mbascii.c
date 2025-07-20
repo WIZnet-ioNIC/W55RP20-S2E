@@ -5,7 +5,6 @@
 #include "mbserial.h"
 
 volatile uint8_t mb_state_ascii_finish;
-extern uint8_t plus_count;
 
 #define MB_SER_PDU_SIZE_MIN     3       /*!< Minimum size of a Modbus ASCII frame. */
 #define MB_SER_PDU_SIZE_MAX     DATA_BUF_SIZE - 7     /*!< Maximum size of a Modbus ASCII frame. */

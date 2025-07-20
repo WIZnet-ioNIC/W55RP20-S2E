@@ -15,7 +15,7 @@
 
 #include "wizchip_conf.h"
 #include "w5x00_spi.h"
-#if ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N))
+#if ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N) || (DEVICE_BOARD_NAME == IP20))
 #include "wiznet_spi_pio.h"
 #endif
 
@@ -25,7 +25,7 @@
  * ----------------------------------------------------------------------------------------------------
  */
 /* SPI */
-#if ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N))
+#if ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N) || (DEVICE_BOARD_NAME == IP20))
 #define USE_SPI_PIO
 #elif (DEVICE_BOARD_NAME == WIZ5XXSR_RP)
 /* SPI */
@@ -39,7 +39,6 @@
  * Variables
  * ----------------------------------------------------------------------------------------------------
  */
-static critical_section_t g_wizchip_cri_sec;
 
 #ifdef USE_SPI_DMA
 static uint dma_tx;
@@ -86,10 +85,10 @@ void wizchip_reset()
     sleep_ms(5);
 
     gpio_put(WIZCHIP_PIN_RST, 0);
-    sleep_ms(10);
+    sleep_ms(100);
  
     gpio_put(WIZCHIP_PIN_RST, 1);
-    sleep_ms(10);
+    sleep_ms(100);
     bi_decl(bi_1pin_with_name(WIZCHIP_PIN_RST, "W5x00 RESET"));
 }
 
@@ -240,7 +239,6 @@ void wizchip_initialize(void)
     reg_wizchip_spiburst_cbfunc(wizchip_read_burst, wizchip_write_burst);
 #endif
     /* W5x00 initialize */
-    uint8_t temp;
 #if (_WIZCHIP_ == W5100S)
     uint8_t memsize[2][4] = {{2, 2, 2, 2}, {2, 2, 2, 2}};
 #elif (_WIZCHIP_ == W5500)

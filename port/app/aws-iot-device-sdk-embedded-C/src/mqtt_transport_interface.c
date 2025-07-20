@@ -19,12 +19,16 @@
 #include "SSLInterface.h"
 #include "timerHandler.h"
 #include "util.h"
+#include "core_mqtt_state.h"
+#include "WIZnet_board.h"
 
 /**
  * ----------------------------------------------------------------------------------------------------
  * Macros
  * ----------------------------------------------------------------------------------------------------
  */
+#define MQTT_INCOMING_PUB_RECORD_MAX 16
+#define MQTT_OUTGOING_PUBREL_RECORD_MAX 16
 
 /**
  * ----------------------------------------------------------------------------------------------------
@@ -34,6 +38,8 @@
 extern wiz_tls_context s2e_tlsContext;
 void (*user_sub_callback)(uint8_t *, uint32_t);
 
+MQTTPubAckInfo_t incomingPubAckRecords[MQTT_INCOMING_PUB_RECORD_MAX];
+MQTTPubAckInfo_t outgoingPubRelRecords[MQTT_OUTGOING_PUBREL_RECORD_MAX];
 
 /**
  * ----------------------------------------------------------------------------------------------------
@@ -168,11 +174,15 @@ int8_t mqtt_transport_init(uint8_t sock, mqtt_config_t *mqtt_config, uint8_t cle
         transport_interface->send = mqtt_write;
         transport_interface->recv = mqtt_read;
     }
+
+#ifdef __USE_S2E_OVER_TLS__
     else
     {
         transport_interface->send = mqtts_write;
         transport_interface->recv = mqtts_read;
     }
+#endif
+
     mqtt_config->mqtt_fixed_buf.pBuffer = recv_buf;
     mqtt_config->mqtt_fixed_buf.size = recv_buf_len;
     
@@ -197,6 +207,19 @@ int8_t mqtt_transport_init(uint8_t sock, mqtt_config_t *mqtt_config, uint8_t cle
     else
     {
         printf("MQTT initialization is success\n");
+    }
+
+    ret = MQTT_InitStatefulQoS(
+            &mqtt_config->mqtt_context,
+            incomingPubAckRecords, MQTT_INCOMING_PUB_RECORD_MAX,
+            outgoingPubRelRecords, MQTT_OUTGOING_PUBREL_RECORD_MAX
+        );
+
+    if (ret != 0)
+    {
+        mqtt_transport_close(sock, mqtt_config);
+        printf("MQTT_InitStatefulQoS error : %d\n", ret);
+        return -1;
     }
     return 0;
 }
@@ -237,7 +260,6 @@ int8_t mqtt_transport_connect(mqtt_config_t *mqtt_config, uint32_t mqtt_conn_tim
 {
     bool session_present;
     int ret = -1;
-    int packet_id = 0;
 
     /* Connect to the MQTT broker */
     if (mqtt_conn_timeout == 0)
@@ -258,25 +280,23 @@ int8_t mqtt_transport_connect(mqtt_config_t *mqtt_config, uint32_t mqtt_conn_tim
 
 int mqtt_transport_close(uint8_t sock, mqtt_config_t *mqtt_config)
 {
-    int ret;
 
+#ifdef __USE_S2E_OVER_TLS__
     if (mqtt_config->ssl_flag == true)
     {
         wiz_tls_close_notify(&s2e_tlsContext);
         wiz_tls_session_reset(&s2e_tlsContext);
         wiz_tls_deinit(&s2e_tlsContext);
     }
+#endif
     mqtt_config->subscribe_count = 0;
 //    ret = disconnect(sock);
     close(sock);
-    set_wiz_tls_init_state(DISABLE);
 
-#if 0
-    if (ret == SOCK_OK)
-        return 0;
-    else
-        return -1;
+#ifdef __USE_S2E_OVER_TLS__
+    set_wiz_tls_init_state(DISABLE);
 #endif
+
     return 0;
 }
 
@@ -331,25 +351,10 @@ int32_t mqtt_read(NetworkContext_t *pNetworkContext, void *pBuffer, size_t bytes
 
     if (getSn_RX_RSR(pNetworkContext->socketDescriptor) > 0)
         size = recv(pNetworkContext->socketDescriptor, pBuffer, bytesToRecv);
-
-#if 0
-    uint32_t tickStart = millis();
-
-    do
-    {
-        if (getSn_RX_RSR(pNetworkContext->socketDescriptor) > 0)
-            size = recv(pNetworkContext->socketDescriptor, pBuffer, bytesToRecv);
-        if (size != 0)
-        {
-            break;
-        }
-        sleep_ms(10);
-    } while ((millis() - tickStart) <= MQTT_TIMEOUT);
-#endif
-
     return size;
 }
 
+#ifdef __USE_S2E_OVER_TLS__
 int32_t mqtts_write(NetworkContext_t *pNetworkContext, const void *pBuffer, size_t bytesToSend)
 {
     int32_t size = 0;
@@ -369,3 +374,4 @@ int32_t mqtts_read(NetworkContext_t *pNetworkContext, void *pBuffer, size_t byte
 
     return size;
 }
+#endif

@@ -9,6 +9,7 @@
 
 #define _SEG_DEBUG_
 
+#define PLATYPUS_TCP_CLIENT_NORMAL
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -120,19 +121,10 @@ void send_sid(uint8_t sock, uint8_t link_message);
 // Serial debug messages for verifying data transfer
 uint16_t debugSerial_dataTransfer(uint8_t * buf, uint16_t size, teDEBUGTYPE type);
 
-// UART tx/rx and Ethernet tx/rx data transfer bytes counter
-void add_data_transfer_bytecount(teDATADIR dir, uint16_t len);
-
 // MQTT sub handler
 void mqtt_subscribeMessageHandler(uint8_t *data, uint32_t data_len);
 
 int wizchip_mqtt_publish(mqtt_config_t *mqtt_config, uint8_t *pub_topic, uint8_t qos, uint8_t *pub_data, uint32_t pub_data_len);
-
-// UART tx/rx and Ethernet tx/rx data transfer bytes counter
-void clear_data_transfer_bytecount(teDATADIR dir);
-void clear_data_transfer_megacount(teDATADIR dir);
-uint32_t get_data_transfer_bytecount(teDATADIR dir);
-uint32_t get_data_transfer_megacount(teDATADIR dir);
 
 void seg_task(void *argument);
 void seg_u2e_task (void *argument);

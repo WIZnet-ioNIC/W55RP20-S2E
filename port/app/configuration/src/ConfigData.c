@@ -24,6 +24,7 @@
 
 static DevConfig dev_config;
 uint8_t mac[] = {MAC_OUI0, MAC_OUI1, MAC_OUI2, 0xAA, 0xBB, 0xCC};
+extern volatile uint16_t modeswitch_gap_time;
 
 DevConfig* get_DevConfig_pointer(void)
 {
@@ -46,6 +47,7 @@ void set_DevConfig_to_factory_value(void)
     // WIZ5XXSR-RP : 401
     // W55RP20-S2E : 411
     // W232N       : 421
+    // IP20        : 431
 
     dev_config.device_common.device_type[0] = 0x04;
 #if (DEVICE_BOARD_NAME == WIZ5XXSR_RP)
@@ -54,6 +56,8 @@ void set_DevConfig_to_factory_value(void)
     dev_config.device_common.device_type[1] = 0x01;
 #elif (DEVICE_BOARD_NAME == W232N)
     dev_config.device_common.device_type[1] = 0x02;
+#elif (DEVICE_BOARD_NAME == IP20)
+    dev_config.device_common.device_type[1] = 0x03;
 #endif
     dev_config.device_common.device_type[2] = 0x01;
 
@@ -170,7 +174,6 @@ void set_DevConfig_to_factory_value(void)
     dev_config.ssl_option.recv_timeout = 2000;
     
     // MQTT Option
-
     memset(dev_config.mqtt_option.user_name, 0x00, sizeof(dev_config.mqtt_option.user_name));
     memset(dev_config.mqtt_option.password, 0x00, sizeof(dev_config.mqtt_option.password));
     memset(dev_config.mqtt_option.client_id, 0x00, sizeof(dev_config.mqtt_option.client_id));
@@ -199,14 +202,15 @@ void set_DevConfig_to_factory_value(void)
                                                        dev_config.network_common.mac[3],
                                                        dev_config.network_common.mac[4],
                                                        dev_config.network_common.mac[5]);
+    memset(dev_config.device_option.device_serial_connect_data, 0x00, sizeof(dev_config.device_option.device_serial_connect_data));
+    memset(dev_config.device_option.device_serial_disconnect_data, 0x00, sizeof(dev_config.device_option.device_serial_disconnect_data));
+    memset(dev_config.device_option.device_eth_connect_data, 0x00, sizeof(dev_config.device_option.device_eth_connect_data));
 
     dev_config.devConfigVer = DEV_CONFIG_VER;//DEV_CONFIG_VER;
 }
 
 void load_DevConfig_from_storage(void)
 {
-    int ret = -1;
-
     read_storage(STORAGE_CONFIG, &dev_config, sizeof(DevConfig));
     read_storage(STORAGE_MAC, dev_config.network_common.mac, 6);
 
@@ -218,10 +222,10 @@ void load_DevConfig_from_storage(void)
 
     if((dev_config.config_common.packet_size == 0x0000) ||
        (dev_config.config_common.packet_size == 0xFFFF) ||
-       (dev_config.config_common.packet_size != sizeof(DevConfig)) ||
-        dev_config.devConfigVer != DEV_CONFIG_VER)
+       (dev_config.config_common.packet_size != sizeof(DevConfig)))
+        //dev_config.devConfigVer != DEV_CONFIG_VER)
     { 
-        PRT_INFO("dev_config.devConfigVer = %d, DEV_CONFIG_VER = %d\r\n", dev_config.devConfigVer, DEV_CONFIG_VER);
+        //PRT_INFO("dev_config.devConfigVer = %d, DEV_CONFIG_VER = %d\r\n", dev_config.devConfigVer, DEV_CONFIG_VER);
         PRT_INFO("Config Data size: %d / %d\r\n", dev_config.config_common.packet_size, sizeof(DevConfig));
         PRT_INFO("Start Factory Reset\r\n");
         set_DevConfig_to_factory_value();
@@ -243,6 +247,9 @@ void load_DevConfig_from_storage(void)
     dev_config.device_common.fw_ver[0] = MAJOR_VER;
     dev_config.device_common.fw_ver[1] = MINOR_VER;
     dev_config.device_common.fw_ver[2] = MAINTENANCE_VER;
+    if (dev_config.serial_data_packing.packing_time != 0) 
+        modeswitch_gap_time = dev_config.serial_data_packing.packing_time;
+
     set_device_status(ST_OPEN);
 }
 
@@ -255,7 +262,6 @@ void save_DevConfig_to_storage(void)
     DevConfig *dev_config_tmp = pvPortMalloc(sizeof(DevConfig));
     uint8_t update_success = SEGCP_DISABLE;
     uint8_t retry_cnt = 0;
-    int ret;
 
     if (dev_config_tmp == NULL) {
         PRT_SEGCP(" > Error: Memory allocation failed for dev_config_tmp\r\n");
@@ -402,7 +408,6 @@ void set_dhcp_mode(void)
 void check_mac_address(void)
 {
     DevConfig *dev_config = get_DevConfig_pointer();
-    int ret;
     uint8_t buf[12], vt, temp;
     uint32_t vi, vj;
     uint8_t temp_buf[] = "INPUT MAC ? ";

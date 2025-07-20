@@ -83,9 +83,10 @@ void net_status_task(void *argument)
                         set_stop_dhcp_flag(0);
                         if(process_dhcp() == DHCP_IP_LEASED) // DHCP success
                             flag_process_dhcp_success = ON;
-                        else // DHCP failed
+                        else {    // DHCP failed
                             dev_config->network_option.dhcp_use = 0;
                             Net_Conf(); // Set default static IP settings
+                        }
                     }
                     display_Net_Info();
                     display_Dev_Info_dhcp();
@@ -129,6 +130,24 @@ void net_status_task(void *argument)
 #else   //device reset
                         device_raw_reboot();
 #endif
+                        PRT_INFO("PHY_LINK_OFF W5500 RESET\r\n");
+                        wizchip_reset();
+                        wizchip_initialize();
+                        Net_Conf();
+
+                        switch(dev_config->network_connection.working_mode)
+                        {
+                            case TCP_CLIENT_MODE:
+                            case TCP_SERVER_MODE:
+                            case TCP_MIXED_MODE:
+                            case SSL_TCP_CLIENT_MODE:
+                            case UDP_MODE:
+                              wizchip_gpio_interrupt_initialize(SEG_DATA0_SOCK, SIK_RECEIVED);
+                              break;
+
+                            default:
+                              break;
+                        }
                         break;
                     }
                     vTaskDelay(2000);

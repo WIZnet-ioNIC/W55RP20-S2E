@@ -670,7 +670,6 @@ uint32_t get_httpServer_timecount(void)
 
 void reg_httpServer_webContent(uint8_t * content_name, uint8_t * content)
 {
-	uint16_t name_len;
 	uint32_t content_len;
 
 	if(content_name == NULL || content == NULL)
@@ -682,7 +681,6 @@ void reg_httpServer_webContent(uint8_t * content_name, uint8_t * content)
 		return;
 	}
 
-	name_len = strlen((char *)content_name);
 	content_len = strlen((char *)content);
 
 	strcpy((char *)web_content[total_content_cnt].content_name, (const char *)content_name);

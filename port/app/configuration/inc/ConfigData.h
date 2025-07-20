@@ -10,6 +10,7 @@
 #define DEVICE_NAME_SIZE        20
 #define DEVICE_ALIAS_SIZE       40
 #define DEVICE_GROUP_SIZE       40
+#define DEVICE_CONNECT_DATA_SIZE 32
 
 #define DNS_DOMAIN_SIZE         128
 
@@ -137,6 +138,9 @@ struct __device_option {
     uint8_t pw_setting[10];
     uint8_t device_alias[DEVICE_ALIAS_SIZE];
     uint8_t device_group[DEVICE_GROUP_SIZE];
+    uint8_t device_serial_connect_data[DEVICE_CONNECT_DATA_SIZE]; // Serial Send data when connected
+    uint8_t device_serial_disconnect_data[DEVICE_CONNECT_DATA_SIZE];  // Serial Send data when disconnected
+    uint8_t device_eth_connect_data[DEVICE_CONNECT_DATA_SIZE]; // Ethernet Send data when connected
 //    uint8_t ntp_domain_name[NTP_SERVER_DOMAIN_CNT][NTP_SERVER_DOMAIN_SIZE];
 } __attribute__((packed));
 #endif

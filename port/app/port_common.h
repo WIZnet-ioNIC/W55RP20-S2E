@@ -29,7 +29,7 @@
 #include "hardware/resets.h"
 #include "hardware/watchdog.h"
 
-#if ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N))
+#if ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N) || (DEVICE_BOARD_NAME == IP20))
 #include "hardware/pio.h"
 #else
 #include "hardware/spi.h"

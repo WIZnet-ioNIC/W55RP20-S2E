@@ -39,8 +39,6 @@ uint8_t http_post_cgi_handler(uint8_t * uri_name, st_http_request * p_http_reque
 {
 	uint8_t ret = HTTP_OK;
 	uint16_t len = 0;
-	uint8_t * device_ip;
-	uint8_t val;
 
 	if(predefined_set_cgi_processor(uri_name, p_http_request, buf, &len))
 	{
@@ -61,10 +59,6 @@ uint8_t predefined_get_cgi_processor(uint8_t * uri_name, uint8_t * buf, uint16_t
 {
 	uint8_t ret = 1;	// ret = 1 means 'uri_name' matched
 	uint8_t cgibuf[14] = {0, };
-	int8_t cgi_dio = -1;
-	int8_t cgi_ain = -1;
-
-	uint8_t i;
   
 	if(strcmp((const char *)uri_name, "get_devinfo.cgi") == 0)
 	{
