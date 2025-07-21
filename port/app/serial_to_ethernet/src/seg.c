@@ -612,14 +612,8 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock)
             else
             {
                 PRT_SEG("wiz_tls_init() failed\r\n");
-
-                if(get_wiz_tls_init_state() == ENABLE)
-                {
-                    wiz_tls_deinit(&s2e_tlsContext);
-                    set_wiz_tls_init_state(DISABLE);
-                }
-                network_connection->working_mode = TCP_SERVER_MODE; // Change to TCP_SERVER_MODE
-                PRT_SEG("Operation mode changed to TCP_SERVER_MODE\r\n");
+                wiz_tls_deinit(&s2e_tlsContext);
+                set_wiz_tls_init_state(DISABLE);
             }
             break;
 
