@@ -333,6 +333,7 @@ void proc_SEG_tcp_client(uint8_t sock)
 
     // Socket state
     uint8_t state = getSn_SR(sock);
+    int ret;
     uint16_t reg_val;
 
     switch(state)
@@ -342,7 +343,13 @@ void proc_SEG_tcp_client(uint8_t sock)
             // TCP connect exception checker; e.g., dns failed / zero srcip ... and etc.
             if(check_tcp_connect_exception() == ON) return;
             // TCP connect
-            connect(sock, network_connection->remote_ip, network_connection->remote_port);
+            ret = connect(sock, network_connection->remote_ip, network_connection->remote_port);
+            if (ret < 0 )
+            {
+                PRT_SEG(" > SEG:TCP_CLIENT_MODE:ConnectNetwork Err %d\r\n", ret);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY);
+                break;
+            }
 #ifdef _SEG_DEBUG_
             PRT_SEG(" > SEG:TCP_CLIENT_MODE:CLIENT_CONNECTION\r\n");
 #endif
@@ -434,6 +441,12 @@ void proc_SEG_tcp_client(uint8_t sock)
                 if(serial_common->serial_debug_en)
                     PRT_SEG(" > SEG:TCP_CLIENT_MODE:SOCKOPEN\r\n");
 
+            }
+            else
+            {
+                if(serial_common->serial_debug_en)
+                    PRT_SEG(" > SEG:TCP_CLIENT_MODE:SOCKOPEN FAILED\r\n");
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY);
             }
             break;
             
@@ -571,15 +584,9 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock)
         case SOCK_FIN_WAIT:
         case SOCK_CLOSED:
             process_socket_termination(sock, SOCK_TERMINATION_DELAY);
-            if(get_wiz_tls_init_state() == ENABLE) {
-                wiz_tls_deinit(&s2e_tlsContext);
-                set_wiz_tls_init_state(DISABLE);
-            }
-
+            set_device_status(ST_OPEN);
             if(wiz_tls_init(&s2e_tlsContext, (int *)sock) > 0)
             {
-                set_device_status(ST_OPEN);
-
                 u2e_size = 0;
                 e2u_size = 0;
 
@@ -589,7 +596,10 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock)
                     source_port = get_tcp_any_port();
 
                 PRT_SEG(" > TCP CLIENT over TLS: client_any_port = %d\r\n", client_any_port);
-                if(wiz_tls_socket(&s2e_tlsContext, sock, source_port) == sock)
+                xSemaphoreTake(seg_socket_sem, portMAX_DELAY);
+                int s = wiz_tls_socket(&s2e_tlsContext, sock, source_port);
+                xSemaphoreGive(seg_socket_sem);
+                if(s == sock)
                 {
                     // Replace the command mode switch code GAP time (default: 500ms)
                     if((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time)
@@ -602,24 +612,16 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock)
                 else
                 {
                     PRT_SEG("wiz_tls_socket() failed\r\n");
-                    if(get_wiz_tls_init_state() == ENABLE)
-                    {
-                        wiz_tls_deinit(&s2e_tlsContext);
-                        set_wiz_tls_init_state(DISABLE);
-                    }
+                    wiz_tls_deinit(&s2e_tlsContext);
+                    set_wiz_tls_init_state(DISABLE);
+                    process_socket_termination(sock, SOCK_TERMINATION_DELAY);
                 }
             }
             else
             {
                 PRT_SEG("wiz_tls_init() failed\r\n");
-
-                if(get_wiz_tls_init_state() == ENABLE)
-                {
-                    wiz_tls_deinit(&s2e_tlsContext);
-                    set_wiz_tls_init_state(DISABLE);
-                }
-                network_connection->working_mode = TCP_SERVER_MODE; // Change to TCP_SERVER_MODE
-                PRT_SEG("Operation mode changed to TCP_SERVER_MODE\r\n");
+                wiz_tls_deinit(&s2e_tlsContext);
+                set_wiz_tls_init_state(DISABLE);
             }
             break;
 
@@ -629,7 +631,6 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock)
 }
 
 #endif
-
 
 void proc_SEG_mqtt_client(uint8_t sock)
 {
@@ -755,7 +756,6 @@ void proc_SEG_mqtt_client(uint8_t sock)
         
         case SOCK_CLOSE_WAIT:
             disconnect(sock);
-            mqtt_transport_close(sock, &g_mqtt_config);
             break;
         
         case SOCK_FIN_WAIT:
@@ -785,13 +785,20 @@ void proc_SEG_mqtt_client(uint8_t sock)
                 if(serial_common->serial_debug_en)
                     PRT_SEG(" > SEG:MQTT_CLIENT_MODE:SOCKOPEN\r\n");
             }
+            else 
+            {
+                if(serial_common->serial_debug_en)
+                    PRT_SEG(" > SEG:MQTT_CLIENT_MODE:SOCKOPEN FAILED\r\n");
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY);
+                break;
+            }
 
             ret = mqtt_transport_init(sock, &g_mqtt_config, true, 0, g_recv_mqtt_buf, 
                                       DATA_BUF_SIZE, &g_transport_interface, &g_network_context, 
                                       mqtt_option->client_id, mqtt_option->user_name, mqtt_option->password, mqtt_option->keepalive, mqtt_subscribeMessageHandler);
             if (ret < 0) {
-              PRT_SEG(" > SEG:MQTT_CLIENT_MODE:INITIALIZE FAILED\r\n");
-              process_socket_termination(sock, SOCK_TERMINATION_DELAY);
+                PRT_SEG(" > SEG:MQTT_CLIENT_MODE:INITIALIZE FAILED\r\n");
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY);
             }
             break;
             
@@ -860,7 +867,7 @@ void proc_SEG_mqtts_client(uint8_t sock)
             if (ret < 0)
             {
                 PRT_SEG(" > SEG:MQTTS_CLIENT_MODE:ConnectNetwork Err %d\r\n", ret);
-                mqtt_transport_close(sock, &g_mqtt_config);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY);
                 break;
             }
             
@@ -872,7 +879,7 @@ void proc_SEG_mqtts_client(uint8_t sock)
                 if (ret < 0)
                 {
                   PRT_SEG(" > SEG:MQTTS_CLIENT_MODE:MQTTSubscribe Err %d\r\n", ret);
-                  mqtt_transport_close(sock, &g_mqtt_config);
+                  process_socket_termination(sock, SOCK_TERMINATION_DELAY);
                   break;
                 }
             }
@@ -882,7 +889,7 @@ void proc_SEG_mqtts_client(uint8_t sock)
                 if (ret < 0)
                 {
                   PRT_SEG(" > SEG:MQTTS_CLIENT_MODE:MQTTSubscribe Err %d\r\n", ret);
-                  mqtt_transport_close(sock, &g_mqtt_config);
+                  process_socket_termination(sock, SOCK_TERMINATION_DELAY);
                   break;
                 }
             }
@@ -892,25 +899,17 @@ void proc_SEG_mqtts_client(uint8_t sock)
                 if (ret < 0)
                 {
                   PRT_SEG(" > SEG:MQTTS_CLIENT_MODE:MQTTSubscribe Err %d\r\n", ret);
-                  mqtt_transport_close(sock, &g_mqtt_config);
+                  process_socket_termination(sock, SOCK_TERMINATION_DELAY);
                   break;
                 }
             }
-            first_established = 1;
             PRT_SEG(" > SEG:MQTTS_CLIENT_MODE:MQTTSubscribed\r\n");
+            first_established = 1;
             break;
         
         case SOCK_ESTABLISHED:
-            //if(getSn_IR(sock) & Sn_IR_CON)
             if(first_established)
             {
-                //reg_val = SIK_ALL & 0x00FF;
-                //ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
-                
-                ///////////////////////////////////////////////////////////////////////////////////////////////////
-                // S2E: TCP client mode initialize after connection established (only once)
-                ///////////////////////////////////////////////////////////////////////////////////////////////////
-
                 // Serial debug message printout
                 if(serial_common->serial_debug_en)
                 {
@@ -946,21 +945,15 @@ void proc_SEG_mqtts_client(uint8_t sock)
         
         case SOCK_CLOSE_WAIT:
             disconnect(sock);
-            mqtt_transport_close(sock, &g_mqtt_config);
             break;
         
         case SOCK_FIN_WAIT:
         case SOCK_CLOSED:
             process_socket_termination(sock, SOCK_TERMINATION_DELAY);
-            if(get_wiz_tls_init_state() == ENABLE) {
-                wiz_tls_deinit(&s2e_tlsContext);
-                set_wiz_tls_init_state(DISABLE);
-            }
+            set_device_status(ST_OPEN);
 
             if(wiz_tls_init(&s2e_tlsContext, (int *)sock) > 0)
             {
-                set_device_status(ST_OPEN);
-
                 u2e_size = 0;
                 e2u_size = 0;
 
@@ -970,7 +963,10 @@ void proc_SEG_mqtts_client(uint8_t sock)
                     source_port = get_tcp_any_port();
 
                 PRT_SEG(" > MQTTS_CLIENT_MODE:client_any_port = %d\r\n", client_any_port);
-                if(wiz_tls_socket(&s2e_tlsContext, sock, source_port) == sock)
+                xSemaphoreTake(seg_socket_sem, portMAX_DELAY);
+                int s = wiz_tls_socket(&s2e_tlsContext, sock, source_port);
+                xSemaphoreGive(seg_socket_sem);
+                if(s == sock)
                 {
                     // Replace the command mode switch code GAP time (default: 500ms)
                     if((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time)
@@ -983,35 +979,26 @@ void proc_SEG_mqtts_client(uint8_t sock)
                 else
                 {
                     PRT_SEG("wiz_tls_socket() failed\r\n");
-                    if(get_wiz_tls_init_state() == ENABLE)
-                    {
-                        wiz_tls_deinit(&s2e_tlsContext);
-                        set_wiz_tls_init_state(DISABLE);
-                    }
+                    wiz_tls_deinit(&s2e_tlsContext);
+                    set_wiz_tls_init_state(DISABLE);
+                    process_socket_termination(sock, SOCK_TERMINATION_DELAY);
                 }
                 ret = mqtt_transport_init(sock, &g_mqtt_config, true, 1, g_recv_mqtt_buf, 
                           DATA_BUF_SIZE, &g_transport_interface, &g_network_context, 
                           mqtt_option->client_id, mqtt_option->user_name, mqtt_option->password, mqtt_option->keepalive, mqtt_subscribeMessageHandler);
                 if (ret < 0){
-                    mqtt_transport_close(sock, &g_mqtt_config);
+                    process_socket_termination(sock, SOCK_TERMINATION_DELAY);
                     PRT_SEG(" > SEG:MQTTS_CLIENT_MODE:INITIALIZE FAILED\r\n");
                 }
             }
             else
             {
                 PRT_SEGCP("wiz_tls_init() failed\r\n");
-
-                if(get_wiz_tls_init_state() == ENABLE)
-                {
-                    wiz_tls_deinit(&s2e_tlsContext);
-                    set_wiz_tls_init_state(DISABLE);
-                }
-                network_connection->working_mode = TCP_SERVER_MODE; // Change to TCP_SERVER_MODE
-                PRT_SEG("Operation mode changed to TCP_SERVER_MODE\r\n");
+                wiz_tls_deinit(&s2e_tlsContext);
+                set_wiz_tls_init_state(DISABLE);
             }
             break;
 
-            
         default:
             break;
     }
@@ -1130,6 +1117,12 @@ void proc_SEG_tcp_server(uint8_t sock)
                 if(serial_common->serial_debug_en)
                     PRT_SEG(" > SEG:TCP_SERVER_MODE:SOCKOPEN\r\n");
             }
+            else
+            {
+                if(serial_common->serial_debug_en)
+                    PRT_SEG(" > SEG:TCP_SERVER_MODE:SOCKOPEN FAILED\r\n");
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY);
+            }
             break;
             
         default:
@@ -1154,6 +1147,7 @@ void proc_SEG_tcp_mixed(uint8_t sock)
 
     // Socket state
     uint8_t state = getSn_SR(sock);
+    int ret;
     uint16_t reg_val;
 
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
@@ -1180,7 +1174,12 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                 }
                 
                 // TCP connect
-                connect(sock, network_connection->remote_ip, network_connection->remote_port);
+                ret = connect(sock, network_connection->remote_ip, network_connection->remote_port);
+                if (ret < 0)
+                {
+                    PRT_SEG(" > SEG:TCP_MIXED_MODE:ConnectNetwork Err %d\r\n", ret);
+                    process_socket_termination(sock, SOCK_TERMINATION_DELAY);
+                }
                 
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
                 reconnection_count++;
@@ -1312,6 +1311,12 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                     if(serial_common->serial_debug_en)
                         PRT_SEG(" > SEG:TCP_MIXED_MODE:SERVER_SOCKOPEN\r\n");
                 }
+                else
+                {
+                    if(serial_common->serial_debug_en)
+                        PRT_SEG(" > SEG:TCP_MIXED_MODE:SERVER_SOCKOPEN FAILED\r\n");
+                    process_socket_termination(sock, SOCK_TERMINATION_DELAY);
+                }
             }
             else  // MIXED_CLIENT
             {
@@ -1334,12 +1339,14 @@ void proc_SEG_tcp_mixed(uint8_t sock)
                     if((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time)
                         modeswitch_gap_time = serial_data_packing->packing_time;
                     
-                    // Enable the reconnection Timer
-                    //if(tcp_option->reconnection)
-                        //reconnection_start_time = millis();
-                    
                     if(serial_common->serial_debug_en)
                         PRT_SEG(" > SEG:TCP_MIXED_MODE:CLIENT_SOCKOPEN\r\n");
+                }
+                else
+                {
+                    if(serial_common->serial_debug_en)
+                        PRT_SEG(" > SEG:TCP_MIXED_MODE:CLIENT_SOCKOPEN FAILED\r\n");
+                    process_socket_termination(sock, SOCK_TERMINATION_DELAY);
                 }
             }
             break;

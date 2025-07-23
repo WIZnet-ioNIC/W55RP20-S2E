@@ -185,6 +185,7 @@ int8_t mqtt_transport_init(uint8_t sock, mqtt_config_t *mqtt_config, uint8_t cle
 
     mqtt_config->mqtt_fixed_buf.pBuffer = recv_buf;
     mqtt_config->mqtt_fixed_buf.size = recv_buf_len;
+    mqtt_config->subscribe_count = 0;
     
     network_context->socketDescriptor = sock;
     transport_interface->pNetworkContext = network_context;
@@ -200,7 +201,6 @@ int8_t mqtt_transport_init(uint8_t sock, mqtt_config_t *mqtt_config, uint8_t cle
 
     if (ret != 0)
     {
-        mqtt_transport_close(sock, mqtt_config);
         printf("MQTT initialization is error : %d\n", ret);
         return -1;
     }
@@ -217,7 +217,6 @@ int8_t mqtt_transport_init(uint8_t sock, mqtt_config_t *mqtt_config, uint8_t cle
 
     if (ret != 0)
     {
-        mqtt_transport_close(sock, mqtt_config);
         printf("MQTT_InitStatefulQoS error : %d\n", ret);
         return -1;
     }
