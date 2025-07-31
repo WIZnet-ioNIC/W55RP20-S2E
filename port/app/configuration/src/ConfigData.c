@@ -1,6 +1,6 @@
 /*
- * ConfigData.c 
- */
+    ConfigData.c
+*/
 
 #include <stdio.h>
 #include <string.h>
@@ -26,13 +26,11 @@ static DevConfig dev_config;
 uint8_t mac[] = {MAC_OUI0, MAC_OUI1, MAC_OUI2, 0xAA, 0xBB, 0xCC};
 extern volatile uint16_t modeswitch_gap_time;
 
-DevConfig* get_DevConfig_pointer(void)
-{
+DevConfig* get_DevConfig_pointer(void) {
     return &dev_config;
 }
 
-void set_DevConfig_to_factory_value(void)
-{
+void set_DevConfig_to_factory_value(void) {
 
     dev_config.device_common.fw_ver[0] = MAJOR_VER;
     dev_config.device_common.fw_ver[1] = MINOR_VER;
@@ -130,11 +128,11 @@ void set_DevConfig_to_factory_value(void)
     dev_config.serial_option.flow_control = flow_none;
 
 #ifdef __USE_DSR_DTR_DEFAULT__
-        dev_config.serial_option.dtr_en = ENABLE;
-        dev_config.serial_option.dsr_en = ENABLE;
+    dev_config.serial_option.dtr_en = ENABLE;
+    dev_config.serial_option.dsr_en = ENABLE;
 #else
-        dev_config.serial_option.dtr_en = DISABLE;
-        dev_config.serial_option.dsr_en = DISABLE;
+    dev_config.serial_option.dtr_en = DISABLE;
+    dev_config.serial_option.dsr_en = DISABLE;
 #endif
 
     //dev_config.serial_info[0].serial_debug_en = DISABLE;
@@ -172,7 +170,7 @@ void set_DevConfig_to_factory_value(void)
     dev_config.ssl_option.root_ca_option = 0; //MBEDTLS_SSL_VERIFY_NONE;
     dev_config.ssl_option.client_cert_enable = DISABLE;
     dev_config.ssl_option.recv_timeout = 2000;
-    
+
     // MQTT Option
     memset(dev_config.mqtt_option.user_name, 0x00, sizeof(dev_config.mqtt_option.user_name));
     memset(dev_config.mqtt_option.password, 0x00, sizeof(dev_config.mqtt_option.password));
@@ -195,13 +193,13 @@ void set_DevConfig_to_factory_value(void)
     memcpy(dev_config.device_option.device_group, DEVICE_GROUP_DEFAULT, sizeof(DEVICE_GROUP_DEFAULT));
 
     sprintf((char *)dev_config.device_option.device_alias, "%s-%02X%02X%02X%02X%02X%02X",
-                                                       dev_config.device_common.device_name,
-                                                       dev_config.network_common.mac[0],
-                                                       dev_config.network_common.mac[1],
-                                                       dev_config.network_common.mac[2],
-                                                       dev_config.network_common.mac[3],
-                                                       dev_config.network_common.mac[4],
-                                                       dev_config.network_common.mac[5]);
+            dev_config.device_common.device_name,
+            dev_config.network_common.mac[0],
+            dev_config.network_common.mac[1],
+            dev_config.network_common.mac[2],
+            dev_config.network_common.mac[3],
+            dev_config.network_common.mac[4],
+            dev_config.network_common.mac[5]);
     memset(dev_config.device_option.device_serial_connect_data, 0x00, sizeof(dev_config.device_option.device_serial_connect_data));
     memset(dev_config.device_option.device_serial_disconnect_data, 0x00, sizeof(dev_config.device_option.device_serial_disconnect_data));
     memset(dev_config.device_option.device_eth_connect_data, 0x00, sizeof(dev_config.device_option.device_eth_connect_data));
@@ -209,52 +207,49 @@ void set_DevConfig_to_factory_value(void)
     dev_config.devConfigVer = DEV_CONFIG_VER;//DEV_CONFIG_VER;
 }
 
-void load_DevConfig_from_storage(void)
-{
+void load_DevConfig_from_storage(void) {
     read_storage(STORAGE_CONFIG, &dev_config, sizeof(DevConfig));
     read_storage(STORAGE_MAC, dev_config.network_common.mac, 6);
 
-    if(dev_config.serial_common.serial_debug_en)
-      stdio_init_all();
-    
-    PRT_INFO("MAC = %02X%02X%02X%02X%02X%02X\r\n", dev_config.network_common.mac[0], dev_config.network_common.mac[1], dev_config.network_common.mac[2], \
-                                                   dev_config.network_common.mac[3], dev_config.network_common.mac[4], dev_config.network_common.mac[5]);
+    if (dev_config.serial_common.serial_debug_en) {
+        stdio_init_all();
+    }
 
-    if((dev_config.config_common.packet_size == 0x0000) ||
-       (dev_config.config_common.packet_size == 0xFFFF) ||
-       (dev_config.config_common.packet_size != sizeof(DevConfig)))
+    PRT_INFO("MAC = %02X%02X%02X%02X%02X%02X\r\n", dev_config.network_common.mac[0], dev_config.network_common.mac[1], dev_config.network_common.mac[2], \
+             dev_config.network_common.mac[3], dev_config.network_common.mac[4], dev_config.network_common.mac[5]);
+
+    if ((dev_config.config_common.packet_size == 0x0000) ||
+            (dev_config.config_common.packet_size == 0xFFFF) ||
+            (dev_config.config_common.packet_size != sizeof(DevConfig)))
         //dev_config.devConfigVer != DEV_CONFIG_VER)
-    { 
+    {
         //PRT_INFO("dev_config.devConfigVer = %d, DEV_CONFIG_VER = %d\r\n", dev_config.devConfigVer, DEV_CONFIG_VER);
         PRT_INFO("Config Data size: %d / %d\r\n", dev_config.config_common.packet_size, sizeof(DevConfig));
         PRT_INFO("Start Factory Reset\r\n");
         set_DevConfig_to_factory_value();
         save_DevConfig_to_storage();
-        
+
         PRT_INFO("After Config Data size: %d / %d\r\n", dev_config.config_common.packet_size, sizeof(DevConfig));
         device_raw_reboot();
     }
-    
-    if((dev_config.serial_option.flow_control == flow_rtsonly) || (dev_config.serial_option.flow_control == flow_reverserts))   // Edit for supporting RTS only in 17/3/28 , recommend adapting to WIZ750SR 
-    {
-      dev_config.serial_option.uart_interface = UART_IF_RS422;    //temporarily set RS422, Actual setting is done in DATA0_UART_Configuration.
-    }
-    else
-    {
-      dev_config.serial_option.uart_interface = get_uart_if_sel_pin();
+
+    if ((dev_config.serial_option.flow_control == flow_rtsonly) || (dev_config.serial_option.flow_control == flow_reverserts)) { // Edit for supporting RTS only in 17/3/28 , recommend adapting to WIZ750SR
+        dev_config.serial_option.uart_interface = UART_IF_RS422;    //temporarily set RS422, Actual setting is done in DATA0_UART_Configuration.
+    } else {
+        dev_config.serial_option.uart_interface = get_uart_if_sel_pin();
     }
 
     dev_config.device_common.fw_ver[0] = MAJOR_VER;
     dev_config.device_common.fw_ver[1] = MINOR_VER;
     dev_config.device_common.fw_ver[2] = MAINTENANCE_VER;
-    if (dev_config.serial_data_packing.packing_time != 0) 
+    if (dev_config.serial_data_packing.packing_time != 0) {
         modeswitch_gap_time = dev_config.serial_data_packing.packing_time;
+    }
 
     set_device_status(ST_OPEN);
 }
 
-void save_DevConfig_to_storage(void)
-{
+void save_DevConfig_to_storage(void) {
     erase_storage(STORAGE_CONFIG);
 #ifndef __USE_SAFE_SAVE__
     write_storage(STORAGE_CONFIG, 0, (uint8_t *)&dev_config, sizeof(DevConfig));
@@ -271,60 +266,57 @@ void save_DevConfig_to_storage(void)
     do {
         write_storage(STORAGE_CONFIG, 0, (uint8_t *)&dev_config, sizeof(DevConfig));
         read_storage(STORAGE_CONFIG, dev_config_tmp, sizeof(DevConfig));
-        
-#endif        
-        if(memcmp(&dev_config, dev_config_tmp, sizeof(DevConfig)) == 0) { // Config-data set is successfully updated.
-            update_success = SEGCP_ENABLE;
-        } else {
-            retry_cnt++;
-            PRT_SEGCP(" > DevConfig update failed, Retry: %d\r\n", retry_cnt);
-        }
-        
-        if(retry_cnt >= MAX_SAVE_RETRY) {
-            break;
-        }
-    } while(update_success != SEGCP_ENABLE);
-    vPortFree(dev_config_tmp);
+
+#endif
+    if (memcmp(&dev_config, dev_config_tmp, sizeof(DevConfig)) == 0) { // Config-data set is successfully updated.
+        update_success = SEGCP_ENABLE;
+    } else {
+        retry_cnt++;
+        PRT_SEGCP(" > DevConfig update failed, Retry: %d\r\n", retry_cnt);
+    }
+
+    if (retry_cnt >= MAX_SAVE_RETRY) {
+        break;
+    }
+} while (update_success != SEGCP_ENABLE);
+vPortFree(dev_config_tmp);
 }
 
-void get_DevConfig_value(void *dest, const void *src, uint16_t size)
-{
+void get_DevConfig_value(void *dest, const void *src, uint16_t size) {
     memcpy(dest, src, size);
 }
 
-void set_DevConfig_value(void *dest, const void *value, const uint16_t size)
-{
+void set_DevConfig_value(void *dest, const void *value, const uint16_t size) {
     memcpy(dest, value, size);
 }
 
-void set_DevConfig(wiz_NetInfo *net)
-{
+void set_DevConfig(wiz_NetInfo *net) {
     set_DevConfig_value(dev_config.network_common.mac, net->mac, sizeof(dev_config.network_common.mac));
     set_DevConfig_value(dev_config.network_common.local_ip, net->ip, sizeof(dev_config.network_common.local_ip));
     set_DevConfig_value(dev_config.network_common.gateway, net->gw, sizeof(dev_config.network_common.gateway));
     set_DevConfig_value(dev_config.network_common.subnet, net->sn, sizeof(dev_config.network_common.subnet));
     set_DevConfig_value(dev_config.network_option.dns_server_ip, net->dns, sizeof(dev_config.network_option.dns_server_ip));
-    if(net->dhcp == NETINFO_STATIC)
+    if (net->dhcp == NETINFO_STATIC) {
         dev_config.network_option.dhcp_use = DISABLE;
-    else
+    } else {
         dev_config.network_option.dhcp_use = ENABLE;
+    }
 }
 
-void get_DevConfig(wiz_NetInfo *net)
-{
+void get_DevConfig(wiz_NetInfo *net) {
     get_DevConfig_value(net->mac, dev_config.network_common.mac, sizeof(net->mac));
     get_DevConfig_value(net->ip, dev_config.network_common.local_ip, sizeof(net->ip));
     get_DevConfig_value(net->gw, dev_config.network_common.gateway, sizeof(net->gw));
     get_DevConfig_value(net->sn, dev_config.network_common.subnet, sizeof(net->sn));
     get_DevConfig_value(net->dns, dev_config.network_option.dns_server_ip, sizeof(net->dns));
-    if(dev_config.network_option.dhcp_use)
+    if (dev_config.network_option.dhcp_use) {
         net->dhcp = NETINFO_DHCP;
-    else
+    } else {
         net->dhcp = NETINFO_STATIC;
+    }
 }
 
-void display_Net_Info(void)
-{
+void display_Net_Info(void) {
     DevConfig *dev_config = get_DevConfig_pointer();
     wiz_NetInfo gWIZNETINFO;
 
@@ -336,52 +328,42 @@ void display_Net_Info(void)
     PRT_INFO(" # GW : %d.%d.%d.%d\r\n", gWIZNETINFO.gw[0], gWIZNETINFO.gw[1], gWIZNETINFO.gw[2], gWIZNETINFO.gw[3]);
     PRT_INFO(" # SN : %d.%d.%d.%d\r\n", gWIZNETINFO.sn[0], gWIZNETINFO.sn[1], gWIZNETINFO.sn[2], gWIZNETINFO.sn[3]);
     PRT_INFO(" # DNS: %d.%d.%d.%d\r\n", gWIZNETINFO.dns[0], gWIZNETINFO.dns[1], gWIZNETINFO.dns[2], gWIZNETINFO.dns[3]);
-    
-    if(dev_config->network_connection.working_mode != TCP_SERVER_MODE)
-    {
-        if(dev_config->network_connection.dns_use == SEGCP_ENABLE)
-        {
-            PRT_INFO(" # Destination Domain: %s / Port: %d\r\n",
-                    dev_config->network_connection.dns_domain_name,
-                    dev_config->network_connection.remote_port);
-        }
-        else
-        {
-            PRT_INFO(" # Destination IP: %d.%d.%d.%d / Port: %d\r\n",
-                    dev_config->network_connection.remote_ip[0],
-                    dev_config->network_connection.remote_ip[1],
-                    dev_config->network_connection.remote_ip[2],
-                    dev_config->network_connection.remote_ip[3],
-                    dev_config->network_connection.remote_port);
 
-            if(dev_config->network_connection.working_mode == UDP_MODE)
-            {
-                if((dev_config->network_connection.remote_ip[0] == 0) &&
-                    (dev_config->network_connection.remote_ip[1] == 0) &&
-                    (dev_config->network_connection.remote_ip[2] == 0) &&
-                    (dev_config->network_connection.remote_ip[3] == 0))
-                {
+    if (dev_config->network_connection.working_mode != TCP_SERVER_MODE) {
+        if (dev_config->network_connection.dns_use == SEGCP_ENABLE) {
+            PRT_INFO(" # Destination Domain: %s / Port: %d\r\n",
+                     dev_config->network_connection.dns_domain_name,
+                     dev_config->network_connection.remote_port);
+        } else {
+            PRT_INFO(" # Destination IP: %d.%d.%d.%d / Port: %d\r\n",
+                     dev_config->network_connection.remote_ip[0],
+                     dev_config->network_connection.remote_ip[1],
+                     dev_config->network_connection.remote_ip[2],
+                     dev_config->network_connection.remote_ip[3],
+                     dev_config->network_connection.remote_port);
+
+            if (dev_config->network_connection.working_mode == UDP_MODE) {
+                if ((dev_config->network_connection.remote_ip[0] == 0) &&
+                        (dev_config->network_connection.remote_ip[1] == 0) &&
+                        (dev_config->network_connection.remote_ip[2] == 0) &&
+                        (dev_config->network_connection.remote_ip[3] == 0)) {
                     PRT_INFO(" ## UDP 1:N Mode\r\n");
-                }
-                else
-                {
+                } else {
                     PRT_INFO(" ## UDP 1:1 Mode\r\n");
                 }
             }
         }
     }
-    
+
     printf("\r\n");
 }
 
-void Mac_Conf(void)
-{
+void Mac_Conf(void) {
     DevConfig *dev_config = get_DevConfig_pointer();
     setSHAR(dev_config->network_common.mac);
 }
 
-void Net_Conf(void)
-{
+void Net_Conf(void) {
     DevConfig *dev_config = get_DevConfig_pointer();
     wiz_NetInfo gWIZNETINFO;
 
@@ -391,84 +373,84 @@ void Net_Conf(void)
     get_DevConfig_value(gWIZNETINFO.gw, dev_config->network_common.gateway, sizeof(gWIZNETINFO.gw[0]) * 4);
     get_DevConfig_value(gWIZNETINFO.sn, dev_config->network_common.subnet, sizeof(gWIZNETINFO.sn[0]) * 4);
     get_DevConfig_value(gWIZNETINFO.dns, dev_config->network_option.dns_server_ip, sizeof(gWIZNETINFO.dns));
-    if(dev_config->network_option.dhcp_use)
+    if (dev_config->network_option.dhcp_use) {
         gWIZNETINFO.dhcp = NETINFO_DHCP;
-    else
+    } else {
         gWIZNETINFO.dhcp = NETINFO_STATIC;
+    }
 
     ctlnetwork(CN_SET_NETINFO, (void*) &gWIZNETINFO);
 }
 
-void set_dhcp_mode(void)
-{
+void set_dhcp_mode(void) {
     DevConfig *dev_config = get_DevConfig_pointer();
     dev_config->network_option.dhcp_use = 1;
 }
 
-void check_mac_address(void)
-{
+void check_mac_address(void) {
     DevConfig *dev_config = get_DevConfig_pointer();
     uint8_t buf[12], vt, temp;
     uint32_t vi, vj;
     uint8_t temp_buf[] = "INPUT MAC ? ";
 
-    if (dev_config->network_common.mac[0] != MAC_OUI0 || dev_config->network_common.mac[1] != MAC_OUI1 || dev_config->network_common.mac[2] != MAC_OUI2)
-    {
+    if (dev_config->network_common.mac[0] != MAC_OUI0 || dev_config->network_common.mac[1] != MAC_OUI1 || dev_config->network_common.mac[2] != MAC_OUI2) {
         PRT_INFO("%s\r\n", temp_buf);
         platform_uart_puts(temp_buf, strlen(temp_buf));
 
-        while(1){
-          vt = uart_getc(UART_ID);
-          if(vt == 'S') {
-            temp = 'R';
-            platform_uart_puts(&temp,1);
-            break;
-          }
+        while (1) {
+            vt = uart_getc(UART_ID);
+            if (vt == 'S') {
+                temp = 'R';
+                platform_uart_puts(&temp, 1);
+                break;
+            }
         }
-        for(vi = 0; vi < 12; vi++){
-          buf[vi] = uart_getc(UART_ID);
+        for (vi = 0; vi < 12; vi++) {
+            buf[vi] = uart_getc(UART_ID);
         }
         platform_uart_puts(buf, 12);
-        platform_uart_puts("\r\n",2);
-        for(vi = 0, vj = 0 ; vi < 6 ; vi++, vj += 2){
-          dev_config->network_common.mac[vi] = get_hex(buf[vj], buf[vj+1]);
-          mac[vi] = get_hex(buf[vj], buf[vj+1]);
+        platform_uart_puts("\r\n", 2);
+        for (vi = 0, vj = 0 ; vi < 6 ; vi++, vj += 2) {
+            dev_config->network_common.mac[vi] = get_hex(buf[vj], buf[vj + 1]);
+            mac[vi] = get_hex(buf[vj], buf[vj + 1]);
         }
 
         erase_flash_sector(FLASH_MAC_ADDR);
         write_flash(FLASH_MAC_ADDR, mac, 6);
 
         sprintf((char *)dev_config->device_option.device_alias, "%s-%02X%02X%02X%02X%02X%02X",
-                                                       dev_config->device_common.device_name,
-                                                       mac[0],
-                                                       mac[1],
-                                                       mac[2],
-                                                       mac[3],
-                                                       mac[4],
-                                                       mac[5]);
+                dev_config->device_common.device_name,
+                mac[0],
+                mac[1],
+                mac[2],
+                mac[3],
+                mac[4],
+                mac[5]);
         save_DevConfig_to_storage();
         device_raw_reboot();
     }
 
 }
 
-uint8_t get_hex(uint8_t b0, uint8_t b1)
-{
-  uint8_t buf[2];
-  buf[0]   = b0;
-  buf[1]   = b1;
-  buf[0]   = atonum(buf[0]);
-  buf[0] <<= 4;
-  buf[0]  += atonum(buf[1]);
-  return(buf[0]);
+uint8_t get_hex(uint8_t b0, uint8_t b1) {
+    uint8_t buf[2];
+    buf[0]   = b0;
+    buf[1]   = b1;
+    buf[0]   = atonum(buf[0]);
+    buf[0] <<= 4;
+    buf[0]  += atonum(buf[1]);
+    return (buf[0]);
 }
 
-char atonum(char ch)
-{
-  ch -= '0';
-  if (ch > 9) ch -= 7;
-  if (ch > 15) ch -= 0x20;
-  return(ch);
+char atonum(char ch) {
+    ch -= '0';
+    if (ch > 9) {
+        ch -= 7;
+    }
+    if (ch > 15) {
+        ch -= 0x20;
+    }
+    return (ch);
 }
 
 

@@ -1,9 +1,9 @@
 /*
- * WIZ5XXSR-RP_Debug.h
- *
- *  Created on: Jan 19, 2022
- *      Author: Mason
- */
+    WIZ5XXSR-RP_Debug.h
+
+    Created on: Jan 19, 2022
+        Author: Mason
+*/
 
 #ifndef PLATFORMHANDLER_WIZ_DEBUG_H_
 #define PLATFORMHANDLER_WIZ_DEBUG_H_
@@ -84,24 +84,24 @@ do {									                     \
 } while (0)
 
 /**
- * @defgroup System_APIs System APIs
- * @brief System APIs
- */
+    @defgroup System_APIs System APIs
+    @brief System APIs
+*/
 
 /**
- * @addtogroup System_APIs
- * @{
- */
+    @addtogroup System_APIs
+    @{
+*/
 
 /**
- * @defgroup DEBUG_APIs DEBUG APIs
- * @brief DEBUG APIs
- */
+    @defgroup DEBUG_APIs DEBUG APIs
+    @brief DEBUG APIs
+*/
 
 /**
- * @addtogroup DEBUG_APIs
- * @{
- */
+    @addtogroup DEBUG_APIs
+    @{
+*/
 
 #if (GENERAL_DBG && DBG_LEVEL_INFO)
 /** Print information of the info level */
@@ -178,15 +178,15 @@ do {									                     \
 
 #if (GENERAL_DBG && DBG_LEVEL_DUMP)
 /**
- * @brief          dump memory
- *
- * @param[in]      *p     pointer the memory
- * @param[in]      len    length of memory
- *
- * @return         None
- *
- * @note           None
- */
+    @brief          dump memory
+
+    @param[in]      *p     pointer the memory
+    @param[in]      len    length of memory
+
+    @return         None
+
+    @note           None
+*/
 void    PRT_DUMP(char *p, uint32_t len);
 #else
 /** Print information of the dump level */

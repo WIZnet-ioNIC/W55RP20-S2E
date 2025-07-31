@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2023 Raspberry Pi (Trading) Ltd.
- *
- * SPDX-License-Identifier: BSD-3-Clause
- */
+    Copyright (c) 2023 Raspberry Pi (Trading) Ltd.
+
+    SPDX-License-Identifier: BSD-3-Clause
+*/
 
 #ifndef _WIZNET_SPI_FUNCS_H_
 #define _WIZNET_SPI_FUNCS_H_

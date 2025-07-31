@@ -1,6 +1,6 @@
 /*
- * ConfigData.h
- */
+    ConfigData.h
+*/
 
 #ifndef __CONFIGDATA_H__
 #define __CONFIGDATA_H__
@@ -26,7 +26,7 @@
 #define MAC_OUI1  0x08
 #define MAC_OUI2  0xDC
 
-enum bank_num{
+enum bank_num {
     APP_BANK0 = 0,
     APP_BANK1
 };
@@ -135,7 +135,7 @@ struct __device_option {
     uint8_t device_serial_connect_data[DEVICE_CONNECT_DATA_SIZE]; // Serial Send data when connected
     uint8_t device_serial_disconnect_data[DEVICE_CONNECT_DATA_SIZE];  // Serial Send data when disconnected
     uint8_t device_eth_connect_data[DEVICE_CONNECT_DATA_SIZE]; // Ethernet Send data when connected
-//    uint8_t ntp_domain_name[NTP_SERVER_DOMAIN_CNT][NTP_SERVER_DOMAIN_SIZE];
+    //    uint8_t ntp_domain_name[NTP_SERVER_DOMAIN_CNT][NTP_SERVER_DOMAIN_SIZE];
 } __attribute__((packed));
 #endif
 

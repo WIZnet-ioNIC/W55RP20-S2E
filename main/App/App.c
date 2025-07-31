@@ -1,14 +1,14 @@
 /**
- * Copyright (c) 2022 WIZnet Co.,Ltd
- *
- * SPDX-License-Identifier: BSD-3-Clause
- */
+    Copyright (c) 2022 WIZnet Co.,Ltd
+
+    SPDX-License-Identifier: BSD-3-Clause
+*/
 
 /**
- * ----------------------------------------------------------------------------------------------------
- * Includes
- * ----------------------------------------------------------------------------------------------------
- */
+    ----------------------------------------------------------------------------------------------------
+    Includes
+    ----------------------------------------------------------------------------------------------------
+*/
 #include "tusb.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -41,10 +41,10 @@
 #include "w5x00_spi.h"
 
 /**
- * ----------------------------------------------------------------------------------------------------
- * Macros
- * ----------------------------------------------------------------------------------------------------
- */
+    ----------------------------------------------------------------------------------------------------
+    Macros
+    ----------------------------------------------------------------------------------------------------
+*/
 /* Task */
 
 #define NET_TASK_STACK_SIZE 1024
@@ -81,10 +81,10 @@
 #define START_TASK_PRIORITY 65
 
 /**
- * ----------------------------------------------------------------------------------------------------
- * Variables
- * ----------------------------------------------------------------------------------------------------
- */
+    ----------------------------------------------------------------------------------------------------
+    Variables
+    ----------------------------------------------------------------------------------------------------
+*/
 xSemaphoreHandle net_segcp_udp_sem = NULL;
 xSemaphoreHandle net_segcp_tcp_sem = NULL;
 xSemaphoreHandle net_http_webserver_sem = NULL;
@@ -107,10 +107,10 @@ TimerHandle_t seg_auth_timer = NULL;
 TimerHandle_t reset_timer = NULL;
 
 /**
- * ----------------------------------------------------------------------------------------------------
- * Functions
- * ----------------------------------------------------------------------------------------------------
- */
+    ----------------------------------------------------------------------------------------------------
+    Functions
+    ----------------------------------------------------------------------------------------------------
+*/
 static void RP2040_Init(void);
 static void RP2040_W5X00_Init(void);
 static void set_W5X00_NetTimeout(void);
@@ -118,32 +118,29 @@ void start_task(void *argument);
 void eth_interrupt_task(void *argument);
 
 /**
- * ----------------------------------------------------------------------------------------------------
- * Main
- * ----------------------------------------------------------------------------------------------------
- */
-int main()
-{
+    ----------------------------------------------------------------------------------------------------
+    Main
+    ----------------------------------------------------------------------------------------------------
+*/
+int main() {
     xTaskCreate(start_task, "Start_Task", START_TASK_STACK_SIZE, NULL, START_TASK_PRIORITY, NULL);
     vTaskStartScheduler();
 
-    while (1)
-    {
+    while (1) {
         ;
     }
 }
 
 /**
- * ----------------------------------------------------------------------------------------------------
- * Functions
- * ----------------------------------------------------------------------------------------------------
- */
+    ----------------------------------------------------------------------------------------------------
+    Functions
+    ----------------------------------------------------------------------------------------------------
+*/
 /* Task */
 
-static void RP2040_Init(void)
-{
+static void RP2040_Init(void) {
     set_sys_clock_khz(PLL_SYS_KHZ, true);
-    
+
     clock_configure(
         clk_peri,
         0,                                                // No glitchless mux
@@ -156,8 +153,7 @@ static void RP2040_Init(void)
     sleep_ms(10);
 }
 
-static void RP2040_W5X00_Init(void)
-{
+static void RP2040_W5X00_Init(void) {
     wizchip_spi_initialize((PLL_SYS_KHZ * 1000 / 4)); //33.25Mhz
     wizchip_cris_initialize();
 
@@ -166,25 +162,23 @@ static void RP2040_W5X00_Init(void)
     wizchip_check();
 }
 
-static void set_W5X00_NetTimeout(void)
-{
+static void set_W5X00_NetTimeout(void) {
     DevConfig *dev_config = get_DevConfig_pointer();
     wiz_NetTimeout net_timeout;
-    
+
     net_timeout.retry_cnt = dev_config->network_option.tcp_rcr_val;
     net_timeout.time_100us = 2000;
     wizchip_settimeout(&net_timeout);
-    
+
     wizchip_gettimeout(&net_timeout); // TCP timeout settings
     PRT_INFO(" - Network Timeout Settings - RCR: %d, RTR: %d\r\n", net_timeout.retry_cnt, net_timeout.time_100us);
 }
 
 
-void start_task(void *argument)
-{
+void start_task(void *argument) {
     DevConfig *dev_config = get_DevConfig_pointer();
     uint8_t serial_mode;
-    
+
     RP2040_Init();
     RP2040_W5X00_Init();
 
@@ -201,34 +195,34 @@ void start_task(void *argument)
     DATA0_UART_Interrupt_Enable();
     Timer_Configuration();
     init_connection_status_io();
-    
-    if (get_hw_trig_pin() == 0)
-      init_trigger_modeswitch(DEVICE_AT_MODE);
+
+    if (get_hw_trig_pin() == 0) {
+        init_trigger_modeswitch(DEVICE_AT_MODE);
+    }
 
     serial_mode = get_serial_communation_protocol();
-    if(serial_mode == SEG_SERIAL_MODBUS_RTU) {
+    if (serial_mode == SEG_SERIAL_MODBUS_RTU) {
         PRT_INFO(" > Modbus Mode\r\n");
         eMBRTUInit(dev_config->serial_option.baud_rate);
     }
 
-    switch(dev_config->network_connection.working_mode)
-    {
-        case TCP_CLIENT_MODE:
-        case TCP_SERVER_MODE:
-        case TCP_MIXED_MODE:
-        case SSL_TCP_CLIENT_MODE:
-        case UDP_MODE:
-          wizchip_gpio_interrupt_initialize(SEG_DATA0_SOCK, SIK_RECEIVED);
-          break;
+    switch (dev_config->network_connection.working_mode) {
+    case TCP_CLIENT_MODE:
+    case TCP_SERVER_MODE:
+    case TCP_MIXED_MODE:
+    case SSL_TCP_CLIENT_MODE:
+    case UDP_MODE:
+        wizchip_gpio_interrupt_initialize(SEG_DATA0_SOCK, SIK_RECEIVED);
+        break;
 
-        default:
-          break;
+    default:
+        break;
     }
-    
-    GPIO_Configuration(WIZCHIP_PIN_IRQ, IO_INPUT, IO_PULLUP); //Set interrupt Pin 
+
+    GPIO_Configuration(WIZCHIP_PIN_IRQ, IO_INPUT, IO_PULLUP); //Set interrupt Pin
     GPIO_Configuration_IRQ(WIZCHIP_PIN_IRQ, IO_IRQ_FALL);
     GPIO_Configuration_Callback();
-    
+
     net_segcp_udp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     net_segcp_tcp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     net_http_webserver_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
@@ -248,7 +242,7 @@ void start_task(void *argument)
     xTaskCreate(segcp_uart_task, "SEGCP_uart_Task", SEGCP_UART_TASK_STACK_SIZE, NULL, SEGCP_UART_TASK_PRIORITY, NULL);
     xTaskCreate(segcp_tcp_task, "SEGCP_tcp_Task", SEGCP_TCP_TASK_STACK_SIZE, NULL, SEGCP_TCP_TASK_PRIORITY, NULL);
 
-    xTaskCreate(eth_interrupt_task, "ETH_INTERRUPT_Task", ETH_INTERRUPT_TASK_STACK_SIZE, NULL, ETH_INTERRUPT_TASK_PRIORITY, NULL);    
+    xTaskCreate(eth_interrupt_task, "ETH_INTERRUPT_Task", ETH_INTERRUPT_TASK_STACK_SIZE, NULL, ETH_INTERRUPT_TASK_PRIORITY, NULL);
     xTaskCreate(seg_task, "SEG_Task", SEG_TASK_STACK_SIZE, NULL, SEG_TASK_PRIORITY, NULL);
     xTaskCreate(seg_u2e_task, "SEG_U2E_Task", SEG_U2E_TASK_STACK_SIZE, NULL, SEG_U2E_TASK_PRIORITY, NULL);
     xTaskCreate(seg_recv_task, "SEG_Recv_Task", SEG_RECV_TASK_STACK_SIZE, NULL, SEG_RECV_TASK_PRIORITY, NULL);
@@ -263,33 +257,30 @@ void start_task(void *argument)
 #ifdef __USE_WATCHDOG__
     watchdog_enable(8388, 0);
 #endif
-    while(1)
-    {
+    while (1) {
         vTaskDelay(1000000000);
     }
-    
+
 }
 
-void eth_interrupt_task(void *argument)
-{
+void eth_interrupt_task(void *argument) {
     uint16_t reg_val;
 
     while (1) {
         xSemaphoreTake(eth_interrupt_sem, portMAX_DELAY);
         ctlsocket(SEG_DATA0_SOCK, CS_GET_INTERRUPT, (void *)&reg_val);
-        if (reg_val & SIK_RECEIVED)
+        if (reg_val & SIK_RECEIVED) {
             xSemaphoreGive(seg_e2u_sem);
+        }
     }
 }
 
-void vApplicationPassiveIdleHook(void)
-{
+void vApplicationPassiveIdleHook(void) {
 #ifdef __USE_WATCHDOG__
     static uint8_t core_num = 0;
     uint8_t core_num_tmp = get_core_num();
-    
-    if (core_num != core_num_tmp)
-    {
+
+    if (core_num != core_num_tmp) {
         device_wdt_reset();
         core_num = core_num_tmp;
     }
@@ -297,16 +288,15 @@ void vApplicationPassiveIdleHook(void)
 
 }
 
-void vApplicationStackOverflowHook( TaskHandle_t pxTask, char *pcTaskName )
-{
-    ( void ) pcTaskName;
-    ( void ) pxTask;
+void vApplicationStackOverflowHook(TaskHandle_t pxTask, char *pcTaskName) {
+    (void) pcTaskName;
+    (void) pxTask;
 
-    /* Run time stack overflow checking is performed if
-    configCHECK_FOR_STACK_OVERFLOW is defined to 1 or 2.  This hook
-    function is called if a stack overflow is detected. */
+    /*  Run time stack overflow checking is performed if
+        configCHECK_FOR_STACK_OVERFLOW is defined to 1 or 2.  This hook
+        function is called if a stack overflow is detected. */
 
     /* Force an assert. */
     printf("vApplicationStackOverflowHook [%s]\r\n", pcTaskName);
-    configASSERT( ( volatile void * ) NULL );
+    configASSERT((volatile void *) NULL);
 }

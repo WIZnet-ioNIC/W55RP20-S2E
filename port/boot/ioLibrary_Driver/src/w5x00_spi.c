@@ -1,14 +1,14 @@
 /**
- * Copyright (c) 2022 WIZnet Co.,Ltd
- *
- * SPDX-License-Identifier: BSD-3-Clause
- */
+    Copyright (c) 2022 WIZnet Co.,Ltd
+
+    SPDX-License-Identifier: BSD-3-Clause
+*/
 
 /**
- * ----------------------------------------------------------------------------------------------------
- * Includes
- * ----------------------------------------------------------------------------------------------------
- */
+    ----------------------------------------------------------------------------------------------------
+    Includes
+    ----------------------------------------------------------------------------------------------------
+*/
 #include <stdio.h>
 #include "WIZnet_board.h"
 #include "port_common.h"
@@ -20,10 +20,10 @@
 #endif
 
 /**
- * ----------------------------------------------------------------------------------------------------
- * Macros
- * ----------------------------------------------------------------------------------------------------
- */
+    ----------------------------------------------------------------------------------------------------
+    Macros
+    ----------------------------------------------------------------------------------------------------
+*/
 /* SPI */
 #if ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N) || (DEVICE_BOARD_NAME == IP20))
 #define USE_SPI_PIO
@@ -35,10 +35,10 @@
 #endif
 
 /**
- * ----------------------------------------------------------------------------------------------------
- * Variables
- * ----------------------------------------------------------------------------------------------------
- */
+    ----------------------------------------------------------------------------------------------------
+    Variables
+    ----------------------------------------------------------------------------------------------------
+*/
 static critical_section_t g_wizchip_cri_sec;
 
 #ifdef USE_SPI_DMA
@@ -61,22 +61,19 @@ wiznet_spi_config_t g_spi_config = {
 wiznet_spi_handle_t spi_handle;
 #endif
 /**
- * ----------------------------------------------------------------------------------------------------
- * Functions
- * ----------------------------------------------------------------------------------------------------
- */
-static inline void wizchip_select(void)
-{
+    ----------------------------------------------------------------------------------------------------
+    Functions
+    ----------------------------------------------------------------------------------------------------
+*/
+static inline void wizchip_select(void) {
     gpio_put(WIZCHIP_PIN_CS, 0);
 }
 
-static inline void wizchip_deselect(void)
-{
+static inline void wizchip_deselect(void) {
     gpio_put(WIZCHIP_PIN_CS, 1);
 }
 
-void wizchip_reset()
-{
+void wizchip_reset() {
     gpio_init(WIZCHIP_PIN_RST);
     gpio_pull_up(WIZCHIP_PIN_RST);
     gpio_set_dir(WIZCHIP_PIN_RST, GPIO_OUT);
@@ -84,15 +81,14 @@ void wizchip_reset()
 
     gpio_put(WIZCHIP_PIN_RST, 0);
     sleep_ms(10);
- 
+
     gpio_put(WIZCHIP_PIN_RST, 1);
     sleep_ms(10);
     bi_decl(bi_1pin_with_name(WIZCHIP_PIN_RST, "W5x00 RESET"));
 }
 
 #ifndef USE_SPI_PIO
-static uint8_t wizchip_read(void)
-{
+static uint8_t wizchip_read(void) {
     uint8_t rx_data = 0;
     uint8_t tx_data = 0xFF;
 
@@ -101,14 +97,12 @@ static uint8_t wizchip_read(void)
     return rx_data;
 }
 
-static void wizchip_write(uint8_t tx_data)
-{
+static void wizchip_write(uint8_t tx_data) {
     spi_write_blocking(SPI_PORT, &tx_data, 1);
 }
 
 #ifdef USE_SPI_DMA
-static void wizchip_read_burst(uint8_t *pBuf, uint16_t len)
-{
+static void wizchip_read_burst(uint8_t *pBuf, uint16_t len) {
     uint8_t dummy_data = 0xFF;
 
     channel_config_set_read_increment(&dma_channel_config_tx, false);
@@ -131,8 +125,7 @@ static void wizchip_read_burst(uint8_t *pBuf, uint16_t len)
     dma_channel_wait_for_finish_blocking(dma_rx);
 }
 
-static void wizchip_write_burst(uint8_t *pBuf, uint16_t len)
-{
+static void wizchip_write_burst(uint8_t *pBuf, uint16_t len) {
     uint8_t dummy_data;
 
     channel_config_set_read_increment(&dma_channel_config_tx, true);
@@ -157,18 +150,15 @@ static void wizchip_write_burst(uint8_t *pBuf, uint16_t len)
 #endif
 #endif
 
-static void wizchip_critical_section_lock(void)
-{
+static void wizchip_critical_section_lock(void) {
     critical_section_enter_blocking(&g_wizchip_cri_sec);
 }
 
-static void wizchip_critical_section_unlock(void)
-{
+static void wizchip_critical_section_unlock(void) {
     critical_section_exit(&g_wizchip_cri_sec);
 }
 
-void wizchip_spi_initialize(uint32_t spi_clock)
-{
+void wizchip_spi_initialize(uint32_t spi_clock) {
 #ifdef USE_SPI_PIO
     spi_handle = wiznet_spi_pio_open(&g_spi_config);
     (*spi_handle)->set_active(spi_handle);
@@ -211,14 +201,12 @@ void wizchip_spi_initialize(uint32_t spi_clock)
 #endif
 }
 
-void wizchip_cris_initialize(void)
-{
+void wizchip_cris_initialize(void) {
     critical_section_init(&g_wizchip_cri_sec);
     reg_wizchip_cris_cbfunc(wizchip_critical_section_lock, wizchip_critical_section_unlock);
 }
 
-void wizchip_initialize(void)
-{
+void wizchip_initialize(void) {
 #ifdef USE_SPI_PIO
     (*spi_handle)->frame_end();
 
@@ -243,18 +231,15 @@ void wizchip_initialize(void)
     uint8_t memsize[2][8] = {{2, 2, 2, 2, 2, 2, 2, 2}, {2, 2, 2, 2, 2, 2, 2, 2}};
 #endif
 
-    if (ctlwizchip(CW_INIT_WIZCHIP, (void *)memsize) == -1)
-    {
+    if (ctlwizchip(CW_INIT_WIZCHIP, (void *)memsize) == -1) {
         printf(" W5x00 initialized fail\n");
         return;
     }
 
 #if 0
     /* Check PHY link status */
-    do
-    {
-        if (ctlwizchip(CW_GET_PHYLINK, (void *)&temp) == -1)
-        {
+    do {
+        if (ctlwizchip(CW_GET_PHYLINK, (void *)&temp) == -1) {
             printf(" Unknown PHY link status\n");
 
             return;
@@ -263,13 +248,11 @@ void wizchip_initialize(void)
 #endif
 }
 
-void wizchip_check(void)
-{
+void wizchip_check(void) {
     uint8_t ver;
 #if (_WIZCHIP_ == W5100S)
     /* Read version register */
-    if (getVER() != 0x51)
-    {
+    if (getVER() != 0x51) {
         printf(" ACCESS ERR : VERSION != 0x51, read value = 0x%02x\n", getVER());
 
         while (1)
@@ -279,8 +262,7 @@ void wizchip_check(void)
     /* Read version register */
     ver = getVERSIONR();
     printf("ver = 0x%02X\r\n", ver);
-    if (ver != 0x04)
-    {
+    if (ver != 0x04) {
         printf(" ACCESS ERR : VERSION != 0x04, read value = 0x%02x\n", getVERSIONR());
 
         while (1)
@@ -290,13 +272,11 @@ void wizchip_check(void)
 }
 
 /* Network */
-void network_initialize(wiz_NetInfo net_info)
-{
+void network_initialize(wiz_NetInfo net_info) {
     ctlnetwork(CN_SET_NETINFO, (void *)&net_info);
 }
 
-void print_network_information(wiz_NetInfo net_info)
-{
+void print_network_information(wiz_NetInfo net_info) {
     uint8_t tmp_str[8] = {
         0,
     };
@@ -304,13 +284,10 @@ void print_network_information(wiz_NetInfo net_info)
     ctlnetwork(CN_GET_NETINFO, (void *)&net_info);
     ctlwizchip(CW_GET_ID, (void *)tmp_str);
 
-    if (net_info.dhcp == NETINFO_DHCP)
-    {
+    if (net_info.dhcp == NETINFO_DHCP) {
         printf("====================================================================================================\n");
         printf(" %s network configuration : DHCP\n\n", (char *)tmp_str);
-    }
-    else
-    {
+    } else {
         printf("====================================================================================================\n");
         printf(" %s network configuration : static\n\n", (char *)tmp_str);
     }

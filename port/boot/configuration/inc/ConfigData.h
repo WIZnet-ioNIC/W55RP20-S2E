@@ -1,6 +1,6 @@
 /*
- * ConfigData.h
- */
+    ConfigData.h
+*/
 
 #ifndef __CONFIGDATA_H__
 #define __CONFIGDATA_H__
@@ -22,7 +22,7 @@
 #define MAX_SAVE_RETRY              5
 #define SAVE_INTERVAL_MS            1000
 
-enum bank_num{
+enum bank_num {
     APP_BANK0 = 0,
     APP_BANK1
 };
@@ -128,7 +128,7 @@ struct __device_option {
     uint8_t pw_setting[10];
     uint8_t device_alias[DEVICE_ALIAS_SIZE];
     uint8_t device_group[DEVICE_GROUP_SIZE];
-//    uint8_t ntp_domain_name[NTP_SERVER_DOMAIN_CNT][NTP_SERVER_DOMAIN_SIZE];
+    //    uint8_t ntp_domain_name[NTP_SERVER_DOMAIN_CNT][NTP_SERVER_DOMAIN_SIZE];
 } __attribute__((packed));
 #endif
 
