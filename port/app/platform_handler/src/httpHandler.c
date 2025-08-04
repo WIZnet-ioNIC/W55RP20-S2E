@@ -231,7 +231,8 @@ uint8_t set_devfacreset(uint8_t * uri)
 	return ret;
 }
 
-uint8_t update_module_firmware(st_http_request * p_http_request, uint8_t *buf)
+// Update firmware: fwup_type 1=APP, 2=BOOT
+uint8_t update_module_firmware(st_http_request * p_http_request, uint8_t *buf, int fwup_type)
 {
   uint8_t ret = 0, sock, end_flag = 0;
   uint8_t *body, *boundary_pos;
@@ -310,7 +311,7 @@ uint8_t update_module_firmware(st_http_request * p_http_request, uint8_t *buf)
       write_flash(f_addr, temp_buf, FLASH_SECTOR_SIZE);
 
     vPortFree(temp_buf);
-    fwupdate->fwup_copy_flag = 1;
+    fwupdate->fwup_copy_flag = fwup_type;
     remain_len = FLASH_START_ADDR_BANK1_OFFSET;
     fwupdate->fwup_size = (f_addr - remain_len) + buf_len;
     PRT_HTTP("Download Finished fwup_size = %d\r\n", fwupdate->fwup_size);

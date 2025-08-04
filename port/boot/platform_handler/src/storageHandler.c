@@ -95,6 +95,11 @@ void erase_storage(teDATASTORAGE stype)
         erase_flash_bank(1);
         PRT_INFO(" > STORAGE:ERASE_START BIN Bank\r\n");
     }
+    else if (stype == STORAGE_APPBOOT)
+    {
+        erase_flash_bank(2);
+        PRT_INFO(" > STORAGE:ERASE_START APPBOOT Bank\r\n");
+    }
     PRT_INFO(" > STORAGE:ERASE_END\r\n");
 
 #ifdef __USE_WATCHDOG__

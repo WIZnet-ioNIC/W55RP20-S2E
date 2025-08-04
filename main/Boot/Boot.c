@@ -44,6 +44,7 @@
 #include "wizchip_conf.h"
 #include "w5x00_spi.h"
 #include "seg.h"
+#include "WIZ5XXSR-RP_Debug.h"
 
 /* Private typedef -----------------------------------------------------------*/
 
@@ -125,7 +126,9 @@ int main(void)
         return 0;
     }
 
-    if (dev_config->firmware_update.fwup_copy_flag == 1)
+    // fwup_copy_flag: 1(app), 2(boot), 0(none), 기타(에러)
+    FWUP_COPY_FLAG copy_flag = (FWUP_COPY_FLAG)dev_config->firmware_update.fwup_copy_flag;
+    if (copy_flag & FWUP_AVAILABLE)
     {
         if (device_bank_check(1) < 0)
         {
@@ -134,8 +137,9 @@ int main(void)
         }
         else
         {
-          erase_storage(STORAGE_APPBANK);
-          if (device_bank_copy() < 0 )
+          if (copy_flag == FWUP_APP) erase_storage(STORAGE_APPBANK);
+          else if (copy_flag == FWUP_BOOT) erase_storage(STORAGE_APPBOOT);
+          if (device_bank_copy(copy_flag) < 0 )
           {
             printf("device_bank_copy failed\r\n");
             device_raw_reboot();
@@ -143,7 +147,13 @@ int main(void)
         }
         dev_config->firmware_update.fwup_copy_flag = 0;
         write_storage(STORAGE_CONFIG, 0, dev_config, sizeof(DevConfig));
-    }   
+    }
+    else if (copy_flag != FWUP_NONE)
+    {
+        printf("ERROR: Invalid fwup_copy_flag=%d, normal boot.\r\n", copy_flag);
+        dev_config->firmware_update.fwup_copy_flag = 0;
+        write_storage(STORAGE_CONFIG, 0, dev_config, sizeof(DevConfig));
+    }
 
     printf("jump addr = 0x%08X\r\n", FLASH_START_ADDR_BANK0);
     sleep_ms(100);

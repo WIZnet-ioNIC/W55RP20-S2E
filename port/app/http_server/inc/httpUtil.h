@@ -12,9 +12,13 @@
 #ifndef	__HTTPUTIL_H__
 #define	__HTTPUTIL_H__
 
-#ifdef __cplusplus
-extern "C" {
-#endif
+
+typedef struct {
+    int fwup_type;                // Firmware update type (1=APP, 2=BOOT)
+    unsigned int content_length;      // Content-Length value
+} custom_http_context;
+
+extern custom_http_context g_http_ctx;
 
 #include "httpServer.h"
 #include "httpParser.h"

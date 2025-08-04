@@ -87,4 +87,10 @@ void erase_flash_bank(uint8_t bank_num)
         flash_range_erase(FLASH_START_ADDR_BANK1_OFFSET, FLASH_APP_BANK_SIZE);
         flash_critical_section_unlock();
     }
+    else if (bank_num == 2)
+    {
+        flash_critical_section_lock();
+        flash_range_erase(DEVICE_BOOT_ADDR, FLASH_BOOTLOADER_SIZE);
+        flash_critical_section_unlock();
+    }
 }

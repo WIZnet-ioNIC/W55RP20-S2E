@@ -1,6 +1,21 @@
 #ifndef DEVICEHANDLER_H_
 #define DEVICEHANDLER_H_
 
+
+/**
+ * FWUP_COPY_FLAG
+ * Firmware update copy flag used to select the target for copying the downloaded image from BANK1.
+ * - FWUP_NONE (0): No copy operation requested.
+ * - FWUP_APP  (1): Copy to application area (BANK0).
+ * - FWUP_BOOT (2): Copy to bootloader area (address 0).
+ */
+typedef enum {
+    FWUP_NONE = 0, // No copy
+    FWUP_APP = 1,  // Copy to application area
+    FWUP_BOOT = 2,  // Copy to bootloader area
+    FWUP_AVAILABLE = FWUP_APP | FWUP_BOOT // available for copy
+} FWUP_COPY_FLAG;
+
 #include <stdint.h>
 #include "WIZnet_board.h"
 #include "storageHandler.h"
@@ -65,7 +80,8 @@ void jump_to_app(uint32_t app_addr);
 int8_t process_dhcp(void);
 
 int device_bank_check(uint8_t bank_num);
-int device_bank_copy(void);
+// Copy firmware image from BANK1 to APP or BOOT area depending on FWUP_COPY_FLAG
+int device_bank_copy(FWUP_COPY_FLAG type);
 
 void display_Dev_Info_header(void);
 void display_Dev_Info_main(void);

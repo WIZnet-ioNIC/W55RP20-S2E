@@ -15,6 +15,10 @@
 #include "httpUtil.h"
 #include "WIZ5XXSR-RP_Debug.h"
 #include "httpHandler.h"
+#include "httpUtil.h"
+
+// Zero-initialized custom_http_context for use in CGI handler
+custom_http_context g_http_ctx = {0};
 
 uint8_t http_get_cgi_handler(uint8_t * uri_name, uint8_t * buf, uint32_t * file_len)
 {
@@ -100,8 +104,10 @@ uint8_t predefined_set_cgi_processor(uint8_t * uri_name, st_http_request * p_htt
 	}
   else if(strcmp((const char *)uri_name, "update_module_firmware.cgi") == 0)
 	{
-		if (update_module_firmware(p_http_request, buf))
-      *len = sprintf((char *)buf, "<html><head><title>W55RP20-S2E</title><body>F/W Update Complete. Device Reboot Please wait a few seconds.</body></html>\r\n\r\n");
+		int fwup_type = g_http_ctx.fwup_type;
+		if (update_module_firmware(p_http_request, buf, fwup_type))
+		  *len = sprintf((char *)buf, "<html><head><title>W55RP20-S2E</title><body>F/W Update Complete. Device Reboot Please wait a few seconds.</body></html>\r\n\r\n");
+		g_http_ctx.fwup_type = 0; // Reset fwup_type after use
 	}
 	else
 	{

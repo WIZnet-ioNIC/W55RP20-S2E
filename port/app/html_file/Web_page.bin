@@ -431,7 +431,7 @@
 			</select>
 		</div>
 		<br>
-		<h3>W55RP20-S2E Firmware Update</h3><br><div>
+		<h3>W55RP20-S2E Firmware Update bin</h3><br><div>
 			<form action="update_module_firmware.cgi" method="post" enctype="multipart/form-data" name="UpdateModuleFirmware" id="form1">
 				<input type="file" name="file" />
 				<label>

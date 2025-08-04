@@ -209,7 +209,8 @@ uint8_t device_bank_update(void)
     return ret;
 }
 
-int device_bank_copy(void)
+
+int device_bank_copy(FWUP_COPY_FLAG type)
 {
     struct __firmware_update *fwupdate = (struct __firmware_update *)&(get_DevConfig_pointer()->firmware_update);
     struct __serial_common *serial_common = (struct __serial_common *)&(get_DevConfig_pointer()->serial_common);
@@ -223,14 +224,28 @@ int device_bank_copy(void)
         if(serial_common->serial_debug_en)
             PRT_INFO(" > SEGCP:BU_COPY:FAILED - Invalid firmware size: %ld bytes (Firmware size must be within %d bytes)\r\n",
                     fwupdate->fwup_size, FLASH_APP_BANK_SIZE);
+        return -1;
     }
 
     if(serial_common->serial_debug_en)
         PRT_INFO(" > SEGCP:BU_COPY:NETWORK - Firmware size: [%ld] bytes\r\n", fwupdate->fwup_size);
 
     f_addr_src = FLASH_START_ADDR_BANK1;
-    f_addr_dst = FLASH_START_ADDR_BANK0_OFFSET;
-    
+    switch(type) {
+        case FWUP_APP:
+            f_addr_dst = FLASH_START_ADDR_BANK0_OFFSET;
+            break;
+        case FWUP_BOOT:
+            f_addr_dst = XIP_BASE;
+            break;
+        case FWUP_NONE:
+            PRT_INFO(" > SEGCP:BU_COPY:NONE - No copy requested\r\n");
+            return 0;
+        default:
+            PRT_INFO("ERROR: Invalid fwup_copy_flag=%d, normal boot.\r\n", type);
+            return -2;
+    }
+
     for(write_fw_len = 0; write_fw_len < (fwupdate->fwup_size + FLASH_SECTOR_SIZE); write_fw_len+=FLASH_SECTOR_SIZE)
     {
         write_flash(f_addr_dst, (uint8_t *)f_addr_src, FLASH_SECTOR_SIZE);

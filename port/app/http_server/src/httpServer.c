@@ -12,6 +12,10 @@
 #include "common.h"
 #include "deviceHandler.h"
 
+#include "ConfigData.h"
+
+#include "httpUtil.h"
+
 #ifdef	_USE_SDCARD_
 #include "ff.h" 	// header file for FatFs library (FAT file system)
 #endif
@@ -157,6 +161,31 @@ void httpServer_run(uint8_t seqnum)
 						*(((uint8_t *)http_request) + len) = '\0';
 
             PRT_HTTP("http len = %d\r\n", len);
+						const char *key = "fwup_type";
+						char fwup_type_str[6] = {0};
+						const char* fwup_str = strstr((const char *)http_request, key);
+						if (fwup_str) {
+							// move behind "fwup_type"
+							const char* p = fwup_str + strlen(key);
+
+							// Skip spaces, newlines, quotes, etc.
+							while (*p && (*p == '\n' || *p == '\r' || *p == ' ' || *p == '=' || *p == '"')) p++;
+
+							// parsing number max 5 digits
+							int chars_read;
+							if (sscanf(p, "%5[0-9]%n", &fwup_type_str, &chars_read) == 1 && chars_read > 0) {
+								g_http_ctx.fwup_type = atoi(fwup_type_str); // Store the parsed fwup_type
+							}
+							else {
+								g_http_ctx.fwup_type = 0; // Default value if parsing fails
+							}
+							PRT_HTTP("str = %s, fwup_type = %d\r\n", fwup_type_str, g_http_ctx.fwup_type);
+
+							// DevConfig에 fwup_type 반영
+							DevConfig *dev_config = get_DevConfig_pointer();
+							dev_config->firmware_update.fwup_copy_flag = g_http_ctx.fwup_type;
+						}
+
             PRT_HTTP("http_request buf = %s\r\n", http_request);
 						parse_http_request(parsed_http_request, (uint8_t *)http_request);
             parsed_http_request->recv_len = len;

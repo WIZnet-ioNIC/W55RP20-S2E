@@ -6,6 +6,20 @@
 #include "storageHandler.h"
 #include "port_common.h"
 
+/**
+ * FWUP_COPY_FLAG
+ * Firmware update copy flag used to select the target for copying the downloaded image from BANK1.
+ * - FWUP_NONE (0): No copy operation requested.
+ * - FWUP_APP  (1): Copy to application area (BANK0).
+ * - FWUP_BOOT (2): Copy to bootloader area (address 0).
+ */
+typedef enum {
+    FWUP_NONE = 0, // No copy
+    FWUP_APP = 1,  // Copy to application area
+    FWUP_BOOT = 2,  // Copy to bootloader area
+    FWUP_AVAILABLE = FWUP_APP | FWUP_BOOT // available for copy
+} FWUP_COPY_FLAG;
+
 /* Debug message enable */
 #define _FWUP_DEBUG_
 

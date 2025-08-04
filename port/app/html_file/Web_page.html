@@ -432,7 +432,12 @@
 		</div>
 		<br>
 		<h3>W55RP20-S2E Firmware Update</h3><br><div>
+			<!-- Firmware update type selection -->
 			<form action="update_module_firmware.cgi" method="post" enctype="multipart/form-data" name="UpdateModuleFirmware" id="form1">
+				<!-- Select firmware update type: APP or BOOT. Default is APP. -->
+				<label><input type="radio" name="fwup_type" value="1" checked>APP</label>
+				<label><input type="radio" name="fwup_type" value="2">BOOT</label>
+				<br><br>
 				<input type="file" name="file" />
 				<label>
 				<input name="Save" type="button" id="Save" onClick="ModuleUpdate()" value="Module Update" />	  
@@ -443,7 +448,7 @@
 	 </div> 
 	 <div style="margin:5px 5px; clear:both">
 	 	<center>
-	 	©Copyright 2024 WIZnet Co., Ltd.
+		©Copyright 2025 WIZnet Co., Ltd.
 		</center>
 	 </div>
  </body></html>
