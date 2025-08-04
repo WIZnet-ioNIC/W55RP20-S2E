@@ -6,7 +6,7 @@
 #include "common.h"
 
 #ifndef DATA_BUF_SIZE
-    #define DATA_BUF_SIZE 2048
+#define DATA_BUF_SIZE 2048
 #endif
 
 #define MEM_FREE(mem_p) do{ if(mem_p) { free(mem_p); mem_p = NULL; } }while(0)	//

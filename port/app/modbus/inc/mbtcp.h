@@ -6,7 +6,7 @@
 
 extern uint8_t mbTCPtid1;
 extern uint8_t mbTCPtid2;
-	
+
 extern volatile uint8_t *pucRTUBufferCur;
 extern volatile uint16_t usRTUBufferPos;
 

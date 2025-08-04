@@ -1,17 +1,17 @@
 /**
- * Copyright (c) 2022 WIZnet Co.,Ltd
- *
- * SPDX-License-Identifier: BSD-3-Clause
- */
+    Copyright (c) 2022 WIZnet Co.,Ltd
+
+    SPDX-License-Identifier: BSD-3-Clause
+*/
 
 #ifndef _PORT_COMMON_H_
 #define _PORT_COMMON_H_
 
 /**
- * ----------------------------------------------------------------------------------------------------
- * Includes
- * ----------------------------------------------------------------------------------------------------
- */
+    ----------------------------------------------------------------------------------------------------
+    Includes
+    ----------------------------------------------------------------------------------------------------
+*/
 /* Common */
 #include "pico/stdlib.h"
 #include "pico/binary_info.h"
@@ -30,7 +30,7 @@
 #include "hardware/spi.h"
 #include "hardware/watchdog.h"
 
-#if ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N))
+#if ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N) || (DEVICE_BOARD_NAME == IP20))
 #include "hardware/pio.h"
 #endif
 

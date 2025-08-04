@@ -8,7 +8,7 @@
 //#define _UART_DEBUG_
 
 #ifndef DATA_BUF_SIZE
-    #define DATA_BUF_SIZE 2048
+#define DATA_BUF_SIZE 2048
 #endif
 
 // XON/XOFF: Transmitter On / Off, Software flow control
@@ -117,12 +117,24 @@ void check_uart_flow_control(uint8_t flow_ctrl);
 
 // Hardware flow control by GPIOs (RTS/CTS)
 #ifdef __USE_GPIO_HARDWARE_FLOWCONTROL__
-    uint8_t get_uart_cts_pin(void);
-    void set_uart_rts_pin_high(void);
-    void set_uart_rts_pin_low(void);
+uint8_t get_uart_cts_pin(void);
+void set_uart_rts_pin_high(void);
+void set_uart_rts_pin_low(void);
 #endif
 
 int32_t platform_uart_putc(uint16_t ch);                    // User Buffer -> UART
+int32_t platform_uart_getc(void);                                 // Ring Buffer -> User
+int32_t platform_uart_getc_nonblk(void);
+int32_t platform_uart_puts(uint8_t* buf, uint16_t bytes);
+int32_t platform_uart_gets(uint8_t* buf, uint16_t bytes);
+uint8_t get_byte_from_uart(void);                        // UART Port -> User
+void get_byte_from_uart_it(void);                        // UART Port -> User (global variable for IRQ handler)
+void put_byte_to_data_buffer(uint8_t ch);          // User -> Ring Buffer
+uint16_t get_data_buffer_usedsize(void);
+uint16_t get_data_buffer_freesize(void);
+int8_t is_data_buffer_empty(void);
+int8_t is_data_buffer_full(void);
+void data_buffer_flush(void);
 uint8_t get_uart_rs485_sel(void);
 void uart_rs485_rs422_init(void);
 void uart_rs485_disable(void);

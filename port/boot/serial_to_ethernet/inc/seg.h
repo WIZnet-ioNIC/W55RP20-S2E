@@ -19,8 +19,8 @@
 
 //#define MIXED_CLIENT_INFINITY_CONNECT
 #ifndef MIXED_CLIENT_INFINITY_CONNECT
-    #define MIXED_CLIENT_LIMITED_CONNECT    //  TCP_MIXED_MODE: TCP CLIENT - limited count of connection retries
-    #define MAX_RECONNECTION_COUNT          10
+#define MIXED_CLIENT_LIMITED_CONNECT    //  TCP_MIXED_MODE: TCP CLIENT - limited count of connection retries
+#define MAX_RECONNECTION_COUNT          10
 #endif
 
 #define MAX_CONNECTION_AUTH_TIME            5000 // 5000ms (5sec)
@@ -29,7 +29,7 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #ifndef DATA_BUF_SIZE
-    #define DATA_BUF_SIZE           2048
+#define DATA_BUF_SIZE           2048
 #endif
 
 #define SEG_DISABLE                 0
@@ -44,8 +44,8 @@ extern uint8_t flag_process_dhcp_success;
 extern uint8_t flag_process_dns_success;
 extern char * str_working[];
 
-typedef enum{SEG_UART_RX, SEG_UART_TX, SEG_ETHER_RX, SEG_ETHER_TX, SEG_ALL} teDATADIR;
-typedef enum{
+typedef enum {SEG_UART_RX, SEG_UART_TX, SEG_ETHER_RX, SEG_ETHER_TX, SEG_ALL} teDATADIR;
+typedef enum {
     SEG_DEBUG_DISABLED = 0,
     SEG_DEBUG_ENABLED  = 1,
     SEG_DEBUG_S2E      = 2,
@@ -53,7 +53,7 @@ typedef enum{
     SEG_DEBUG_ALL      = 4
 } teDEBUGTYPE;
 
-enum{
+enum {
     SEG_SERIAL_PROTOCOL_NONE = 0,
     SEG_SERIAL_MODBUS_RTU    = 1,
     SEG_SERIAL_MODBUS_ASCII  = 2
@@ -117,16 +117,6 @@ void send_sid(uint8_t sock, uint8_t link_message);
 
 // Serial debug messages for verifying data transfer
 uint16_t debugSerial_dataTransfer(uint8_t * buf, uint16_t size, teDEBUGTYPE type);
-
-// UART tx/rx and Ethernet tx/rx data transfer bytes counter
-void add_data_transfer_bytecount(teDATADIR dir, uint16_t len);
-
-
-// UART tx/rx and Ethernet tx/rx data transfer bytes counter
-void clear_data_transfer_bytecount(teDATADIR dir);
-void clear_data_transfer_megacount(teDATADIR dir);
-uint32_t get_data_transfer_bytecount(teDATADIR dir);
-uint32_t get_data_transfer_megacount(teDATADIR dir);
 
 #endif /* SEG_H_ */
 

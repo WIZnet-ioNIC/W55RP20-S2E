@@ -13,20 +13,18 @@
 BUFFER_DECLARATION(data0_serial_rx);
 
 /*****************************************************************************
- * Private functions
+    Private functions
  ****************************************************************************/
 
 /**
- * @brief	UART interrupt handler using ring buffers
- * @return	Nothing
- */
+    @brief	UART interrupt handler using ring buffers
+    @return	Nothing
+*/
 
-int UART_read(void *data, int bytes)
-{
-  return data_buffer_gets(data, bytes);  
+int UART_read(void *data, int bytes) {
+    return data_buffer_gets(data, bytes);
 }
 
-uint32_t UART_write(void *data, int bytes)
-{
-  return platform_uart_puts(data, bytes);
+uint32_t UART_write(void *data, int bytes) {
+    return platform_uart_puts(data, bytes);
 }

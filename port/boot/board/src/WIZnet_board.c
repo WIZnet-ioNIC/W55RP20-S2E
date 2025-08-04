@@ -7,6 +7,8 @@
 #include "uartHandler.h"
 #include "gpioHandler.h"
 
+#include "wizchip_conf.h"
+
 volatile uint16_t phylink_check_time_msec = 0;
 uint8_t flag_check_phylink = 0;
 uint8_t flag_hw_trig_enable = 0;
@@ -20,8 +22,7 @@ void init_serial_mode_select_pin(void);
 uint8_t get_serial_mode_select_pin(uint8_t sel);
 
 /* RP2040 Board Initialization */
-void RP2040_Board_Init(void)
-{
+void RP2040_Board_Init(void) {
 #ifdef __USE_SERIAL_FLASH__
     /* On-board Serial Flash Initialize */
     SFlash_Init();
@@ -54,33 +55,30 @@ void RP2040_Board_Init(void)
     LED_Init(LED3);
 }
 
-uint8_t get_phylink(void)
-{
+uint8_t get_phylink(void) {
     return wizphy_getphylink();
 }
 
 // Hardware mode switch pin, active low
-void init_hw_trig_pin(void)
-{
+void init_hw_trig_pin(void) {
     GPIO_Configuration(HW_TRIG_PIN, IO_INPUT, IO_PULLUP);
 }
 
-uint8_t get_hw_trig_pin(void)
-{
+uint8_t get_hw_trig_pin(void) {
     // HW_TRIG input; Active low
     uint8_t hw_trig, i;
-    for(i = 0; i < 5; i++)
-    {
+    for (i = 0; i < 5; i++) {
         hw_trig = GPIO_Input_Read(HW_TRIG_PIN);
-        if(hw_trig != 0) return 1; // High
-        vTaskDelay(5);
+        if (hw_trig != 0) {
+            return 1;    // High
+        }
+        sleep_ms(5);
     }
     return 0; // Low
 }
 
 
-void init_uart_if_sel_pin(void)
-{
+void init_uart_if_sel_pin(void) {
     init_serial_mode_select_pin();
 
     // for WIZ750SR series
@@ -88,104 +86,106 @@ void init_uart_if_sel_pin(void)
 }
 
 
-uint8_t get_uart_if_sel_pin(void)
-{  // Status of UART interface selector pin input; [0] RS-232/TTL mode, [1] RS-422/485 mode
-  #ifdef __USE_UART_IF_SELECTOR__
+uint8_t get_uart_if_sel_pin(void) {
+    // Status of UART interface selector pin input; [0] RS-232/TTL mode, [1] RS-422/485 mode
+#ifdef __USE_UART_IF_SELECTOR__
     return GPIO_ReadInputDataBit(UART_IF_SEL_PORT, UART_IF_SEL_PIN);
-  #else
+#else
     return UART_IF_DEFAULT;
-  #endif
+#endif
 }
 
 // TCP connection status pin
-void init_tcpconnection_status_pin(void)
-{
-  GPIO_Configuration(STATUS_TCPCONNECT_PIN, IO_OUTPUT, IO_NOPULL);
-  
-  // Pin initial state; Low
-  GPIO_Output_Reset(STATUS_TCPCONNECT_PIN);
+void init_tcpconnection_status_pin(void) {
+    GPIO_Configuration(STATUS_TCPCONNECT_PIN, IO_OUTPUT, IO_NOPULL);
+
+    // Pin initial state; Low
+    GPIO_Output_Reset(STATUS_TCPCONNECT_PIN);
 }
 
 
 #ifdef __USE_HW_FACTORY_RESET__
-void init_factory_reset_pin(void)
-{
+void init_factory_reset_pin(void) {
     GPIO_Configuration(FAC_RSTn_PIN, IO_INPUT, IO_PULLUP);
     GPIO_Configuration_IRQ(FAC_RSTn_PIN, IO_IRQ_FALL);
 }
 
-uint8_t get_factory_reset_pin(void)
-{
+uint8_t get_factory_reset_pin(void) {
     return GPIO_Input_Read(FAC_RSTn_PIN);
 }
 #endif
 
 /**
-  * @brief  Configures LED GPIO.
-  * @param  Led: Specifies the Led to be configured.
-  *   This parameter can be one of following parameters:
-  *     @arg LED1
-  *     @arg LED2
-  * @retval None
-  */
-void LED_Init(Led_TypeDef Led)
-{
-  if(Led >= LEDn) return;
-  
-  /* Configure the GPIO_LED pin */
-  gpio_init(LED_PIN[Led]);
-  gpio_set_dir(LED_PIN[Led], GPIO_OUT);  
-  
-  /* LED off */
-  LED_Off(Led);
+    @brief  Configures LED GPIO.
+    @param  Led: Specifies the Led to be configured.
+      This parameter can be one of following parameters:
+        @arg LED1
+        @arg LED2
+    @retval None
+*/
+void LED_Init(Led_TypeDef Led) {
+    if (Led >= LEDn) {
+        return;
+    }
+
+    /* Configure the GPIO_LED pin */
+    gpio_init(LED_PIN[Led]);
+    gpio_set_dir(LED_PIN[Led], GPIO_OUT);
+
+    /* LED off */
+    LED_Off(Led);
 }
 
 /**
-  * @brief  Turns selected LED On.
-  * @param  Led: Specifies the Led to be set on.
-  *   This parameter can be one of following parameters:
-  *     @arg LED1
-  *     @arg LED2
-  * @retval None
-  */
-void LED_On(Led_TypeDef Led)
-{
-  if(Led >= LEDn) return;
-  gpio_put(LED_PIN[Led], 1);
+    @brief  Turns selected LED On.
+    @param  Led: Specifies the Led to be set on.
+      This parameter can be one of following parameters:
+        @arg LED1
+        @arg LED2
+    @retval None
+*/
+void LED_On(Led_TypeDef Led) {
+    if (Led >= LEDn) {
+        return;
+    }
+    gpio_put(LED_PIN[Led], 1);
 }
 
 /**
-  * @brief  Turns selected LED Off.
-  * @param  Led: Specifies the Led to be set off.
-  *   This parameter can be one of following parameters:
-  *     @arg LED1
-  *     @arg LED2
-  * @retval None
-  */
-void LED_Off(Led_TypeDef Led)
-{
-  if(Led >= LEDn) return;
-  gpio_put(LED_PIN[Led], 0);
+    @brief  Turns selected LED Off.
+    @param  Led: Specifies the Led to be set off.
+      This parameter can be one of following parameters:
+        @arg LED1
+        @arg LED2
+    @retval None
+*/
+void LED_Off(Led_TypeDef Led) {
+    if (Led >= LEDn) {
+        return;
+    }
+    gpio_put(LED_PIN[Led], 0);
 }
 
 /**
-  * @brief  Toggles the selected LED.
-  * @param  Led: Specifies the Led to be toggled.
-  *   This parameter can be one of following parameters:
-  *     @arg LED1
-  *     @arg LED2
-  * @retval None
-  */
-void LED_Toggle(Led_TypeDef Led)
-{
-  uint32_t pin_mask = (1ul << LED_PIN[Led]);
-  
-  if(Led >= LEDn) return;
-  gpio_xor_mask(pin_mask);
+    @brief  Toggles the selected LED.
+    @param  Led: Specifies the Led to be toggled.
+      This parameter can be one of following parameters:
+        @arg LED1
+        @arg LED2
+    @retval None
+*/
+void LED_Toggle(Led_TypeDef Led) {
+    uint32_t pin_mask = (1ul << LED_PIN[Led]);
+
+    if (Led >= LEDn) {
+        return;
+    }
+    gpio_xor_mask(pin_mask);
 }
 
-uint8_t get_LED_Status(Led_TypeDef Led)
-{
-    if(GPIO_INIT[Led] != ENABLE) return 0;
+uint8_t get_LED_Status(Led_TypeDef Led) {
+    if (GPIO_INIT[Led] != ENABLE) {
+        return 0;
+    }
     return gpio_get(LED_PIN[Led]);
 }

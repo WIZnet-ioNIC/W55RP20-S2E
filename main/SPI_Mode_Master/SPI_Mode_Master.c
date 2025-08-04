@@ -1,5 +1,6 @@
 
 #include <stdio.h>
+#include <string.h>
 #include "pico/stdlib.h"
 #include "pico/binary_info.h"
 #include "hardware/spi.h"
@@ -43,35 +44,30 @@ int16_t atcmd_get(uint8_t *data);
 int atcmd_set(uint8_t *data);
 int spi_read_with_timeout(uint8_t *data, size_t len, uint8_t _header);
 
-void printbuf(uint8_t buf[], size_t len)
-{
+void printbuf(uint8_t buf[], size_t len) {
     int i;
-    for (i = 0; i < len; ++i)
-    {
-        if (i % 16 == 15)
+    for (i = 0; i < len; ++i) {
+        if (i % 16 == 15) {
             printf("%02x\n", buf[i]);
-        else
+        } else {
             printf("%02x ", buf[i]);
+        }
     }
 
     // append trailing newline if there isn't one
-    if (i % 16)
-    {
+    if (i % 16) {
         putchar('\n');
     }
 }
 volatile bool spi_read_triggered = false;
 
-void spi_irq_callback(uint gpio, uint32_t events)
-{
-    if (events & GPIO_IRQ_EDGE_FALL)
-    {
+void spi_irq_callback(uint gpio, uint32_t events) {
+    if (events & GPIO_IRQ_EDGE_FALL) {
         spi_read_triggered = true;
     }
 }
 
-int main()
-{
+int main() {
     uint16_t read_length;
     // Enable UART so we can print
     RP2040_Init();
@@ -99,11 +95,11 @@ int main()
     bi_decl(bi_4pins_with_func(PICO_SPI_RX_PIN, PICO_SPI_TX_PIN, PICO_SPI_SCK_PIN, PICO_SPI_CSN_PIN, GPIO_FUNC_SPI));
 
     // Initialize output buffer
-    for (size_t i = 0; i < BUF_LEN; ++i)
-    {
+    for (size_t i = 0; i < BUF_LEN; ++i) {
         out_buf[i] = (i % 10) + 0x30;
-        if (!(i % 100))
+        if (!(i % 100)) {
             out_buf[i] = '\n';
+        }
     }
 
 #if 0 // ATCMD test
@@ -121,19 +117,18 @@ int main()
 
     gpio_set_irq_enabled_with_callback(SPI_RECV_PIN, GPIO_IRQ_EDGE_FALL, true, &spi_irq_callback);
 
+
     while (1) {
-        if (spi_read_triggered)
-        {
+        if (spi_read_triggered) {
             read_length = data_read(in_buf);
             data_send(in_buf, read_length);
             spi_read_triggered = false;
             //printf("%d ", read_length);
-        } 
+        }
     }
 }
 
-static void RP2040_Init(void)
-{
+static void RP2040_Init(void) {
     set_sys_clock_khz(PLL_SYS_KHZ, true);
 
     clock_configure(
@@ -146,8 +141,7 @@ static void RP2040_Init(void)
     sleep_ms(10);
 }
 
-int data_send(uint8_t *data, uint16_t data_len)
-{
+int data_send(uint8_t *data, uint16_t data_len) {
     uint8_t header[4];
     int ret = 0;
     header[0] = SPI_MASTER_WRITE_CMD;
@@ -161,15 +155,13 @@ int data_send(uint8_t *data, uint16_t data_len)
     spi_write_blocking(spi_default, header, 4);
 
     ret = check_ack_blocking();
-    if (ret < 0)
-    {
+    if (ret < 0) {
         printf("<data send> ERROR: %d\n", ret);
         return 0;
     }
     spi_write_blocking(spi_default, data, data_len);
     ret = check_ack_blocking();
-    if (ret < 0)
-    {
+    if (ret < 0) {
         printf("<data send> ERROR: %d\n", ret);
         return 0;
     }
@@ -179,8 +171,7 @@ int data_send(uint8_t *data, uint16_t data_len)
     return 1;
 }
 
-int16_t data_read(uint8_t *data)
-{
+int16_t data_read(uint8_t *data) {
     uint8_t header[4];
     int16_t length;
 
@@ -198,46 +189,35 @@ int16_t data_read(uint8_t *data)
 #if !SPI_HW_CS
     gpio_put(PICO_SPI_CSN_PIN, 1);
 #endif
-    if (length > 0)
-    {
+    if (length > 0) {
         spi_read_blocking(spi_default, 0xFF, data, length);
         // printf("length = %d\r\n", length);
         // printbuf(data, length);
-        while(gpio_get(SPI_RECV_PIN) == 0);
-    }
-    else if (length < 0)
-    {
+        while (gpio_get(SPI_RECV_PIN) == 0);
+    } else if (length < 0) {
         printf("<data read> ERROR: %d\n", length);
         return ERR_TIMEOUT;
     }
     return length;
 }
 
-int check_ack_blocking(void)
-{
+int check_ack_blocking(void) {
     uint8_t header;
     uint8_t is_ack = 0;
     int ret = 0;
 
     ret = spi_read_with_timeout(&header, 1, SPI_ACK);
 
-    if (ret == SUCCESS)
-    {
+    if (ret == SUCCESS) {
         is_ack = 1;
-    }
-    else if (ret == ERR_NACK)
-    {
+    } else if (ret == ERR_NACK) {
         is_ack = 0;
-    }
-    else if (ret == ERR_TIMEOUT)
-    {
+    } else if (ret == ERR_TIMEOUT) {
         return ERR_TIMEOUT;
     }
 
-    for (int i = 0; i < 3; i++)
-    {
-        if (spi_read_with_timeout(&header, 1, SPI_DUMMY) == ERR_TIMEOUT)
-        {
+    for (int i = 0; i < 3; i++) {
+        if (spi_read_with_timeout(&header, 1, SPI_DUMMY) == ERR_TIMEOUT) {
             return ERR_TIMEOUT;
         }
     }
@@ -245,26 +225,22 @@ int check_ack_blocking(void)
     return is_ack ? SUCCESS : ERR_NACK;
 }
 
-int16_t read_data_len_blocking(void)
-{
+int16_t read_data_len_blocking(void) {
     uint8_t header;
     uint16_t length;
 
-    if (spi_read_with_timeout(&header, 1, SPI_SLAVE_WRITE_LEN_CMD) == ERR_TIMEOUT)
-    {
+    if (spi_read_with_timeout(&header, 1, SPI_SLAVE_WRITE_LEN_CMD) == ERR_TIMEOUT) {
         return ERR_TIMEOUT;
     }
     spi_read_blocking(spi_default, 0xFF, (uint8_t *)&length, 2);
 
-    if (spi_read_with_timeout(&header, 1, SPI_DUMMY) == ERR_TIMEOUT)
-    {
+    if (spi_read_with_timeout(&header, 1, SPI_DUMMY) == ERR_TIMEOUT) {
         return ERR_TIMEOUT;
     }
     return length;
 }
 
-int atcmd_set(uint8_t *data)
-{
+int atcmd_set(uint8_t *data) {
     uint8_t header[4];
     uint16_t data_len = strlen(data) - 2;
     int ret;
@@ -279,15 +255,13 @@ int atcmd_set(uint8_t *data)
 #endif
     spi_write_blocking(spi_default, header, 4);
     ret = check_ack_blocking();
-    if (ret < 0)
-    {
+    if (ret < 0) {
         printf("<AT CMD set> ERROR: %d\n", ret);
         return ret;
     }
     spi_write_blocking(spi_default, data + 2, data_len);
     ret = check_ack_blocking();
-    if (ret < 0)
-    {
+    if (ret < 0) {
         printf("<AT CMD set> ERROR: %d\n", ret);
         return ret;
     }
@@ -296,8 +270,7 @@ int atcmd_set(uint8_t *data)
 #endif
 }
 
-int16_t atcmd_get(uint8_t *data)
-{
+int16_t atcmd_get(uint8_t *data) {
     uint8_t header[4];
     int16_t length;
 
@@ -311,38 +284,30 @@ int16_t atcmd_get(uint8_t *data)
 #if !SPI_HW_CS
     gpio_put(PICO_SPI_CSN_PIN, 1);
 #endif
-    if (length > 0)
-    {
+    if (length > 0) {
         spi_read_blocking(spi_default, 0xFF, in_buf, length);
         printf("length = %d\r\n", length);
         printbuf(in_buf, length);
         printf("%.*s\n", length, in_buf);
         while (gpio_get(SPI_RECV_PIN) == 0)
             ;
-    }
-    else if (length < 0)
-    {
+    } else if (length < 0) {
         printf("<AT CMD get> ERROR: %d\n", length);
         return ERR_TIMEOUT;
     }
     return length;
 }
-int spi_read_with_timeout(uint8_t *data, size_t len, uint8_t _header)
-{
+int spi_read_with_timeout(uint8_t *data, size_t len, uint8_t _header) {
 
     absolute_time_t start_time = get_absolute_time();
     const int timeout_us = TIMEOUT_MS * 1000;
 
-    while (absolute_time_diff_us(start_time, get_absolute_time()) < timeout_us)
-    {
+    while (absolute_time_diff_us(start_time, get_absolute_time()) < timeout_us) {
         spi_read_blocking(spi_default, 0xFF, data, len);
 
-        if (*data == _header)
-        {
+        if (*data == _header) {
             return SUCCESS;
-        }
-        else if (*data == SPI_NACK)
-        {
+        } else if (*data == SPI_NACK) {
             return ERR_NACK;
         }
     }

@@ -9,9 +9,9 @@
 /* Application Firmware Version */
 #define MAJOR_VER               1
 #define MINOR_VER               1
-#define MAINTENANCE_VER         6
+#define MAINTENANCE_VER         8
 
-#define DEV_CONFIG_VER          103
+#define DEV_CONFIG_VER          104
 
 //#define STR_VERSION_STATUS      "Develop" // or "Stable"
 #define STR_VERSION_STATUS      "Stable"
@@ -71,7 +71,7 @@
 // Defines                      //
 //////////////////////////////////
 // Defines for S2E Status
-typedef enum{ST_BOOT, ST_OPEN, ST_CONNECT, ST_UPGRADE, ST_ATMODE, ST_UDP} teDEVSTATUS;   // for Device status
+typedef enum {ST_BOOT, ST_OPEN, ST_CONNECT, ST_UPGRADE, ST_ATMODE, ST_UDP} teDEVSTATUS;  // for Device status
 
 #define DEVICE_APPBOOT_MODE     ST_BOOT
 #define DEVICE_APP_MODE         ST_OPEN
@@ -98,23 +98,20 @@ typedef enum{ST_BOOT, ST_OPEN, ST_CONNECT, ST_UPGRADE, ST_ATMODE, ST_UDP} teDEVS
 #define MIXED_CLIENT            1
 
 // On/Off Status
-typedef enum
-{
+typedef enum {
     OFF = 0,
     ON  = 1
 } OnOff_State_Type;
 
 // True/False Status
-typedef enum
-{
+typedef enum {
     FALSE = 0,
     TRUE  = 1
 } TrueFalse_State_Type;
 
-typedef enum
-{
-  DISABLE = 0,
-  ENABLE = !DISABLE
+typedef enum {
+    DISABLE = 0,
+    ENABLE = !DISABLE
 } FunctionalState;
 
 #define OP_COMMAND              0
