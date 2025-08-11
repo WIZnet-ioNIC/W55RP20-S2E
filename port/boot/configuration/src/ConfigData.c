@@ -226,7 +226,7 @@ void load_boot_DevConfig_from_storage(void) {
 
 
 void save_DevConfig_to_storage(void) {
-    erase_storage(STORAGE_CONFIG);
+    //erase_storage(STORAGE_CONFIG);
 #ifndef __USE_SAFE_SAVE__
     write_storage(STORAGE_CONFIG, 0, (uint8_t *)&dev_config, sizeof(DevConfig));
 #else

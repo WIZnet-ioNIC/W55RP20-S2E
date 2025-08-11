@@ -77,12 +77,14 @@ uint8_t get_reset_flag(void) {
     return reset_flag;
 }
 
+#if 0
 void disable_interrupts(void) {
     SysTick->CTRL &= ~1;
 
     NVIC->ICER[0] = 0xFFFFFFFF;
     NVIC->ICPR[0] = 0xFFFFFFFF;
 }
+#endif
 
 void reset_peripherals(void) {
     reset_block(~(
@@ -344,6 +346,9 @@ void display_Dev_Info_header(void) {
 void display_Dev_Info_main(void) {
     uint8_t serial_mode;
     DevConfig *dev_config = get_DevConfig_pointer();
+
+    PRT_INFO(" - System clock: %lu Hz\n", clock_get_hz(clk_sys));
+    PRT_INFO(" - Peri clock: %lu Hz\n", clock_get_hz(clk_peri));
 
     PRT_INFO(" - Device type: %s\r\n", dev_config->device_common.device_name);
     PRT_INFO(" - Device name: %s\r\n", dev_config->device_option.device_alias);

@@ -54,6 +54,7 @@ wiznet_spi_config_t g_spi_config = {
     .cs_pin = WIZCHIP_PIN_CS,
     .clock_pin = WIZCHIP_PIN_SCK,
     .reset_pin = WIZCHIP_PIN_RST,
+    .irq_pin = WIZCHIP_PIN_IRQ,
     .clock_div_major = 2,  // 4,
     .clock_div_minor = 0,
 };
@@ -261,7 +262,7 @@ void wizchip_check(void) {
 #elif (_WIZCHIP_ == W5500)
     /* Read version register */
     ver = getVERSIONR();
-    printf("ver = 0x%02X\r\n", ver);
+    //printf("ver = 0x%02X\r\n", ver);
     if (ver != 0x04) {
         printf(" ACCESS ERR : VERSION != 0x04, read value = 0x%02x\n", getVERSIONR());
 
