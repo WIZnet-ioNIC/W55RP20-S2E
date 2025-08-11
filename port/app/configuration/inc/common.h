@@ -65,7 +65,7 @@
 //        Clock Setting         //
 //////////////////////////////////
 
-#define PLL_SYS_KHZ             (133000UL)
+#define PLL_SYS_KHZ             (200000UL)
 
 //////////////////////////////////
 // Defines                      //

@@ -9,7 +9,7 @@
 /* Application Firmware Version */
 #define BOOT_MAJOR_VER               1
 #define BOOT_MINOR_VER               0
-#define BOOT_MAINTENANCE_VER         2
+#define BOOT_MAINTENANCE_VER         3
 
 #define DEV_CONFIG_VER          103
 
@@ -61,7 +61,7 @@
 //        Clock Setting         //
 //////////////////////////////////
 
-#define PLL_SYS_KHZ             (133000UL)
+#define PLL_SYS_KHZ             (200000UL)
 
 //////////////////////////////////
 // Defines                      //

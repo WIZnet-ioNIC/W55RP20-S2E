@@ -1167,7 +1167,7 @@ uint8_t process_socket_termination(uint8_t sock, uint32_t timeout) {
     uint8_t sock_status = getSn_SR(sock);
     uint32_t tickStart = millis();
 
-    PRT_SEG("sock_status = 0x%X\r\n", sock_status);
+    //PRT_SEG("sock_status = 0x%X\r\n", sock_status);
     if (sock_status == SOCK_CLOSED) {
         return sock;
     }
@@ -1176,7 +1176,7 @@ uint8_t process_socket_termination(uint8_t sock, uint32_t timeout) {
         if ((sock_status == SOCK_ESTABLISHED) || (sock_status == SOCK_CLOSE_WAIT)) {
             do {
                 ret = disconnect(sock);
-                PRT_SEG("ret = 0x%X\r\n", ret);
+                //PRT_SEG("ret = 0x%X\r\n", ret);
                 sleep_ms(10);
                 if ((ret == SOCK_OK) || (ret == SOCKERR_TIMEOUT)) {
                     break;
@@ -1186,7 +1186,7 @@ uint8_t process_socket_termination(uint8_t sock, uint32_t timeout) {
     }
 
     close(sock);
-    PRT_SEG("close(sock)\r\n");
+    //PRT_SEG("close(sock)\r\n");
     return sock;
 }
 

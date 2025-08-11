@@ -562,6 +562,7 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock) {
             }
 
             first_established = 0;
+            set_device_status(ST_CONNECT);
         }
         break;
 

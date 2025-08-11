@@ -298,6 +298,23 @@ void spi_data_transfer_task(void *argument) {
             vTaskExitCritical();
 #endif
             u2e_size = data_length;
+            PRT_INFO("SPI Data Read: %d bytes\r\n", u2e_size);
+            for (int i = 0; i < data_length; i++) {
+                printf("0x%02X ", g_send_buf[i]);
+                if (g_send_buf[i] == 0xFF) {
+                    printf(" g_send_buf[%d] == 0xFF ", i);
+                    vTaskSuspendAll();
+                    while (1) {
+                        device_wdt_reset();
+                    }
+                }
+
+                if (i % 16 == 15) {
+                    printf("\r\n");
+                }
+            }
+            printf("\r\n");
+
             xSemaphoreGive(seg_u2e_sem);
             current_state = STATE_COMMAND;
             break;

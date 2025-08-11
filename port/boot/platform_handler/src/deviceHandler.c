@@ -66,12 +66,14 @@ void device_raw_reboot(void) {
     while (1);
 }
 
+#if 0
 void disable_interrupts(void) {
     SysTick->CTRL &= ~1;
 
     NVIC->ICER[0] = 0xFFFFFFFF;
     NVIC->ICPR[0] = 0xFFFFFFFF;
 }
+#endif
 
 void reset_peripherals(void) {
     reset_block(~(

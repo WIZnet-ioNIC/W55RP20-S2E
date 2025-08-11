@@ -27,18 +27,28 @@ void flash_critical_section_init(void) {
 void write_flash(uint32_t addr, uint8_t * data, uint32_t data_len) {
     uint32_t i, access_len;
 
+    if (data == NULL || data_len == 0) {
+        PRT_ERR("Invalid parameters\r\n");
+        return;
+    }
+
+    //PRT_INFO("write_flash: addr = 0x%08X, data_len = %d\r\n", addr, data_len);
     flash_buf = malloc(FLASH_SECTOR_SIZE);
-    if (data_len && ((data_len % FLASH_SECTOR_SIZE) == 0)) {
+    if (flash_buf == NULL) {
+        PRT_ERR("Failed to allocate flash buffer\r\n");
+        return;
+    }
+
+    if ((data_len % FLASH_SECTOR_SIZE) == 0) {
         for (i = 0; i < data_len; i += FLASH_SECTOR_SIZE) {
             erase_flash_sector(addr + i);
-            memcpy(flash_buf, data, FLASH_SECTOR_SIZE);
+            memcpy(flash_buf, data + i, FLASH_SECTOR_SIZE);
             flash_critical_section_lock();
             flash_range_program(addr + i, flash_buf, FLASH_SECTOR_SIZE);
             flash_critical_section_unlock();
         }
     } else {
         for (i = 0; i < data_len; i += FLASH_SECTOR_SIZE) {
-            memset(flash_buf, 0xFF, FLASH_SECTOR_SIZE);
             read_flash(addr + i, flash_buf, FLASH_SECTOR_SIZE);
             erase_flash_sector(addr + i);
             access_len = MIN(data_len - i, FLASH_SECTOR_SIZE);

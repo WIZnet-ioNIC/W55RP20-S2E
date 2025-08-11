@@ -276,7 +276,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep) {
     uint8_t tmp_ip[4];
     uint8_t param[SEGCP_PARAM_MAX * 2];
 
-    PRT_SEGCP("SEGCP_REQ : %s\r\n", segcp_req);
+    //PRT_SEGCP("SEGCP_REQ : %s\r\n", segcp_req);
 
     memset(trep, 0, sizeof(trep));
     treq = strtok(segcp_req, SEGCP_DELIMETER);
@@ -990,11 +990,11 @@ uint16_t proc_SEGCP_udp(uint8_t* segcp_req, uint8_t* segcp_rep) {
     switch (getSn_SR(SEGCP_UDP_SOCK)) {
     case SOCK_UDP:
         if ((len = getSn_RX_RSR(SEGCP_UDP_SOCK)) > 0) {
-            PRT_SEGCP("len = getSn_RX_RSR = %d\r\n", len);
+            //PRT_SEGCP("len = getSn_RX_RSR = %d\r\n", len);
             treq = segcp_req;
             trep = segcp_rep;
             len = recvfrom(SEGCP_UDP_SOCK, treq, len, destip, &destport);
-            PRT_SEGCP("len = recvfrom = %d\r\n", len);
+            //PRT_SEGCP("len = recvfrom = %d\r\n", len);
 
             //treq[len-1] = 0;
             treq[len] = 0;
@@ -1029,10 +1029,10 @@ uint16_t proc_SEGCP_udp(uint8_t* segcp_req, uint8_t* segcp_rep) {
 
                             sendto(SEGCP_UDP_SOCK, segcp_rep, 14 + strlen(tpar) + strlen(trep), "\xFF\xFF\xFF\xFF", destport);
 
-                            PRT_SEGCP("tpar_len = %d, trep_len = %d\r\n", strlen(tpar), strlen(trep));
+                            //PRT_SEGCP("tpar_len = %d, trep_len = %d\r\n", strlen(tpar), strlen(trep));
 
-                            PRT_SEGCP("tpar = %s, trep = %s\r\n", tpar, trep);
-                            PRT_SEGCP("send to len = %d\r\n", 14 + strlen(tpar) + strlen(trep));
+                            //PRT_SEGCP("tpar = %s, trep = %s\r\n", tpar, trep);
+                            //PRT_SEGCP("send to len = %d\r\n", 14 + strlen(tpar) + strlen(trep));
                             PRT_SEGCP(">> strtok: %s\r\n", segcp_rep);
                         }
                     }

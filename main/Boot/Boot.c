@@ -159,6 +159,7 @@ int main(void) {
     Private functions
  ****************************************************************************/
 static void RP2040_Init(void) {
+#if 0
     set_sys_clock_khz(PLL_SYS_KHZ, true);
 
     clock_configure(
@@ -169,6 +170,7 @@ static void RP2040_Init(void) {
         PLL_SYS_KHZ * 1000                                // Output (must be same as no divider)
     );
     //SystemCoreClockUpdate();
+#endif
     flash_critical_section_init();
     sleep_ms(10);
 }

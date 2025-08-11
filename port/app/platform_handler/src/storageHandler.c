@@ -47,6 +47,7 @@ void write_storage(teDATASTORAGE stype, uint32_t addr, void *data, uint16_t size
     case STORAGE_PKEY:
         write_flash(FLASH_PRIKEY_ADDR, data, size);
         break;
+
     default:
         break;
     }
