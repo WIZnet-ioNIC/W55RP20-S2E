@@ -29,13 +29,11 @@ extern uint8_t factory_flag;
 static uint32_t factory_time;
 struct repeating_timer timer;
 
-void Timer_Configuration(void)
-{
+void Timer_Configuration(void) {
     add_repeating_timer_us(-1000, repeating_timer_callback, NULL, &timer);
 }
 
-bool repeating_timer_callback(struct repeating_timer *t) 
-{
+bool repeating_timer_callback(struct repeating_timer *t) {
     delaytime_msec++;
     msec_cnt++; // millisecond counter
 
@@ -49,8 +47,7 @@ bool repeating_timer_callback(struct repeating_timer *t)
     gpio_handler_timer_msec();
 
     /* Second Process */
-    if(msec_cnt >= 1000 - 1)
-    {
+    if (msec_cnt >= 1000 - 1) {
         msec_cnt = 0;
         sec_cnt++;                  // second counter
 
@@ -61,105 +58,89 @@ bool repeating_timer_callback(struct repeating_timer *t)
         currenttime_sec++;          // Can be updated this counter value by time protocol like NTP.
         LED_Toggle(LED3);
 #ifdef __USE_WATCHDOG__
-        if ((get_wiz_tls_init_state() == ENABLE) && (get_device_status() == ST_OPEN))
-          device_wdt_reset();
+        if ((get_wiz_tls_init_state() == ENABLE) && (get_device_status() == ST_OPEN)) {
+            device_wdt_reset();
+        }
 #endif
     }
 
     /* Minute Process */
-    if(sec_cnt >= 60)
-    {
+    if (sec_cnt >= 60) {
         sec_cnt = 0;
         min_cnt++;                  // minute counter
     }
 
     /* Hour Process */
-    if(min_cnt >= 60)
-    {
+    if (min_cnt >= 60) {
         min_cnt = 0;
         hour_cnt++;                 // hour counter
     }
 
     /* Day Process */
-    if(hour_cnt >= 24)
-    {
+    if (hour_cnt >= 24) {
         hour_cnt = 0;
         day_cnt++;                  // day counter
     }
 
 #ifdef __USE_HW_FACTORY_RESET__
     /* Factory Reset Process */
-    if(factory_flag) {
+    if (factory_flag) {
         factory_time++;
-        if (get_factory_reset_pin())
-        {
+        if (get_factory_reset_pin()) {
             factory_flag = 0;
             factory_time = 0;
-        }
-        else if (factory_time >= FACTORY_RESET_TIME_MS) 
-        {
+        } else if (factory_time >= FACTORY_RESET_TIME_MS) {
             /* Factory Reset */
             device_set_factory_default();
             device_raw_reboot();
         }
     }
-#endif        
+#endif
 
     return true;
 }
 
-void delay_ms(uint32_t ms)
-{
+void delay_ms(uint32_t ms) {
     uint32_t wakeuptime_msec = delaytime_msec + ms;
-    while(wakeuptime_msec > delaytime_msec){}
+    while (wakeuptime_msec > delaytime_msec) {}
 }
 
-time_t getDevtime(void)
-{
+time_t getDevtime(void) {
     return devtime_sec;
 }
 
-void setDevtime(time_t timeval_sec)
-{
+void setDevtime(time_t timeval_sec) {
     devtime_sec = timeval_sec;
 }
 
-time_t millis(void)
-{
+time_t millis(void) {
     return devtime_msec;
 }
 
-time_t getNow(void)
-{
+time_t getNow(void) {
     return currenttime_sec;
 }
 
-void setNow(time_t timeval_sec)
-{
+void setNow(time_t timeval_sec) {
     currenttime_sec = timeval_sec;
 }
 
-uint32_t getDeviceUptime_day(void)
-{
+uint32_t getDeviceUptime_day(void) {
     return day_cnt;
 }
 
-uint8_t getDeviceUptime_hour(void)
-{
+uint8_t getDeviceUptime_hour(void) {
     return hour_cnt;
 }
 
-uint8_t getDeviceUptime_min(void)
-{
+uint8_t getDeviceUptime_min(void) {
     return min_cnt;
 }
 
-uint8_t getDeviceUptime_sec(void)
-{
+uint8_t getDeviceUptime_sec(void) {
     return sec_cnt;
 }
 
-uint16_t getDeviceUptime_msec(void)
-{
+uint16_t getDeviceUptime_msec(void) {
     return msec_cnt;
 }

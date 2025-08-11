@@ -8,7 +8,7 @@
 //#define _UART_DEBUG_
 
 #ifndef DATA_BUF_SIZE
-    #define DATA_BUF_SIZE 2048
+#define DATA_BUF_SIZE 2048
 #endif
 
 // XON/XOFF: Transmitter On / Off, Software flow control
@@ -114,9 +114,9 @@ void check_uart_flow_control(uint8_t flow_ctrl);
 
 // Hardware flow control by GPIOs (RTS/CTS)
 #ifdef __USE_GPIO_HARDWARE_FLOWCONTROL__
-    uint8_t get_uart_cts_pin(void);
-    void set_uart_rts_pin_high(void);
-    void set_uart_rts_pin_low(void);
+uint8_t get_uart_cts_pin(void);
+void set_uart_rts_pin_high(void);
+void set_uart_rts_pin_low(void);
 #endif
 
 int32_t platform_uart_putc(uint16_t ch);                    // User Buffer -> UART

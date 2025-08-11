@@ -15,7 +15,7 @@ extern volatile uint8_t *pucTCPBufferCur;
 extern volatile uint16_t usTCPBufferPos;
 
 bool MBrtu2tcpFrame(void);
-void eMBRTUInit( uint32_t ulBaudRate );
+void eMBRTUInit(uint32_t ulBaudRate);
 void RTU_Uart_RX(void);
 #endif
 

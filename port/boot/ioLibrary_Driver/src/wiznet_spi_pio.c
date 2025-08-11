@@ -1,8 +1,8 @@
 /*
- * Copyright (c) 2023 Raspberry Pi (Trading) Ltd.
- *
- * SPDX-License-Identifier: BSD-3-Clause
- */
+    Copyright (c) 2023 Raspberry Pi (Trading) Ltd.
+
+    SPDX-License-Identifier: BSD-3-Clause
+*/
 
 #include <stdio.h>
 #include <string.h>
@@ -15,7 +15,7 @@
 
 #include "wiznet_spi_pio.h"
 
-// sekim XXX 
+// sekim XXX
 #include "wiznet_spi_pio.pio.h"
 //#include "wiznet_spi_pio.pio.static.h"
 
@@ -96,14 +96,16 @@ static void pio_spi_gpio_setup(spi_pio_state_t *state) {
 
 wiznet_spi_handle_t wiznet_spi_pio_open(const wiznet_spi_config_t *spi_config) {
     spi_pio_state_t *state;
-    for(int i = 0; i < count_of(spi_pio_state); i++) {
+    for (int i = 0; i < count_of(spi_pio_state); i++) {
         if (!spi_pio_state[i].funcs) {
             state = &spi_pio_state[i];
             break;
         }
     }
     assert(state);
-    if (!state) return NULL;
+    if (!state) {
+        return NULL;
+    }
     state->spi_config = spi_config;
     state->funcs = get_wiznet_spi_pio_impl();
 
@@ -117,12 +119,11 @@ wiznet_spi_handle_t wiznet_spi_pio_open(const wiznet_spi_config_t *spi_config) {
     ////////////////////////////////////////////////////////////////////////////////////
     // sekim XXX add g_pio_hookinstruction
     extern uint32_t g_pio_hookinstruction;
-    if ( g_pio_hookinstruction!=0 )
-    {
+    if (g_pio_hookinstruction != 0) {
         SPI_PROGRAM_FUNC.instructions[3] = (uint16_t)g_pio_hookinstruction;
     }
-    printf("PIO Instruction(0x%04x) : %04x %04x %04x %04x %04x %04x %04x %04x %04x \n", g_pio_hookinstruction, SPI_PROGRAM_FUNC.instructions[0], SPI_PROGRAM_FUNC.instructions[1], SPI_PROGRAM_FUNC.instructions[2], 
-                SPI_PROGRAM_FUNC.instructions[3], SPI_PROGRAM_FUNC.instructions[4], SPI_PROGRAM_FUNC.instructions[5], SPI_PROGRAM_FUNC.instructions[6], SPI_PROGRAM_FUNC.instructions[7], SPI_PROGRAM_FUNC.instructions[8]);
+    printf("PIO Instruction(0x%04x) : %04x %04x %04x %04x %04x %04x %04x %04x %04x \n", g_pio_hookinstruction, SPI_PROGRAM_FUNC.instructions[0], SPI_PROGRAM_FUNC.instructions[1], SPI_PROGRAM_FUNC.instructions[2],
+           SPI_PROGRAM_FUNC.instructions[3], SPI_PROGRAM_FUNC.instructions[4], SPI_PROGRAM_FUNC.instructions[5], SPI_PROGRAM_FUNC.instructions[6], SPI_PROGRAM_FUNC.instructions[7], SPI_PROGRAM_FUNC.instructions[8]);
     ////////////////////////////////////////////////////////////////////////////////////
 #endif
     if (!pio_can_add_program(pios[pio_index], &SPI_PROGRAM_FUNC)) {
@@ -144,7 +145,7 @@ wiznet_spi_handle_t wiznet_spi_pio_open(const wiznet_spi_config_t *spi_config) {
         return NULL;
     }
 
-    state->pio_offset = pio_add_program(state->pio, &SPI_PROGRAM_FUNC);    
+    state->pio_offset = pio_add_program(state->pio, &SPI_PROGRAM_FUNC);
 
     pio_sm_config sm_config = SPI_PROGRAM_GET_DEFAULT_CONFIG_FUNC(state->pio_offset);
 
@@ -152,11 +153,11 @@ wiznet_spi_handle_t wiznet_spi_pio_open(const wiznet_spi_config_t *spi_config) {
     hw_write_masked(&pads_bank0_hw->io[state->spi_config->clock_pin],
                     (uint)PADS_DRIVE_STRENGTH << PADS_BANK0_GPIO0_DRIVE_LSB,
                     PADS_BANK0_GPIO0_DRIVE_BITS
-    );
+                   );
     hw_write_masked(&pads_bank0_hw->io[state->spi_config->clock_pin],
                     (uint)1 << PADS_BANK0_GPIO0_SLEWFAST_LSB,
                     PADS_BANK0_GPIO0_SLEWFAST_BITS
-    );
+                   );
 
     sm_config_set_out_pins(&sm_config, state->spi_config->data_out_pin, 1);
     sm_config_set_in_pins(&sm_config, state->spi_config->data_in_pin);
@@ -191,8 +192,9 @@ static void wiznet_spi_pio_close(wiznet_spi_handle_t handle) {
     spi_pio_state_t *state = (spi_pio_state_t *)handle;
     if (state) {
         if (state->pio_sm >= 0) {
-            if (state->pio_offset != -1)
+            if (state->pio_offset != -1) {
                 pio_remove_program(state->pio, &SPI_PROGRAM_FUNC, state->pio_offset);
+            }
 
             pio_sm_unclaim(state->pio, state->pio_sm);
         }
@@ -265,15 +267,15 @@ static bool pio_spi_transfer(spi_pio_state_t *state, const uint8_t *tx, size_t t
         return false;
     }
 
-    if (rx != NULL && tx != NULL) {    
+    if (rx != NULL && tx != NULL) {
         assert(tx && tx_length && rx_length);
         DUMP_SPI_TRANSACTIONS(
-                printf("[%lu] bus TX/RX %u bytes rx %u:", counter++, tx_length, rx_length);
-                dump_bytes(tx, tx_length);
+            printf("[%lu] bus TX/RX %u bytes rx %u:", counter++, tx_length, rx_length);
+            dump_bytes(tx, tx_length);
         )
 
         pio_sm_set_enabled(state->pio, state->pio_sm, false); // disable sm
-        pio_sm_set_wrap(state->pio, state->pio_sm, state->pio_offset + SPI_OFFSET_WRITE_BITS, state->pio_offset + SPI_OFFSET_READ_END - 1); 
+        pio_sm_set_wrap(state->pio, state->pio_sm, state->pio_offset + SPI_OFFSET_WRITE_BITS, state->pio_offset + SPI_OFFSET_READ_END - 1);
         pio_sm_clear_fifos(state->pio, state->pio_sm); // clear fifos from previous run
         pio_sm_set_pindirs_with_mask(state->pio, state->pio_sm, 1u << state->spi_config->data_out_pin, 1u << state->spi_config->data_out_pin);
         pio_sm_restart(state->pio, state->pio_sm);
@@ -308,8 +310,8 @@ static bool pio_spi_transfer(spi_pio_state_t *state, const uint8_t *tx, size_t t
     } else if (tx != NULL) {
         assert(tx_length);
         DUMP_SPI_TRANSACTIONS(
-                printf("[%lu] bus TX only %u bytes:", counter++, tx_length);
-                dump_bytes(tx, tx_length);
+            printf("[%lu] bus TX only %u bytes:", counter++, tx_length);
+            dump_bytes(tx, tx_length);
         )
         pio_sm_set_enabled(state->pio, state->pio_sm, false);
         pio_sm_set_wrap(state->pio, state->pio_sm, state->pio_offset + SPI_OFFSET_WRITE_BITS, state->pio_offset + SPI_OFFSET_WRITE_END - 1);
@@ -345,7 +347,7 @@ static bool pio_spi_transfer(spi_pio_state_t *state, const uint8_t *tx, size_t t
 #if 0
         assert(rx_length);
         DUMP_SPI_TRANSACTIONS(
-                printf("[%lu] bus RX only %u bytes:\n", counter++, rx_length);
+            printf("[%lu] bus RX only %u bytes:\n", counter++, rx_length);
         )
         pio_sm_set_enabled(state->pio, state->pio_sm, false); // disable sm
         pio_sm_set_wrap(state->pio, state->pio_sm, state->pio_offset + SPI_OFFSET_WRITE_BITS, state->pio_offset + SPI_OFFSET_READ_END - 1);  // stall on write at the end of the read
@@ -375,11 +377,11 @@ static bool pio_spi_transfer(spi_pio_state_t *state, const uint8_t *tx, size_t t
     pio_sm_exec(state->pio, state->pio_sm, pio_encode_mov(pio_pins, pio_null)); // for next time we turn output on
 
     DUMP_SPI_TRANSACTIONS(
-        if (rx_length > 0) {
-            printf("RXed:");
-            dump_bytes(rx, rx_length);
-            printf("\n");
-        }
+    if (rx_length > 0) {
+    printf("RXed:");
+        dump_bytes(rx, rx_length);
+        printf("\n");
+    }
     )
 
     return true;
@@ -387,7 +389,7 @@ static bool pio_spi_transfer(spi_pio_state_t *state, const uint8_t *tx, size_t t
 
 // To read a byte we must first have been asked to write a 3 byte spi header
 static uint8_t wiznet_spi_pio_read_byte(void) {
-    assert(active_state);    
+    assert(active_state);
     assert(active_state->spi_header_count == SPI_HEADER_LEN);
     uint8_t ret;
     if (!pio_spi_transfer(active_state, active_state->spi_header, active_state->spi_header_count, &ret, 1)) {
@@ -413,43 +415,39 @@ static void wiznet_spi_pio_read_buffer(uint8_t* pBuf, uint16_t len) {
         panic("spi failed reading buffer");
     }
     active_state->spi_header_count = 0;
-    #if 0
+#if 0
     //printf("wiznet_spi_pio_read_buffer XXX 500-0 (%d) : %02x %02x %02x %02x %02x \n", len, pBuf[0], pBuf[1], pBuf[2], pBuf[3], pBuf[4]);
     assert(active_state);
     assert(active_state->spi_header_count == SPI_HEADER_LEN);
     /*
-    if (!pio_spi_transfer(active_state, active_state->spi_header, active_state->spi_header_count, pBuf, 1)) {
+        if (!pio_spi_transfer(active_state, active_state->spi_header, active_state->spi_header_count, pBuf, 1)) {
         panic("spi failed read");
-    }
-    printf("XXX 500-1 (%d) : %02x %02x %02x %02x %02x \n", len, pBuf[0], pBuf[1], pBuf[2], pBuf[3], pBuf[4]);
+        }
+        printf("XXX 500-1 (%d) : %02x %02x %02x %02x %02x \n", len, pBuf[0], pBuf[1], pBuf[2], pBuf[3], pBuf[4]);
 
-    if (!pio_spi_transfer(active_state, active_state->spi_header, active_state->spi_header_count, &(pBuf[1]), len-1)) {
+        if (!pio_spi_transfer(active_state, active_state->spi_header, active_state->spi_header_count, &(pBuf[1]), len-1)) {
         panic("spi failed reading buffer");
-    }
+        }
     */
     if (!pio_spi_transfer(active_state, active_state->spi_header, active_state->spi_header_count, pBuf, len)) {
         panic("spi failed reading buffer");
     }
     //printf("wiznet_spi_pio_read_buffer XXX 500-2 (%d) : %02x %02x %02x %02x %02x \n", len, pBuf[0], pBuf[1], pBuf[2], pBuf[3], pBuf[4]);
 
-    if ( len==2 )
-    {
+    if (len == 2) {
         extern int g_xxx_lenmode;
-        if ( g_xxx_lenmode==1 )
-        {
+        if (g_xxx_lenmode == 1) {
             uint8_t ttt = pBuf[0] & 0x7f;
             //printf("wiznet_spi_pio_read_buffer XXX 500-3 (%d) : %02x(ttt) %02x(pBuf[0]) %02x %02x %02x \n", len, ttt, pBuf[0], pBuf[1], pBuf[2], pBuf[3]);
             pBuf[0] = ttt;
-            //g_xxx_lenmode = 0;        
-        }
-        else
-        {
+            //g_xxx_lenmode = 0;
+        } else {
             printf("wiznet_spi_pio_read_buffer XXX 500-7 ==============> 777 \n");
         }
     }
 
     active_state->spi_header_count = 0;
-    #endif
+#endif
     ////////////////////////////////////////////////////////////////////////////////////////////////
 }
 

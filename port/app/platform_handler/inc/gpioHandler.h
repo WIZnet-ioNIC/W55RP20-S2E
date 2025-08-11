@@ -5,52 +5,45 @@
 
 #define _GPIO_DEBUG_
 
-typedef enum
-{
-	IO_DIGITAL_INPUT  = 0,
-	IO_DIGITAL_OUTPUT = 1,
-	IO_ANALOG_INPUT   = 2,
-	IO_ANALOG_OUTPUT  = 3,
-	IO_UNKNOWN        = 0xff
+typedef enum {
+    IO_DIGITAL_INPUT  = 0,
+    IO_DIGITAL_OUTPUT = 1,
+    IO_ANALOG_INPUT   = 2,
+    IO_ANALOG_OUTPUT  = 3,
+    IO_UNKNOWN        = 0xff
 } USER_IO_Define;
 
-typedef enum
-{
-	IO_INPUT  = 0,
-	IO_OUTPUT = 1
+typedef enum {
+    IO_INPUT  = 0,
+    IO_OUTPUT = 1
 } USER_IO_Direction;
 
-typedef enum
-{
-	IO_DIGITAL   = 0,
-	IO_ANALOG_IN = 1
+typedef enum {
+    IO_DIGITAL   = 0,
+    IO_ANALOG_IN = 1
 } USER_IO_Type;
 
-typedef enum
-{
-	IO_LOW  = 0,
-	IO_HIGH = 1
+typedef enum {
+    IO_LOW  = 0,
+    IO_HIGH = 1
 } USER_IO_Status;
 
-typedef enum
-{
-	IO_DISABLE = 0,
-	IO_ENABLE  = 1
+typedef enum {
+    IO_DISABLE = 0,
+    IO_ENABLE  = 1
 } USER_IO_Enable;
 
-typedef enum
-{
-	IO_NOPULL = 0,
-	IO_PULLUP  = 1,
-	IO_PULLDOWN  = 2,
+typedef enum {
+    IO_NOPULL = 0,
+    IO_PULLUP  = 1,
+    IO_PULLDOWN  = 2,
 } USER_IO_PULL;
 
-typedef enum
-{
-	IO_IRQ_LOW = 0,
-	IO_IRQ_HIGH  = 1,
-	IO_IRQ_FALL  = 2,
-	IO_IRQ_RISE  = 3,
+typedef enum {
+    IO_IRQ_LOW = 0,
+    IO_IRQ_HIGH  = 1,
+    IO_IRQ_FALL  = 2,
+    IO_IRQ_RISE  = 3,
 } USER_IO_IRQ;
 
 
@@ -91,7 +84,7 @@ uint8_t set_user_io_val(uint16_t io_sel, uint16_t * val); // set the I/O status,
 uint8_t get_user_io_bitorder(uint16_t io_sel);
 uint16_t read_ADC(uint8_t ch);
 
-// Check the PHY link status 
+// Check the PHY link status
 uint8_t check_phylink_status(void);
 void gpio_handler_timer_msec(void); // This function have to call every 1 millisecond by Timer IRQ handler routine.
 

@@ -16,7 +16,7 @@
 
 #define FLASH_SIZE                0x00200000
 #define FLASH_BOOTLOADER_SIZE     0x20000  //128KB
-#define FLASH_PARAMETER_SIZE      0x10000  
+#define FLASH_PARAMETER_SIZE      0x10000
 #define FLASH_APP_BANK_SIZE       0x80000  //512KB
 
 #define FLASH_START_ADDR_BANK0_OFFSET    FLASH_BOOTLOADER_SIZE
@@ -57,7 +57,7 @@ void device_set_factory_default(void);
 void device_socket_termination(void);
 void device_reboot(void);
 void device_raw_reboot(void);
-void disable_interrupts(void);
+//void disable_interrupts(void);
 void reset_peripherals(void);
 uint8_t device_bank_update(void);
 void jump_to_app(uint32_t app_addr);

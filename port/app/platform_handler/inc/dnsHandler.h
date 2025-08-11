@@ -1,9 +1,9 @@
 /*
- * dnsHandler.h
- *
- *  Created on: Jan 19, 2021
- *      Author: Hoon-Mac
- */
+    dnsHandler.h
+
+    Created on: Jan 19, 2021
+        Author: Hoon-Mac
+*/
 
 #ifndef PLATFORMHANDLER_DNSHANDLER_H_
 #define PLATFORMHANDLER_DNSHANDLER_H_
@@ -18,8 +18,7 @@
 #define STATE_DNS_STOP            4
 
 // DNS non-block mode: DNS return value
-enum
-{
+enum {
     DNS_RET_TIMEOUT = -2,
     DNS_RET_FAILED = -1,
     DNS_RET_RUNNING = 0,

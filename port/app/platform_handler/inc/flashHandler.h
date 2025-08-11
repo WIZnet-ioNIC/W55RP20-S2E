@@ -10,11 +10,11 @@
 /* WIZ5XXSR-RP Application memory map */
 // RP2040
 /*
- * Flash
- *  - Main flash size: 2Mbytes
- *  
- *
- Top Flash Memory address /-------------------------------------------\  0x10200000
+    Flash
+    - Main flash size: 2Mbytes
+
+
+    Top Flash Memory address /-------------------------------------------\  0x10200000
                           |                                           |
                           |                 Parameters (64KB)         |
                           |-------------------------------------------|  0x101F0000
@@ -36,7 +36,7 @@
                           |-------------------------------------------|  0x10080000
     Page   1 (256B)       |                                           |
                           |                                           |
-                          |              Bootloader (512KB)           |  
+                          |              Bootloader (512KB)           |
     Page   0 (256B)       |                                           |
                           |                                           |
                           \-------------------------------------------/  0x10000000

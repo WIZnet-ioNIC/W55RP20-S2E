@@ -12,27 +12,28 @@
 BUFFER_DECLARATION(data0_rx);
 
 /*****************************************************************************
- * Private functions
+    Private functions
  ****************************************************************************/
 
 /**
- * @brief	UART interrupt handler using ring buffers
- * @return	Nothing
- */
+    @brief	UART interrupt handler using ring buffers
+    @return	Nothing
+*/
 
-int UART_read(void *data, int bytes)
-{
-  uint32_t i;
-  uint8_t *data_ptr = data;
-  if(IS_BUFFER_EMPTY(data0_rx)) return RET_NOK;
-  
-  for(i=0; i<bytes; i++)
-    data_ptr[i] = (uint8_t)BUFFER_OUT(data0_rx);
-  BUFFER_OUT_MOVE(data0_rx, i);
-  return i;
+int UART_read(void *data, int bytes) {
+    uint32_t i;
+    uint8_t *data_ptr = data;
+    if (IS_BUFFER_EMPTY(data0_rx)) {
+        return RET_NOK;
+    }
+
+    for (i = 0; i < bytes; i++) {
+        data_ptr[i] = (uint8_t)BUFFER_OUT(data0_rx);
+    }
+    BUFFER_OUT_MOVE(data0_rx, i);
+    return i;
 }
 
-uint32_t UART_write(void *data, int bytes)
-{
-  return platform_uart_puts(data, bytes);
+uint32_t UART_write(void *data, int bytes) {
+    return platform_uart_puts(data, bytes);
 }
