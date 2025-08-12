@@ -7,13 +7,13 @@ typedef enum {
     NET_IP_UP,
 } NetStatus;
 
-#define DHCP_RETRY_COUNT 5
+#define DHCP_RETRY_COUNT 2
 NetStatus get_net_status(void);
 void net_status_task(void *argument);
 
 uint8_t set_stop_dhcp_flag(uint8_t flag);
 uint8_t get_stop_dhcp_flag(void);
 int8_t process_dhcp(void);
-
+void wizchip_recovery(uint8_t working_mode);
 
 #endif /* NETHANDLER_H_ */

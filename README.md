@@ -8,6 +8,7 @@ These sections will provide how to configure development environment to develop 
 
 - [W55RP20-S2E README](#w55rp20-s2e-readme)
   - [Development environment configuration](#development-environment-configuration)
+    - [Required Build Environment](#required-build-environment)
 - [Hardware requirements](#hardware-requirements)
 - [W232N](#w232n)
 
@@ -17,6 +18,15 @@ These sections will provide how to configure development environment to develop 
 ## Development environment configuration
 
 To develop and modify W55RP20-S2E, the development environment must be configured so that RP2040 can be used.
+
+### Required Build Environment
+
+We recommend the following versions for successful build and development:
+
+- **pico-sdk**: `2.2.0`  
+- **ARM GCC Toolchain**: `14.2.Rel1`
+
+> Using other versions of the toolchain may result in build errors.  
 
 W55RP20-S2E was developed by configuring the development environment for **Windows**, When configuring the development environment, refer to the '**9.2. Building on MS Windows**' section of '**Getting started with Raspberry Pi Pico**' document below to configure the development environment.
 
@@ -76,15 +86,6 @@ The **W232N** is an industrial module from WIZnet that applies the W55RP20-S2E f
 | Image                                                        | Name                                                      | Etc                                                          |
 | ------------------------------------------------------------ | --------------------------------------------------------- | ------------------------------------------------------------ |
 | <image src= "https://docs.wiznet.io/img/products/w232n/W232_Rail_mount.png" width="200px" height="150px"> | [**W232N**](https://docs.wiznet.io/Product/S2E-Module/Industrial/W232N-datasheet-kr)           | [W232N Document](https://docs.wiznet.io/Product/S2E-Module/Industrial/Config-tool-Guide-kr) |
-
-
-<BR>
-
-> ※ If the board pauses when rebooting using W55RP20-EVB-Pico, patch it as follows.
-> ```sh
-> git apply ./patches/0001_pico_sdk_clocks.patch
-> ```
-
 
 <!--
 Link
