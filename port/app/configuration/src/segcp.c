@@ -1403,7 +1403,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
     }
 
 #ifdef DBG_LEVEL_SEGCP
-    PRT_SEGCP("END of [proc_SEGCP] function - RET[0x%.4x]\r\n\r\n", ret);
+    PRT_SEGCP("END of [proc_SEGCP] function - RET[0x%.4x]\r\n", ret);
 #endif
 
     return ret;
