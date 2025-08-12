@@ -52,23 +52,8 @@ void net_status_task(void *argument) {
                 phylink_count++;
                 if (phylink_count == 50) {
                     phylink_count = 0;
-                    PRT_INFO("W5500 RESET\r\n");
-                    wizchip_reset();
-                    wizchip_initialize();
-                    Net_Conf();
-
-                    switch (dev_config->network_connection.working_mode) {
-                    case TCP_CLIENT_MODE:
-                    case TCP_SERVER_MODE:
-                    case TCP_MIXED_MODE:
-                    case SSL_TCP_CLIENT_MODE:
-                    case UDP_MODE:
-                        wizchip_gpio_interrupt_initialize(SEG_DATA0_SOCK, SIK_RECEIVED);
-                        break;
-
-                    default:
-                        break;
-                    }
+                    PRT_INFO("NET_LINK_DISCONNECTED\r\n");
+                    wizchip_recovery(dev_config->network_connection.working_mode);
                 }
             }
             g_net_status = NET_LINK_CONNECTED;
@@ -78,11 +63,16 @@ void net_status_task(void *argument) {
             xSemaphoreGive(net_segcp_udp_sem);
             if (dev_config->network_option.dhcp_use) {
                 set_stop_dhcp_flag(0);
+                //PRT_INFO("DHCP waiting 3 seconds...\r\n");
+                //vTaskDelay(3000); // Wait for 3 seconds before starting DHCP
                 if (process_dhcp() == DHCP_IP_LEASED) { // DHCP success
                     flag_process_dhcp_success = ON;
                 } else {  // DHCP failed
-                    dev_config->network_option.dhcp_use = 0;
-                    Net_Conf(); // Set default static IP settings
+                    //dev_config->network_option.dhcp_use = 0;
+                    //Net_Conf(); // Set default static IP settings
+                    PRT_ERR("NET_LINK_CONNECTED DHCP Failed\r\n");
+                    wizchip_recovery(dev_config->network_connection.working_mode);
+                    break;
                 }
             }
             display_Net_Info();
@@ -90,9 +80,15 @@ void net_status_task(void *argument) {
 
             if (dev_config->network_connection.working_mode != TCP_SERVER_MODE)  {
                 if (dev_config->network_connection.dns_use) {
-                    if (process_dns()) {
+                    //PRT_INFO("DNS waiting 3 seconds...\r\n");
+                    //vTaskDelay(3000); // Wait for 3 seconds before starting DHCP
+                    if (process_dns() == DNS_RET_SUCCESS) {
                         flag_process_dns_success = ON;
-                        printf("flag_process_dns_success = ON\r\n");
+                        PRT_INFO("flag_process_dns_success = ON\r\n");
+                    } else {
+                        PRT_ERR("NET_LINK_CONNECTED DNS Failed\r\n");
+                        wizchip_recovery(dev_config->network_connection.working_mode);
+                        break;
                     }
                     display_Dev_Info_dns();
                 }
@@ -109,42 +105,25 @@ void net_status_task(void *argument) {
                     if (get_stop_dhcp_flag() == 0) {
                         ret = DHCP_run();
                         if (ret == DHCP_FAILED) {
-                            g_net_status = NET_LINK_DISCONNECTED;
+                            PRT_ERR("NET_IP_UP DHCP Failed\r\n");
+                            wizchip_recovery(dev_config->network_connection.working_mode);
                             process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
                             break;
                         }
                     }
                 }
                 if (check_phylink_status() == PHY_LINK_OFF) {
-
 #if 1   //restore status
-                    flag_process_dhcp_success = OFF;
-                    flag_process_dns_success = OFF;
-                    g_net_status = NET_LINK_DISCONNECTED;
+                    PRT_ERR("NET_IP_UP PHY_LINK_OFF\r\n");
+                    wizchip_recovery(dev_config->network_connection.working_mode);
                     if (get_device_status() != ST_ATMODE) {
                         set_device_status(ST_OPEN);
                     }
+                    PRT_INFO("NET_IP_UP PHY_LINK_OFF\r\n");
                     process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
 #else   //device reset
                     device_raw_reboot();
 #endif
-                    PRT_INFO("PHY_LINK_OFF W5500 RESET\r\n");
-                    wizchip_reset();
-                    wizchip_initialize();
-                    Net_Conf();
-
-                    switch (dev_config->network_connection.working_mode) {
-                    case TCP_CLIENT_MODE:
-                    case TCP_SERVER_MODE:
-                    case TCP_MIXED_MODE:
-                    case SSL_TCP_CLIENT_MODE:
-                    case UDP_MODE:
-                        wizchip_gpio_interrupt_initialize(SEG_DATA0_SOCK, SIK_RECEIVED);
-                        break;
-
-                    default:
-                        break;
-                    }
                     break;
                 }
                 vTaskDelay(2000);
@@ -209,3 +188,24 @@ int8_t process_dhcp(void) {
     return ret;
 }
 
+void wizchip_recovery(uint8_t working_mode) {
+    PRT_INFO("W5500 RESET\r\n");
+
+    g_net_status = NET_LINK_DISCONNECTED;
+    flag_process_dns_success = OFF;
+    flag_process_dhcp_success = OFF;
+
+    wizchip_reset();
+    wizchip_initialize();
+    Net_Conf();
+
+    switch (working_mode) {
+    case TCP_CLIENT_MODE:
+    case TCP_SERVER_MODE:
+    case TCP_MIXED_MODE:
+    case SSL_TCP_CLIENT_MODE:
+    case UDP_MODE:
+        wizchip_gpio_interrupt_initialize(SEG_DATA0_SOCK, SIK_RECEIVED);
+        break;
+    }
+}
