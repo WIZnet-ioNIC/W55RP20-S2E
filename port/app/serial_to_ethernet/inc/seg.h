@@ -128,7 +128,6 @@ int wizchip_mqtt_publish(mqtt_config_t *mqtt_config, uint8_t *pub_topic, uint8_t
 void seg_task(void *argument);
 void seg_u2e_task(void *argument);
 void seg_recv_task(void *argument);
-void seg_con_timer_callback(TimerHandle_t xTimer);
 void timers_stop(void);
 void keepalive_timer_callback(TimerHandle_t xTimer);
 void inactivity_timer_callback(TimerHandle_t xTimer);
