@@ -273,6 +273,8 @@ void proc_SEG_udp(uint8_t sock) {
     // Socket state
     uint8_t state = getSn_SR(sock);
 
+    uint8_t flag = 0;
+
     switch (state) {
     case SOCK_UDP:
         break;
@@ -286,8 +288,24 @@ void proc_SEG_udp(uint8_t sock) {
         u2e_size = 0;
         e2u_size = 0;
 
+        // If remote ip is multicast address, enable the multicasting
+        if (network_connection->remote_ip[0] >= 224 && network_connection->remote_ip[0] <= 239) {
+            uint8_t multicast_mac[6];
+            multicast_mac[0] = 0x01;
+            multicast_mac[1] = 0x00;
+            multicast_mac[2] = 0x5e;
+            multicast_mac[3] = network_connection->remote_ip[1] & 0x7F;
+            multicast_mac[4] = network_connection->remote_ip[2];
+            multicast_mac[5] = network_connection->remote_ip[3];
+            setSn_DIPR(sock, network_connection->remote_ip);
+            setSn_DPORT(sock, network_connection->remote_port);
+            setSn_DHAR(sock, multicast_mac);
+            flag |= SF_MULTI_ENABLE;
+        }
+        flag |= SOCK_IO_NONBLOCK;
+
         xSemaphoreTake(seg_socket_sem, portMAX_DELAY);
-        int8_t s = socket(sock, Sn_MR_UDP, network_connection->local_port, 0);
+        int8_t s = socket(sock, Sn_MR_UDP, network_connection->local_port, flag);
         xSemaphoreGive(seg_socket_sem);
 
         if (s == sock) {
