@@ -18,6 +18,7 @@
 #include "pico/flash.h"
 #include "pico/multicore.h"
 #include "pico/critical_section.h"
+#include "pico/rand.h"
 
 #include "hardware/clocks.h"
 #include "hardware/dma.h"
