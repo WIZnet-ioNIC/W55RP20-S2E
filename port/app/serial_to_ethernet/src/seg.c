@@ -1355,6 +1355,10 @@ void uart_to_ether(uint8_t sock) {
     len = get_serial_data();
 
     if (len > 0) {
+        serial_input_time = 0;
+        enable_serial_input_timer = 0;
+        flag_serial_input_time_elapse = SEG_DISABLE;
+
         if (seg_inactivity_timer != NULL) {
             xTimerReset(seg_inactivity_timer, 0);
         }
