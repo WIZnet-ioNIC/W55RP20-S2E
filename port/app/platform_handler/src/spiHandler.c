@@ -167,11 +167,11 @@ void platform_spi_reset(void) {
     dma_channel_unclaim(dma_tx);
     dma_channel_unclaim(dma_rx);
     spi_deinit(SPI_ID);
-    DATA0_SPI_Configuration(spi_clock * 12);
+    DATA0_SPI_Configuration(spi_clock * 20);
 }
 
 void DATA0_SPI_Configuration(uint32_t main_clock) {
-    spi_clock = spi_init(SPI_ID, main_clock / 12);
+    spi_clock = spi_init(SPI_ID, main_clock / 20);
     spi_set_slave(SPI_ID, true);
 
     gpio_init(DATA0_SPI_SCK_PIN);
@@ -264,13 +264,8 @@ void spi_data_transfer_task(void *argument) {
         switch (current_state) {
         case STATE_SLAVE_DATA_WRITE:
             xTimerStop(spi_reset_timer, 0);
-            header[0] = SPI_SLAVE_WRITE_LEN_CMD;
-            memcpy(&header[1], &e2u_size, 2);
-            header[3] = SPI_DUMMY;
 
             if (e2u_size) {
-                memcpy(get_data_buffer_ptr(), header, 4);
-                memcpy(get_data_buffer_ptr() + 4, g_recv_buf, e2u_size);
                 vTaskEnterCritical();
                 platform_spi_write(get_data_buffer_ptr(), e2u_size + 4);
                 vTaskExitCritical();

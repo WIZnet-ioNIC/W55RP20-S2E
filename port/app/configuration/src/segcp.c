@@ -1614,7 +1614,9 @@ uint16_t proc_SEGCP_serial(uint8_t * segcp_req, uint8_t * segcp_rep) {
 
             GPIO_Output_Reset(DATA0_SPI_INT_PIN);
             //platform_spi_write_dma(get_data_buffer_ptr(), len+4);
+            vTaskEnterCritical();
             platform_spi_write(get_data_buffer_ptr(), len + 4);
+            vTaskExitCritical();
             irq_set_enabled(SPI0_IRQ, true);
             GPIO_Output_Set(DATA0_SPI_INT_PIN);
         } else { //AT Command Set

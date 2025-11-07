@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include "common.h"
@@ -1658,6 +1659,13 @@ void ether_to_spi(uint8_t sock) {
             if (period_ms > 10) {
                 period_ms = 10;
             }
+            uint8_t header[4];
+
+            header[0] = SPI_SLAVE_WRITE_LEN_CMD;
+            memcpy(&header[1], &e2u_size, 2);
+            header[3] = SPI_DUMMY;
+            memcpy(get_data_buffer_ptr(), header, 4);
+            memcpy(get_data_buffer_ptr() + 4, g_recv_buf, e2u_size);
             xTimerChangePeriod(spi_reset_timer, pdMS_TO_TICKS(period_ms), 0);
             xTimerStart(spi_reset_timer, 0);
             GPIO_Output_Reset(DATA0_SPI_INT_PIN);

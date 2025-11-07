@@ -7,7 +7,7 @@
 #include "hardware/clocks.h"
 #include "hardware/gpio.h"
 
-#define PLL_SYS_KHZ (133000UL)
+#define PLL_SYS_KHZ (200000UL)
 
 #define BUF_LEN 1024
 
@@ -74,7 +74,7 @@ int main() {
     stdio_init_all();
 
     // Enable SPI 0 at 1 MHz and connect to GPIOs
-    printf("spi clock = %d\r\n", spi_init(spi_default, PLL_SYS_KHZ * 1000 / 12));
+    printf("spi clock = %d\r\n", spi_init(spi_default, PLL_SYS_KHZ * 1000 / 20));
     gpio_set_function(PICO_SPI_RX_PIN, GPIO_FUNC_SPI);
     gpio_set_function(PICO_SPI_SCK_PIN, GPIO_FUNC_SPI);
     gpio_set_function(PICO_SPI_TX_PIN, GPIO_FUNC_SPI);

@@ -27,8 +27,8 @@ volatile uint16_t usASCIIBufferPos;
 extern volatile uint8_t *pucTCPBufferCur;
 extern volatile uint16_t usTCPBufferPos;
 
-extern volatile uint8_t ucRTUBuf[];
-volatile uint8_t *ucASCIIBuf = ucRTUBuf;
+extern uint8_t g_send_buf[DATA_BUF_SIZE];
+volatile uint8_t *ucASCIIBuf = g_send_buf + 7;
 
 static eMBRcvState eRcvState;
 
