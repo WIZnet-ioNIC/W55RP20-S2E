@@ -130,4 +130,35 @@ add_subdirectory(${MBEDTLS_DIR})
 add_subdirectory(${BOOT_PORT_DIR})
 add_subdirectory(${APP_PORT_DIR})
 
+## Automatically run merge_hex.py after build
+add_custom_target(
+    merge_hex ALL
+    COMMAND python ${CMAKE_SOURCE_DIR}/tools/merge_hex.py
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Run merge_hex.py after build"
+)
 
+# Ensure merge_hex runs after Boot and App_linker are built
+add_dependencies(merge_hex Boot App_linker)
+
+## Automatically run html_to_c_header.py after build
+add_custom_target(
+    html_to_c_header ALL
+    COMMAND python ${CMAKE_SOURCE_DIR}/tools/html_to_c_header.py
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Run html_to_c_header.py after build"
+)
+
+# Ensure html_to_c_header runs after Boot and App_linker are built
+add_dependencies(html_to_c_header Boot App_linker)
+
+## Automatically run style/restyle.py after build
+add_custom_target(
+    restyle ALL
+    COMMAND python ${CMAKE_SOURCE_DIR}/style/restyle.py
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Run style/restyle.py after build"
+)
+
+# Ensure restyle runs after Boot and App_linker are built
+add_dependencies(restyle Boot App_linker)
