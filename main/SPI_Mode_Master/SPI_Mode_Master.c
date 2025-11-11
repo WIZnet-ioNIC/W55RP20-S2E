@@ -129,6 +129,7 @@ int main() {
 }
 
 static void RP2040_Init(void) {
+#if 0
     set_sys_clock_khz(PLL_SYS_KHZ, true);
 
     clock_configure(
@@ -138,6 +139,7 @@ static void RP2040_Init(void) {
         PLL_SYS_KHZ * 1000,                               // Input frequency
         PLL_SYS_KHZ * 1000                                // Output (must be same as no divider)
     );
+#endif
     sleep_ms(10);
 }
 

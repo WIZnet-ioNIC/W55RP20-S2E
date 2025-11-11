@@ -12,6 +12,7 @@ target_link_libraries(APP_MCU_FILES PUBLIC
         pico_multicore
         pico_stdlib
         pico_stdlib_headers
+        pico_rand
         hardware_clocks
         hardware_dma
         hardware_flash

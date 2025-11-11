@@ -8,20 +8,14 @@
 
 #include "SSL_Random.h"
 
-void RandomSeeding(int randSeed) {
-    srand(randSeed);
-}
 
-
-int SSLRandomCB(void *p_rng, unsigned char *output, size_t output_len) {
-    int i;
-
-    if (output_len <= 0) {
-        return (1);
+int mbedtls_hardware_poll(void *data, unsigned char *output, size_t len, size_t *olen) {
+    (void)data;
+    for (size_t i = 0; i < len; i += 4) {
+        uint32_t r = get_rand_32(); // pico_rand (ROSC-based)
+        size_t copy = (len - i) < 4 ? (len - i) : 4;
+        memcpy(output + i, &r, copy);
     }
-    for (i = 0; i < output_len; i++) {
-        *output++ = rand() % 0xff;
-    }
-    srand(rand());
-    return (0);
+    *olen = len;
+    return 0;
 }
