@@ -10,10 +10,10 @@
 #ifndef __SSL_RANDOM_H_
 #define __SSL_RANDOM_H_
 
-#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include "port_common.h"
 
-void RandomSeeding(int randSeed);
-int SSLRandomCB(void *p_rng, unsigned char *output, size_t output_len);
-
+int mbedtls_hardware_poll(void *data, unsigned char *output, size_t len, size_t *olen);
 
 #endif

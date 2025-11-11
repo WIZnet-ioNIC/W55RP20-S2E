@@ -67,5 +67,4 @@ void xMBRTUTimerT35Expired(void) {
     vMBPortTimersDisable();
     eRcvState = STATE_RX_IDLE;
 
-    //printf("tim3\r\n");
 }

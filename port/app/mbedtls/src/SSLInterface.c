@@ -196,7 +196,7 @@ int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd) {
     PRT_SSL("socket_fd = %d\r\n", socket_fd);
     mbedtls_ssl_conf_authmode(tlsContext->conf, ssl_option->root_ca_option);
     mbedtls_ssl_conf_ca_chain(tlsContext->conf, tlsContext->cacert, NULL);
-    mbedtls_ssl_conf_rng(tlsContext->conf, SSLRandomCB, tlsContext->ctr_drbg);
+    mbedtls_ssl_conf_rng(tlsContext->conf, mbedtls_ctr_drbg_random, tlsContext->ctr_drbg);
 
     if (ssl_option->client_cert_enable == ENABLE) {
         if ((ret = mbedtls_ssl_conf_own_cert(tlsContext->conf, tlsContext->clicert, tlsContext->pkey)) != 0) {
