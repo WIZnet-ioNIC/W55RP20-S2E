@@ -189,6 +189,7 @@
     /* @[define_networkcontext] */
     struct NetworkContext {
         int socketDescriptor;
+        int channel;
     };
     typedef struct NetworkContext NetworkContext_t;
     /* @[define_networkcontext] */

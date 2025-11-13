@@ -6,6 +6,7 @@
 #define __CONFIGDATA_H__
 
 #include <stdint.h>
+#include "WIZnet_board.h"
 
 #define DEVICE_NAME_SIZE        20
 #define DEVICE_ALIAS_SIZE       40
@@ -132,9 +133,9 @@ struct __device_option {
     uint8_t pw_setting[10];
     uint8_t device_alias[DEVICE_ALIAS_SIZE];
     uint8_t device_group[DEVICE_GROUP_SIZE];
-    uint8_t device_serial_connect_data[DEVICE_CONNECT_DATA_SIZE]; // Serial Send data when connected
-    uint8_t device_serial_disconnect_data[DEVICE_CONNECT_DATA_SIZE];  // Serial Send data when disconnected
-    uint8_t device_eth_connect_data[DEVICE_CONNECT_DATA_SIZE]; // Ethernet Send data when connected
+    uint8_t device_serial_connect_data[DEVICE_UART_CNT][DEVICE_CONNECT_DATA_SIZE]; // Serial Send data when connected
+    uint8_t device_serial_disconnect_data[DEVICE_UART_CNT][DEVICE_CONNECT_DATA_SIZE];  // Serial Send data when disconnected
+    uint8_t device_eth_connect_data[DEVICE_UART_CNT][DEVICE_CONNECT_DATA_SIZE]; // Ethernet Send data when connected
     //    uint8_t ntp_domain_name[NTP_SERVER_DOMAIN_CNT][NTP_SERVER_DOMAIN_SIZE];
 } __attribute__((packed));
 #endif
@@ -165,17 +166,17 @@ typedef struct __DevConfig {
     struct __device_common device_common;
     struct __config_common config_common;
     struct __network_common network_common;
-    struct __network_connection network_connection;
+    struct __network_connection network_connection[DEVICE_UART_CNT];
     struct __network_option network_option;
-    struct __tcp_option tcp_option;
+    struct __tcp_option tcp_option[DEVICE_UART_CNT];
     struct __serial_common serial_common;
     struct __serial_command serial_command;
-    struct __serial_option serial_option;
-    struct __serial_data_packing serial_data_packing;
+    struct __serial_option serial_option[DEVICE_UART_CNT];
+    struct __serial_data_packing serial_data_packing[DEVICE_UART_CNT];
     struct __user_io_info user_io_info;
     struct __firmware_update firmware_update;
-    struct __ssl_option ssl_option;
-    struct __mqtt_option mqtt_option;
+    struct __ssl_option ssl_option[DEVICE_UART_CNT];
+    struct __mqtt_option mqtt_option[DEVICE_UART_CNT];
     struct __device_option device_option;
     uint32_t devConfigVer;
 } __attribute__((packed)) DevConfig;

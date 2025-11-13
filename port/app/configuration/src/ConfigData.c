@@ -83,59 +83,81 @@ void set_DevConfig_to_factory_value(void) {
     dev_config.network_common.subnet[2] = 255;
     dev_config.network_common.subnet[3] = 0;
 
-    dev_config.network_connection.working_mode = TCP_SERVER_MODE; //UDP_MODE; //TCP_MIXED_MODE;
-    dev_config.network_connection.working_state = ST_OPEN;
+    for (int i = 0; i < DEVICE_UART_CNT; i++) {
+        dev_config.network_connection[i].working_mode = TCP_SERVER_MODE; //UDP_MODE; //TCP_MIXED_MODE;
+        dev_config.network_connection[i].working_state = ST_OPEN;
 
-    dev_config.network_connection.local_port = 5000;
+        dev_config.network_connection[i].local_port = 5000 + i;
 
-    dev_config.network_connection.remote_port = 5000;
-    dev_config.network_connection.remote_ip[0] = 192;
-    dev_config.network_connection.remote_ip[1] = 168;
-    dev_config.network_connection.remote_ip[2] = 11;
-    dev_config.network_connection.remote_ip[3] = 3;
+        dev_config.network_connection[i].remote_port = 5000 + i;
+        dev_config.network_connection[i].remote_ip[0] = 192;
+        dev_config.network_connection[i].remote_ip[1] = 168;
+        dev_config.network_connection[i].remote_ip[2] = 11;
+        dev_config.network_connection[i].remote_ip[3] = 3;
 
-    dev_config.network_connection.fixed_local_port = DISABLE;
-    dev_config.network_connection.dns_use = DISABLE;
+        dev_config.network_connection[i].fixed_local_port = DISABLE;
+        dev_config.network_connection[i].dns_use = DISABLE;
 
-    memset(dev_config.network_connection.dns_domain_name, 0x00, sizeof(dev_config.network_connection.dns_domain_name));
-    memcpy(dev_config.network_connection.dns_domain_name, "192.168.11.3", 12);
-    dev_config.serial_data_packing.packing_time = 0;
+        memset(dev_config.network_connection[i].dns_domain_name, 0x00, sizeof(dev_config.network_connection[i].dns_domain_name));
+        memcpy(dev_config.network_connection[i].dns_domain_name, "192.168.11.3", 12);
+        dev_config.serial_data_packing[i].packing_time = 0;
 
-    dev_config.serial_data_packing.packing_size = 0;
-    dev_config.serial_data_packing.packing_delimiter[0] = 0; // packing_delimiter used only one-byte (for WIZ107SR compatibility)
-    dev_config.serial_data_packing.packing_delimiter[1] = 0;
-    dev_config.serial_data_packing.packing_delimiter[2] = 0;
-    dev_config.serial_data_packing.packing_delimiter[3] = 0;
-    dev_config.serial_data_packing.packing_delimiter_length = 0;
-    dev_config.serial_data_packing.packing_data_appendix = 0;
+        dev_config.serial_data_packing[i].packing_size = 0;
+        dev_config.serial_data_packing[i].packing_delimiter[0] = 0; // packing_delimiter used only one-byte (for WIZ107SR compatibility)
+        dev_config.serial_data_packing[i].packing_delimiter[1] = 0;
+        dev_config.serial_data_packing[i].packing_delimiter[2] = 0;
+        dev_config.serial_data_packing[i].packing_delimiter[3] = 0;
+        dev_config.serial_data_packing[i].packing_delimiter_length = 0;
+        dev_config.serial_data_packing[i].packing_data_appendix = 0;
 
-    dev_config.tcp_option.inactivity = 0;        // sec, default: NONE
-    dev_config.tcp_option.reconnection = 3000;   // msec, default: 3 sec
-    dev_config.tcp_option.keepalive_en = ENABLE;
-    dev_config.tcp_option.keepalive_wait_time = 7000;
-    dev_config.tcp_option.keepalive_retry_time = 5000;
+        dev_config.tcp_option[i].inactivity = 0;        // sec, default: NONE
+        dev_config.tcp_option[i].reconnection = 3000;   // msec, default: 3 sec
+        dev_config.tcp_option[i].keepalive_en = ENABLE;
+        //dev_config.tcp_option[i].keepalive_en = DISABLE;
+        dev_config.tcp_option[i].keepalive_wait_time = 7000;
+        dev_config.tcp_option[i].keepalive_retry_time = 5000;
 
-    memset(dev_config.tcp_option.pw_connect, 0x00, sizeof(dev_config.tcp_option.pw_connect));
-    dev_config.tcp_option.pw_connect_en = DISABLE;
-
-    // Default Settings for Data UART: 115200-8-N-1, No flowctrl
-    dev_config.serial_option.uart_interface = UART_IF_RS232_TTL;
-    dev_config.serial_option.protocol = SEG_SERIAL_PROTOCOL_NONE;
-    dev_config.serial_option.baud_rate = baud_115200;
-    dev_config.serial_option.data_bits = word_len8;
-    dev_config.serial_option.parity = parity_none;
-    dev_config.serial_option.stop_bits = stop_bit1;
-    dev_config.serial_option.flow_control = flow_none;
+        // Default Settings for Data UART: 115200-8-N-1, No flowctrl
+        dev_config.serial_option[i].uart_interface = UART_IF_RS232_TTL;
+        dev_config.serial_option[i].protocol = SEG_SERIAL_PROTOCOL_NONE;
+        dev_config.serial_option[i].baud_rate = baud_115200;
+        dev_config.serial_option[i].data_bits = word_len8;
+        dev_config.serial_option[i].parity = parity_none;
+        dev_config.serial_option[i].stop_bits = stop_bit1;
+        dev_config.serial_option[i].flow_control = flow_none;
 
 #ifdef __USE_DSR_DTR_DEFAULT__
-    dev_config.serial_option.dtr_en = ENABLE;
-    dev_config.serial_option.dsr_en = ENABLE;
+        dev_config.serial_option[i].dtr_en = ENABLE;
+        dev_config.serial_option[i].dsr_en = ENABLE;
 #else
-    dev_config.serial_option.dtr_en = DISABLE;
-    dev_config.serial_option.dsr_en = DISABLE;
+        dev_config.serial_option[i].dtr_en = DISABLE;
+        dev_config.serial_option[i].dsr_en = DISABLE;
 #endif
+        // SSL Option
+        dev_config.ssl_option[i].root_ca_option = 0; //MBEDTLS_SSL_VERIFY_NONE;
+        dev_config.ssl_option[i].client_cert_enable = DISABLE;
+        dev_config.ssl_option[i].recv_timeout = 2000;
 
-    //dev_config.serial_info[0].serial_debug_en = DISABLE;
+        memset(dev_config.tcp_option[i].pw_connect, 0x00, sizeof(dev_config.tcp_option[i].pw_connect));
+        dev_config.tcp_option[i].pw_connect_en = DISABLE;
+
+        // MQTT Option
+        memset(dev_config.mqtt_option[i].user_name, 0x00, sizeof(dev_config.mqtt_option[i].user_name));
+        memset(dev_config.mqtt_option[i].password, 0x00, sizeof(dev_config.mqtt_option[i].password));
+        memset(dev_config.mqtt_option[i].client_id, 0x00, sizeof(dev_config.mqtt_option[i].client_id));
+        memset(dev_config.mqtt_option[i].pub_topic, 0x00, sizeof(dev_config.mqtt_option[i].pub_topic));
+        memset(dev_config.mqtt_option[i].sub_topic_0, 0x00, sizeof(dev_config.mqtt_option[i].sub_topic_0));
+        memset(dev_config.mqtt_option[i].sub_topic_1, 0x00, sizeof(dev_config.mqtt_option[i].sub_topic_1));
+        memset(dev_config.mqtt_option[i].sub_topic_2, 0x00, sizeof(dev_config.mqtt_option[i].sub_topic_2));
+        dev_config.mqtt_option[i].qos = MQTTQoS0;
+        dev_config.mqtt_option[i].keepalive = 0;
+
+        memset(dev_config.device_option.device_serial_connect_data[i], 0x00, sizeof(dev_config.device_option.device_serial_connect_data[i]));
+        memset(dev_config.device_option.device_serial_disconnect_data[i], 0x00, sizeof(dev_config.device_option.device_serial_disconnect_data[i]));
+        memset(dev_config.device_option.device_eth_connect_data[i], 0x00, sizeof(dev_config.device_option.device_eth_connect_data[i]));
+
+    }
+
     dev_config.serial_common.serial_debug_en = ENABLE;
     dev_config.serial_common.uart_interface_cnt = DEVICE_UART_CNT;
 
@@ -166,24 +188,7 @@ void set_DevConfig_to_factory_value(void) {
     dev_config.user_io_info.user_io_status = 0;
 #endif
 
-    // SSL Option
-    dev_config.ssl_option.root_ca_option = 0; //MBEDTLS_SSL_VERIFY_NONE;
-    dev_config.ssl_option.client_cert_enable = DISABLE;
-    dev_config.ssl_option.recv_timeout = 2000;
-
-    // MQTT Option
-    memset(dev_config.mqtt_option.user_name, 0x00, sizeof(dev_config.mqtt_option.user_name));
-    memset(dev_config.mqtt_option.password, 0x00, sizeof(dev_config.mqtt_option.password));
-    memset(dev_config.mqtt_option.client_id, 0x00, sizeof(dev_config.mqtt_option.client_id));
-    memset(dev_config.mqtt_option.pub_topic, 0x00, sizeof(dev_config.mqtt_option.pub_topic));
-    memset(dev_config.mqtt_option.sub_topic_0, 0x00, sizeof(dev_config.mqtt_option.sub_topic_0));
-    memset(dev_config.mqtt_option.sub_topic_1, 0x00, sizeof(dev_config.mqtt_option.sub_topic_1));
-    memset(dev_config.mqtt_option.sub_topic_2, 0x00, sizeof(dev_config.mqtt_option.sub_topic_2));
-    dev_config.mqtt_option.qos = MQTTQoS0;
-    dev_config.mqtt_option.keepalive = 0;
-
     // fixed local port enable / disable
-
     dev_config.device_option.pw_setting_en = ENABLE;
     memset(dev_config.device_option.pw_setting, 0x00, sizeof(dev_config.device_option.pw_setting));
     memset(dev_config.device_option.device_group, 0x00, sizeof(dev_config.device_option.device_group));
@@ -200,9 +205,6 @@ void set_DevConfig_to_factory_value(void) {
             dev_config.network_common.mac[3],
             dev_config.network_common.mac[4],
             dev_config.network_common.mac[5]);
-    memset(dev_config.device_option.device_serial_connect_data, 0x00, sizeof(dev_config.device_option.device_serial_connect_data));
-    memset(dev_config.device_option.device_serial_disconnect_data, 0x00, sizeof(dev_config.device_option.device_serial_disconnect_data));
-    memset(dev_config.device_option.device_eth_connect_data, 0x00, sizeof(dev_config.device_option.device_eth_connect_data));
 
     dev_config.devConfigVer = DEV_CONFIG_VER;//DEV_CONFIG_VER;
 }
@@ -212,7 +214,7 @@ void load_DevConfig_from_storage(void) {
     read_storage(STORAGE_MAC, dev_config.network_common.mac, 6);
 
     if (dev_config.serial_common.serial_debug_en) {
-        stdio_init_all();
+        debug_uart_enable();
     }
 
     PRT_INFO("MAC = %02X%02X%02X%02X%02X%02X\r\n", dev_config.network_common.mac[0], dev_config.network_common.mac[1], dev_config.network_common.mac[2], \
@@ -233,21 +235,23 @@ void load_DevConfig_from_storage(void) {
         device_raw_reboot();
     }
 
-    if ((dev_config.serial_option.flow_control == flow_rtsonly) || (dev_config.serial_option.flow_control == flow_reverserts)) { // Edit for supporting RTS only in 17/3/28 , recommend adapting to WIZ750SR
-        dev_config.serial_option.uart_interface = UART_IF_RS422;    //temporarily set RS422, Actual setting is done in DATA0_UART_Configuration.
-    } else {
-        dev_config.serial_option.uart_interface = get_uart_if_sel_pin();
+    for (int i = 0; i < DEVICE_UART_CNT; i++) {
+        if ((dev_config.serial_option[i].flow_control == flow_rtsonly) || (dev_config.serial_option[i].flow_control == flow_reverserts)) { // Edit for supporting RTS only in 17/3/28 , recommend adapting to WIZ750SR
+            dev_config.serial_option[i].uart_interface = UART_IF_RS422;    //temporarily set RS422, Actual setting is done in DATA0_UART_Configuration.
+        } else {
+            dev_config.serial_option[i].uart_interface = get_uart_if_sel_pin(i);
+        }
+        set_device_status(ST_OPEN, i);
     }
 
     dev_config.device_common.fw_ver[0] = MAJOR_VER;
     dev_config.device_common.fw_ver[1] = MINOR_VER;
     dev_config.device_common.fw_ver[2] = MAINTENANCE_VER;
-    if (dev_config.serial_data_packing.packing_time != 0) {
-        modeswitch_gap_time = dev_config.serial_data_packing.packing_time;
+    if (dev_config.serial_data_packing[0].packing_time != 0) {
+        modeswitch_gap_time = dev_config.serial_data_packing[0].packing_time;
     }
-
-    set_device_status(ST_OPEN);
 }
+
 
 void save_DevConfig_to_storage(void) {
     //erase_storage(STORAGE_CONFIG);
@@ -323,39 +327,41 @@ void display_Net_Info(void) {
     ctlnetwork(CN_GET_NETINFO, (void*) &gWIZNETINFO);
     PRT_INFO(" # MAC: %02X:%02X:%02X:%02X:%02X:%02X\r\n", gWIZNETINFO.mac[0], gWIZNETINFO.mac[1], gWIZNETINFO.mac[2], gWIZNETINFO.mac[3], gWIZNETINFO.mac[4], gWIZNETINFO.mac[5]);
     PRT_INFO(" # IP : %d.%d.%d.%d / Port : \r\n", gWIZNETINFO.ip[0], gWIZNETINFO.ip[1], gWIZNETINFO.ip[2], gWIZNETINFO.ip[3]);
-    PRT_INFO("%d ", dev_config->network_connection.local_port);
+    PRT_INFO("0 Port : %d \r\n", dev_config->network_connection[0].local_port);
+    PRT_INFO("1 Port : %d \r\n", dev_config->network_connection[1].local_port);
     PRT_INFO("\r\n");
     PRT_INFO(" # GW : %d.%d.%d.%d\r\n", gWIZNETINFO.gw[0], gWIZNETINFO.gw[1], gWIZNETINFO.gw[2], gWIZNETINFO.gw[3]);
     PRT_INFO(" # SN : %d.%d.%d.%d\r\n", gWIZNETINFO.sn[0], gWIZNETINFO.sn[1], gWIZNETINFO.sn[2], gWIZNETINFO.sn[3]);
     PRT_INFO(" # DNS: %d.%d.%d.%d\r\n", gWIZNETINFO.dns[0], gWIZNETINFO.dns[1], gWIZNETINFO.dns[2], gWIZNETINFO.dns[3]);
 
-    if (dev_config->network_connection.working_mode != TCP_SERVER_MODE) {
-        if (dev_config->network_connection.dns_use == SEGCP_ENABLE) {
-            PRT_INFO(" # Destination Domain: %s / Port: %d\r\n",
-                     dev_config->network_connection.dns_domain_name,
-                     dev_config->network_connection.remote_port);
-        } else {
-            PRT_INFO(" # Destination IP: %d.%d.%d.%d / Port: %d\r\n",
-                     dev_config->network_connection.remote_ip[0],
-                     dev_config->network_connection.remote_ip[1],
-                     dev_config->network_connection.remote_ip[2],
-                     dev_config->network_connection.remote_ip[3],
-                     dev_config->network_connection.remote_port);
+    for (int i = 0; i < DEVICE_UART_CNT; i++) {
+        if (dev_config->network_connection[i].working_mode != TCP_SERVER_MODE) {
+            if (dev_config->network_connection[i].dns_use == SEGCP_ENABLE) {
+                PRT_INFO(" # %d Port Destination Domain: %s / Port: %d\r\n", i,
+                         dev_config->network_connection[i].dns_domain_name,
+                         dev_config->network_connection[i].remote_port);
+            } else {
+                PRT_INFO(" # %d Destination IP: %d.%d.%d.%d / Port: %d\r\n", i,
+                         dev_config->network_connection[i].remote_ip[0],
+                         dev_config->network_connection[i].remote_ip[1],
+                         dev_config->network_connection[i].remote_ip[2],
+                         dev_config->network_connection[i].remote_ip[3],
+                         dev_config->network_connection[i].remote_port);
 
-            if (dev_config->network_connection.working_mode == UDP_MODE) {
-                if ((dev_config->network_connection.remote_ip[0] == 0) &&
-                        (dev_config->network_connection.remote_ip[1] == 0) &&
-                        (dev_config->network_connection.remote_ip[2] == 0) &&
-                        (dev_config->network_connection.remote_ip[3] == 0)) {
-                    PRT_INFO(" ## UDP 1:N Mode\r\n");
-                } else {
-                    PRT_INFO(" ## UDP 1:1 Mode\r\n");
+                if (dev_config->network_connection[i].working_mode == UDP_MODE) {
+                    if ((dev_config->network_connection[i].remote_ip[0] == 0) &&
+                            (dev_config->network_connection[i].remote_ip[1] == 0) &&
+                            (dev_config->network_connection[i].remote_ip[2] == 0) &&
+                            (dev_config->network_connection[i].remote_ip[3] == 0)) {
+                        PRT_INFO(" ## UDP 1:N Mode\r\n");
+                    } else {
+                        PRT_INFO(" ## UDP 1:1 Mode\r\n");
+                    }
                 }
             }
+            printf("\r\n");
         }
     }
-
-    printf("\r\n");
 }
 
 void Mac_Conf(void) {
@@ -395,21 +401,21 @@ void check_mac_address(void) {
 
     if (dev_config->network_common.mac[0] != MAC_OUI0 || dev_config->network_common.mac[1] != MAC_OUI1 || dev_config->network_common.mac[2] != MAC_OUI2) {
         PRT_INFO("%s\r\n", temp_buf);
-        platform_uart_puts(temp_buf, strlen(temp_buf));
+        platform_uart_puts(temp_buf, strlen(temp_buf), SEG_DATA0_CH);
 
         while (1) {
-            vt = uart_getc(UART_ID);
+            vt = uart_getc(DATA0_UART_ID);
             if (vt == 'S') {
                 temp = 'R';
-                platform_uart_puts(&temp, 1);
+                platform_uart_puts(&temp, 1, SEG_DATA0_CH);
                 break;
             }
         }
         for (vi = 0; vi < 12; vi++) {
-            buf[vi] = uart_getc(UART_ID);
+            buf[vi] = uart_getc(DATA0_UART_ID);
         }
-        platform_uart_puts(buf, 12);
-        platform_uart_puts("\r\n", 2);
+        platform_uart_puts(buf, 12, SEG_DATA0_CH);
+        platform_uart_puts("\r\n", 2, SEG_DATA0_CH);
         for (vi = 0, vj = 0 ; vi < 6 ; vi++, vj += 2) {
             dev_config->network_common.mac[vi] = get_hex(buf[vj], buf[vj + 1]);
             mac[vi] = get_hex(buf[vj], buf[vj + 1]);

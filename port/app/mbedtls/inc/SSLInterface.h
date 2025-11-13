@@ -114,17 +114,17 @@ void WIZnetDebugCB(void *ctx, int level, const char *file, int line, const char 
     param host name
     param certificate
 */
-int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd);
+int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd, int channel);
 
 void wiz_tls_deinit(wiz_tls_context* tlsContext);
 
 int wiz_tls_socket(wiz_tls_context* tlsContext, uint8_t sock, unsigned int port);
 
-int wiz_tls_connect(wiz_tls_context* tlsContext, char * addr, unsigned int port);
+int wiz_tls_connect(wiz_tls_context* tlsContext, char * addr, unsigned int port, int channel);
 
 int wiz_tls_socket_connect(wiz_tls_context* tlsContext, char * addr, unsigned int port);
 
-int wiz_tls_close(wiz_tls_context* tlsContext);
+int wiz_tls_close(wiz_tls_context* tlsContext, int channel);
 
 unsigned int wiz_tls_read(wiz_tls_context* SSLContext, unsigned char* readbuf, unsigned int len);
 
@@ -138,8 +138,8 @@ int wiz_tls_session_reset(wiz_tls_context* tlsContext);
 
 int check_ca(uint8_t *ca_data, uint32_t ca_len);
 int check_pkey(wiz_tls_context* tlsContext, uint8_t *pkey_data, uint32_t pkey_len);
-int get_wiz_tls_init_state(void);
-void set_wiz_tls_init_state(int state);
+int get_wiz_tls_init_state(int channel);
+void set_wiz_tls_init_state(int state, int channel);
 
 #endif
 

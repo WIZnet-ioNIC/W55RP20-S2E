@@ -10,6 +10,7 @@
 
 volatile uint16_t phylink_check_time_msec = 0;
 uint8_t flag_check_phylink = 0;
+uint8_t serial_if = 0;  //0:UART, 1:SPI
 
 // LEDs on board
 const uint16_t LED_PIN[LEDn] = {LED1_PIN, LED2_PIN, LED3_PIN};
@@ -71,16 +72,15 @@ uint8_t get_hw_trig_pin(void) {
     return 0; // Low
 }
 
-
 void init_uart_if_sel_pin(void) {
-    GPIO_Configuration(UART_IF_SEL_PIN, IO_INPUT, IO_PULLDOWN);
+    GPIO_Configuration(DATA0_UART_IF_SEL_PIN, IO_INPUT, IO_PULLDOWN);
+    GPIO_Configuration(DATA1_UART_IF_SEL_PIN, IO_INPUT, IO_PULLDOWN);
 }
 
-
-uint8_t get_uart_if_sel_pin(void) {
+uint8_t get_uart_if_sel_pin(int channel) {
     // Status of UART interface selector pin input; [0] RS-232/TTL mode, [1] RS-422/485 mode
 #ifdef __USE_UART_IF_SELECTOR__
-    if (GPIO_Input_Read(UART_IF_SEL_PIN)) {
+    if (GPIO_Input_Read(channel ? DATA1_UART_IF_SEL_PIN : DATA0_UART_IF_SEL_PIN)) {
         return UART_IF_RS485;
     } else {
         return UART_IF_DEFAULT;
@@ -92,10 +92,12 @@ uint8_t get_uart_if_sel_pin(void) {
 
 // TCP connection status pin
 void init_tcpconnection_status_pin(void) {
-    GPIO_Configuration(STATUS_TCPCONNECT_PIN, IO_OUTPUT, IO_NOPULL);
+    GPIO_Configuration(DATA0_STATUS_TCPCONNECT_PIN, IO_OUTPUT, IO_NOPULL);
+    set_connection_status_io(DATA0_STATUS_TCPCONNECT_PIN, OFF);
 
-    // Pin initial state; Low
-    GPIO_Output_Reset(STATUS_TCPCONNECT_PIN);
+    GPIO_Configuration(DATA1_STATUS_TCPCONNECT_PIN, IO_OUTPUT, IO_NOPULL);
+    set_connection_status_io(DATA1_STATUS_TCPCONNECT_PIN, OFF);
+
 }
 
 
@@ -103,6 +105,7 @@ void init_tcpconnection_status_pin(void) {
 void init_factory_reset_pin(void) {
     GPIO_Configuration(FAC_RSTn_PIN, IO_INPUT, IO_PULLUP);
     GPIO_Configuration_IRQ(FAC_RSTn_PIN, IO_IRQ_FALL);
+    GPIO_Configuration_Callback();
 }
 
 uint8_t get_factory_reset_pin(void) {

@@ -36,18 +36,29 @@ void write_storage(teDATASTORAGE stype, uint32_t addr, void *data, uint16_t size
         write_flash(addr, data, size);
         break;
 
-    case STORAGE_ROOTCA:
-        write_flash(FLASH_ROOTCA_ADDR, data, size);
+    case STORAGE_ROOTCA0:
+        write_flash(FLASH_ROOTCA0_ADDR, data, size);
         break;
 
-    case STORAGE_CLICA:
-        write_flash(FLASH_CLICA_ADDR, data, size);
+    case STORAGE_CLICA0:
+        write_flash(FLASH_CLICA0_ADDR, data, size);
         break;
 
-    case STORAGE_PKEY:
-        write_flash(FLASH_PRIKEY_ADDR, data, size);
+    case STORAGE_PKEY0:
+        write_flash(FLASH_PRIKEY0_ADDR, data, size);
         break;
 
+    case STORAGE_ROOTCA1:
+        write_flash(FLASH_ROOTCA1_ADDR, data, size);
+        break;
+
+    case STORAGE_CLICA1:
+        write_flash(FLASH_CLICA1_ADDR, data, size);
+        break;
+
+    case STORAGE_PKEY1:
+        write_flash(FLASH_PRIKEY1_ADDR, data, size);
+        break;
     default:
         break;
     }
@@ -79,11 +90,20 @@ void erase_storage(teDATASTORAGE stype) {
         address = FLASH_START_ADDR_BANK1_OFFSET;
         break;
 
-    case STORAGE_ROOTCA:
-        erase_flash_sector(FLASH_ROOTCA_ADDR);
+    case STORAGE_ROOTCA0:
+        erase_flash_sector(FLASH_ROOTCA0_ADDR);
         break;
-    case STORAGE_CLICA:
-        erase_flash_sector(FLASH_CLICA_ADDR);
+    case STORAGE_CLICA0:
+        erase_flash_sector(FLASH_CLICA0_ADDR);
+    case STORAGE_PKEY0:
+        erase_flash_sector(FLASH_PRIKEY0_ADDR);
+    case STORAGE_ROOTCA1:
+        erase_flash_sector(FLASH_ROOTCA1_ADDR);
+        break;
+    case STORAGE_CLICA1:
+        erase_flash_sector(FLASH_CLICA1_ADDR);
+    case STORAGE_PKEY1:
+        erase_flash_sector(FLASH_PRIKEY1_ADDR);
     default:
         break;
     }

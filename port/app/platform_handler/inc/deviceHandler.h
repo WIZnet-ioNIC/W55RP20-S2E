@@ -29,10 +29,14 @@
 #define FLASH_END_ADDR (XIP_BASE + FLASH_SIZE - 1)
 
 #define FLASH_DEV_INFO_ADDR FLASH_START_ADDR_BANK1_OFFSET + FLASH_APP_BANK_SIZE
-#define FLASH_ROOTCA_ADDR   FLASH_DEV_INFO_ADDR + 0x1000
-#define FLASH_CLICA_ADDR    FLASH_ROOTCA_ADDR + 0x1000
-#define FLASH_PRIKEY_ADDR   FLASH_CLICA_ADDR + 0x1000
-#define FLASH_MAC_ADDR      FLASH_PRIKEY_ADDR + 0x1000
+#define FLASH_ROOTCA0_ADDR   FLASH_DEV_INFO_ADDR + 0x1000
+#define FLASH_CLICA0_ADDR    FLASH_ROOTCA0_ADDR + 0x1000
+#define FLASH_PRIKEY0_ADDR   FLASH_CLICA0_ADDR + 0x1000
+#define FLASH_MAC_ADDR      FLASH_PRIKEY0_ADDR + 0x1000
+
+#define FLASH_ROOTCA1_ADDR   FLASH_MAC_ADDR + 0x1000
+#define FLASH_CLICA1_ADDR    FLASH_ROOTCA1_ADDR + 0x1000
+#define FLASH_PRIKEY1_ADDR   FLASH_CLICA1_ADDR + 0x1000
 
 #define DEVICE_APP_SIZE         FLASH_APP_BANK_SIZE
 
@@ -67,7 +71,8 @@ void jump_to_app(uint32_t app_addr);
 
 void display_Dev_Info_main(void);
 void display_Dev_Info_dhcp(void);
-void display_Dev_Info_dns(void);
+void display_Dev_Info_dns(int channel);
+void devConfig_print_all(void);
 
 int device_bank_check(uint8_t bank_num);
 int device_bank_copy(void);

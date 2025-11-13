@@ -24,7 +24,7 @@
 /* Private variables ---------------------------------------------------------*/
 
 // TLS support
-extern wiz_tls_context s2e_tlsContext;
+extern wiz_tls_context s2e_tlsContext[];
 
 
 /*
@@ -35,24 +35,23 @@ extern wiz_tls_context s2e_tlsContext;
            host : host name
     @retval None
 */
-int NewNetwork_mqtt_tls(Network* n, int sn) {
-
+int NewNetwork_mqtt_tls(Network* n, int sn, int channel) {
     n->my_socket = sn;
     n->mqttread = mqtt_tls_read;
     n->mqttwrite = mqtt_tls_write;
     n->disconnect = mqtt_tls_disconnect;
+    n->channel = channel;
 
-    return wiz_tls_init(&s2e_tlsContext, n->my_socket);
+    return wiz_tls_init(&s2e_tlsContext[channel], n->my_socket, channel);
 }
 
-int mqtt_tls_connect(uint8_t *remote_ip, uint16_t remote_port, uint32_t timeout) {
-    return wiz_tls_connect_timeout(&s2e_tlsContext,
+int mqtt_tls_connect(uint8_t *remote_ip, uint16_t remote_port, uint32_t timeout, int channel) {
+    return wiz_tls_connect_timeout(&s2e_tlsContext[channel],
                                    remote_ip,
                                    remote_port,
                                    timeout);
 
 }
-
 
 /*
     @brief read function
@@ -66,7 +65,7 @@ int mqtt_tls_read(Network* n, unsigned char* buffer, unsigned int len, int timeo
     int size = 0;
     //if((getSn_SR(n->my_socket) == SOCK_ESTABLISHED) && (getSn_RX_RSR(n->my_socket) > 0))
     if (getSn_SR(n->my_socket) == SOCK_ESTABLISHED) {
-        size = wiz_tls_read(&s2e_tlsContext, buffer, len);
+        size = wiz_tls_read(&s2e_tlsContext[n->channel], buffer, len);
     }
 
     return size;
@@ -82,7 +81,7 @@ int mqtt_tls_read(Network* n, unsigned char* buffer, unsigned int len, int timeo
 int mqtt_tls_write(Network* n, unsigned char* buffer, unsigned int len, int timeout_ms) {
     int size = 0;
     if (getSn_SR(n->my_socket) == SOCK_ESTABLISHED) {
-        size = wiz_tls_write(&s2e_tlsContext, buffer, len);
+        size = wiz_tls_write(&s2e_tlsContext[n->channel], buffer, len);
     }
 
     return size;
@@ -94,9 +93,9 @@ int mqtt_tls_write(Network* n, unsigned char* buffer, unsigned int len, int time
            that contains the configuration information for the Network.
 */
 void mqtt_tls_deinit(Network * n) {
-    wiz_tls_close_notify(&s2e_tlsContext);
-    wiz_tls_session_reset(&s2e_tlsContext);
-    wiz_tls_deinit(&s2e_tlsContext);
+    wiz_tls_close_notify(&s2e_tlsContext[n->channel]);
+    wiz_tls_session_reset(&s2e_tlsContext[n->channel]);
+    wiz_tls_deinit(&s2e_tlsContext[n->channel]);
 }
 
 /*
@@ -107,7 +106,5 @@ void mqtt_tls_deinit(Network * n) {
 void mqtt_tls_disconnect(Network * n) {
     mqtt_tls_deinit(n);
     close(n->my_socket);
-    set_wiz_tls_init_state(DISABLE);
+    set_wiz_tls_init_state(DISABLE, n->channel);
 }
-
-

@@ -17,6 +17,9 @@
 
 #define SEG_DATA_BUF_SIZE   4096 // UART Ring buffer size
 
+#define SEG_DATA0_CH        0
+#define SEG_DATA1_CH        1
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 #define SOCK_TERMINATION_DELAY 10 //ms
 
@@ -91,7 +94,7 @@ enum {
 
 
 // Serial to Ethernet function handler; call by main loop
-void do_seg(uint8_t sock);
+void do_seg(uint8_t sock, int channel);
 
 // Timer for S2E core operations
 void seg_timer_sec(void);
@@ -99,20 +102,20 @@ void seg_timer_msec(void);
 
 void init_trigger_modeswitch(uint8_t mode);
 
-void set_device_status(teDEVSTATUS status);
+void set_device_status(teDEVSTATUS status, int channel);
 
-uint8_t get_device_status(void);
-uint8_t get_serial_communation_protocol(void);
+uint8_t get_device_status(int channel);
+uint8_t get_serial_communation_protocol(int channel);
 
-uint8_t process_socket_termination(uint8_t sock, uint32_t timeout);
+uint8_t process_socket_termination(uint8_t sock, uint32_t timeout, int channel);
 
 // Send Keep-alive packet manually (once)
 void send_keepalive_packet_manual(uint8_t sock);
 
 //These functions must be located in UART Rx IRQ Handler.
-uint8_t check_serial_store_permitted(uint8_t ch);
+uint8_t check_serial_store_permitted(uint8_t ch, int channel);
 uint8_t check_modeswitch_trigger(uint8_t ch);	        // Serial command mode switch trigger code (3-bytes) checker
-void init_time_delimiter_timer(void); 		// Serial data packing option [Time]: Timer enable function for Time delimiter
+void init_time_delimiter_timer(int channel); 		// Serial data packing option [Time]: Timer enable function for Time delimiter
 
 // Send Auto-message function
 void send_sid(uint8_t sock, uint8_t link_message);
@@ -121,20 +124,27 @@ void send_sid(uint8_t sock, uint8_t link_message);
 uint16_t debugSerial_dataTransfer(uint8_t * buf, uint16_t size, teDEBUGTYPE type);
 
 // MQTT sub handler
-void mqtt_subscribeMessageHandler(uint8_t *data, uint32_t data_len);
+void mqtt_subscribeMessageHandler0(uint8_t *data, uint32_t data_len);
+void mqtt_subscribeMessageHandler1(uint8_t *data, uint32_t data_len);
 
 int wizchip_mqtt_publish(mqtt_config_t *mqtt_config, uint8_t *pub_topic, uint8_t qos, uint8_t *pub_data, uint32_t pub_data_len);
 
 void seg_task(void *argument);
-void seg_u2e_task(void *argument);
+void seg0_task(void *argument);
+void seg1_task(void *argument);
+void seg0_u2e_task(void *argument);
+void seg1_u2e_task(void *argument);
 void seg_recv_task(void *argument);
-void seg_con_timer_callback(TimerHandle_t xTimer);
-void timers_stop(void);
+void seg0_recv_task(void *argument);
+void seg1_recv_task(void *argument);
+void timers_stop(uint8_t channel);
 void keepalive_timer_callback(TimerHandle_t xTimer);
 void inactivity_timer_callback(TimerHandle_t xTimer);
 void auth_timer_callback(TimerHandle_t xTimer);
 void seg_timer_task(void *argument);
 
+void ether_to_spi(uint8_t sock);
+void seg_spi_data_transfer_task(void);
+
 
 #endif /* SEG_H_ */
-

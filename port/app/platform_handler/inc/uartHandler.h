@@ -40,11 +40,10 @@
 #define UART_CTS_HIGH                   1
 #define UART_CTS_LOW                    0
 
-#define UART_ID uart1
+#define DATA0_UART_ID uart1
+#define DATA1_UART_ID uart0
 
-//#define DEBUG_UART_DEFAULT_BAUDRATE     (115200)
-#define DEBUG_UART_DEFAULT_BAUDRATE     (921600)
-//#define DEBUG_UART_DEFAULT_BAUDRATE     (3000000)
+#define DEBUG_UART_DEFAULT_BAUDRATE     (3000000)
 
 enum baud {
     baud_300 = 0,
@@ -105,12 +104,12 @@ extern uint8_t * uart_if_table[];
 
 void on_uart_rx(void);
 void DEBUG_UART_Configuration(void);
-void DATA0_UART_Configuration(void);
-void DATA0_UART_Interrupt_Enable(void);
-void DATA1_UART_Configuration(void);
+void DATA_UART_Configuration(void);
+void DATA_UART_Deinit(void);
+void DATA_UART_Interrupt_Enable(void);
 
 // XON/XOFF Software flow control: Check the Buffer usage and Send the start/stop commands
-void check_uart_flow_control(uint8_t flow_ctrl);
+void check_uart_flow_control(uint8_t flow_ctrl, int channel);
 
 // Hardware flow control by GPIOs (RTS/CTS)
 #ifdef __USE_GPIO_HARDWARE_FLOWCONTROL__
@@ -119,63 +118,14 @@ void set_uart_rts_pin_high(void);
 void set_uart_rts_pin_low(void);
 #endif
 
-int32_t platform_uart_putc(uint16_t ch);                    // User Buffer -> UART
-int32_t platform_uart_getc(void);                                 // Ring Buffer -> User
-int32_t platform_uart_getc_nonblk(void);
-int32_t platform_uart_puts(uint8_t* buf, uint16_t bytes);
-int32_t platform_uart_gets(uint8_t* buf, uint16_t bytes);
+int32_t platform_uart_putc(uint16_t ch, int channel);                    // User Buffer -> UART
+int32_t platform_uart_puts(uint8_t* buf, uint16_t bytes, int channel);
+int32_t platform_uart_puts_dma(uint8_t* buf, uint16_t bytes, int channel);
+uint8_t get_uart_rs485_sel(int channel);
+void uart_rs485_rs422_init(int channel);
+void uart_rs485_disable(int channel);
+void uart_rs485_enable(int channel);
 
-uint8_t get_byte_from_uart(void);                        // UART Port -> User
-void get_byte_from_uart_it(void);                        // UART Port -> User (global variable for IRQ handler)
-void put_byte_to_uart_buffer(uint8_t ch);          // User -> Ring Buffer
-
-uint16_t get_uart_buffer_usedsize(void);
-uint16_t get_uart_buffer_freesize(void);
-int8_t is_uart_buffer_empty(void);
-int8_t is_uart_buffer_full(void);
-
-void uart_rx_flush(void);                                // UART buffer flush
-
-uint8_t get_uart_rs485_sel(void);
-void uart_rs485_rs422_init(void);
-void uart_rs485_disable(void);
-void uart_rs485_enable(void);
-
-//#define MIN(_a, _b) (_a < _b) ? _a : _b
-#define MEM_FREE(mem_p) do{ if(mem_p) { free(mem_p); mem_p = NULL; } }while(0)	//
-//#define BITSET(var_v, bit_v) SET_BIT(var_v, bit_v)	//(var_v |= bit_v)
-//#define BITCLR(var_v, bit_v) CLEAR_BIT(var_v, bit_v)//(var_v &= ~(bit_v))
-
-#define BUFFER_DEFINITION(_name, _size) \
-    uint8_t _name##_buf[_size]; \
-    volatile uint16_t _name##_wr=0; \
-    volatile uint16_t _name##_rd=0; \
-    volatile uint16_t _name##_sz=_size;
-#define BUFFER_DECLARATION(_name) \
-    extern uint8_t _name##_buf[]; \
-    extern uint16_t _name##_wr, _name##_rd, _name##_sz;
-#define BUFFER_CLEAR(_name) \
-    _name##_wr=0;\
-    _name##_rd=0;
-
-#define BUFFER_USED_SIZE(_name) ((_name##_sz + _name##_wr - _name##_rd) % _name##_sz)
-#define BUFFER_FREE_SIZE(_name) ((_name##_sz + _name##_rd - _name##_wr - 1) % _name##_sz)
-#define IS_BUFFER_EMPTY(_name) ( (_name##_rd) == (_name##_wr))
-#define IS_BUFFER_FULL(_name) (BUFFER_FREE_SIZE(_name) == 0)	// I guess % calc takes time a lot, so...
-//#define IS_BUFFER_FULL(_name) ((_name##_rd!=0 && _name##_wr==_name##_rd-1)||(_name##_rd==0 && _name##_wr==_name##_sz-1))
-
-#define BUFFER_IN(_name) _name##_buf[_name##_wr]
-#define BUFFER_IN_OFFSET(_name, _offset) _name##_buf[_name##_wr + _offset]
-#define BUFFER_IN_MOVE(_name, _num) _name##_wr = (_name##_wr + _num) % _name##_sz
-#define BUFFER_IN_1ST_SIZE(_name) (_name##_sz - _name##_wr - ((_name##_rd==0)?1:0))
-#define BUFFER_IN_2ND_SIZE(_name) ((_name##_rd==0) ? 0 : _name##_rd-1)
-#define IS_BUFFER_IN_SEPARATED(_name) (_name##_rd <= _name##_wr)
-
-#define BUFFER_OUT(_name) _name##_buf[_name##_rd]
-#define BUFFER_OUT_OFFSET(_name, _offset) _name##_buf[_name##_rd + _offset]
-#define BUFFER_OUT_MOVE(_name, _num) _name##_rd = (_name##_rd + _num) % _name##_sz
-#define BUFFER_OUT_1ST_SIZE(_name) (_name##_sz - _name##_rd)
-#define BUFFER_OUT_2ND_SIZE(_name) (_name##_wr)
-#define IS_BUFFER_OUT_SEPARATED(_name) (_name##_rd > _name##_wr)
+void debug_uart_enable(void);
 
 #endif /* UARTHANDLER_H_ */

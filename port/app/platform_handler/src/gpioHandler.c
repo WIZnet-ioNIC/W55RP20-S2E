@@ -19,8 +19,6 @@ const char*    USER_IO_DIR_STR[] =         {"Input", "Output"};
 #endif
 
 static void (*callback_ptr)(void);
-extern xSemaphoreHandle eth_interrupt_sem;
-
 
 /**
     @brief  RP2040 GPIO Initialize Function
@@ -88,11 +86,7 @@ void GPIO_Configuration_Callback(void) {
 }
 
 static void platform_gpio_interrupt_callback(uint GPIO_Pin, uint32_t events) {
-    if (GPIO_Pin == WIZCHIP_PIN_IRQ) {
-        signed portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
-        xSemaphoreGiveFromISR(eth_interrupt_sem, &xHigherPriorityTaskWoken);
-        portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
-    } else if (GPIO_Pin == FAC_RSTn_PIN) {
+    if (GPIO_Pin == FAC_RSTn_PIN) {
         factory_reset_pin_callback();
     }
 }
@@ -101,17 +95,17 @@ static void platform_gpio_interrupt_callback(uint GPIO_Pin, uint32_t events) {
     @brief  Device I/O Initialize Function
 */
 void Device_IO_Init(void) {
-    struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option);
     // Set the DTR pin to high when the DTR signal enabled (== PHY link status disabled)
 
     init_flowcontrol_dtr_pin();
-    if (serial_option->dtr_en == 0) {
-        set_flowcontrol_dtr_pin(ON);
-    }
 
-    if (serial_option->dsr_en == 1) {
-        init_flowcontrol_dsr_pin();
+    for (int i = 0; i < DEVICE_UART_CNT; i++) {
+        struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option[i]);
+        if (serial_option->dtr_en == 0) {
+            set_flowcontrol_dtr_pin(ON, i);
+        }
     }
+    init_flowcontrol_dsr_pin();
 }
 
 // This function is intended only for output connection status pins; PHYlink, TCPconnection
@@ -123,13 +117,20 @@ void set_connection_status_io(uint16_t pin, uint8_t set) {
         } else { // OFF
             GPIO_Output_Reset(STATUS_PHYLINK_PIN);
         }
-    } else if (pin == STATUS_TCPCONNECT_PIN) {
+    } else if (pin == DATA0_STATUS_TCPCONNECT_PIN) {
         if (set == ON) {
-            GPIO_Output_Set(STATUS_TCPCONNECT_PIN);
+            GPIO_Output_Set(DATA0_STATUS_TCPCONNECT_PIN);
         } else { // OFF
-            GPIO_Output_Reset(STATUS_TCPCONNECT_PIN);
+            GPIO_Output_Reset(DATA0_STATUS_TCPCONNECT_PIN);
+        }
+    } else if (pin == DATA1_STATUS_TCPCONNECT_PIN) {
+        if (set == ON) {
+            GPIO_Output_Set(DATA1_STATUS_TCPCONNECT_PIN);
+        } else { // OFF
+            GPIO_Output_Reset(DATA1_STATUS_TCPCONNECT_PIN);
         }
     }
+
 
 }
 
@@ -140,8 +141,12 @@ uint8_t get_connection_status_io(uint16_t pin) {
         if (get_phylink() == PHY_LINK_ON) {
             status = IO_HIGH;
         }
-    } else if (pin == STATUS_TCPCONNECT_PIN) {
-        if (get_device_status() == ST_CONNECT) {
+    } else if (pin == DATA0_STATUS_TCPCONNECT_PIN) {
+        if (get_device_status(SEG_DATA0_CH) == ST_CONNECT) {
+            status = IO_HIGH;
+        }
+    } else if (pin == DATA1_STATUS_TCPCONNECT_PIN) {
+        if (get_device_status(SEG_DATA1_CH) == ST_CONNECT) {
             status = IO_HIGH;
         }
     }
@@ -158,26 +163,30 @@ void init_phylink_status_pin(void) {
 // DTR pin
 // output
 void init_flowcontrol_dtr_pin(void) {
-    GPIO_Configuration(DTR_PIN, IO_OUTPUT, IO_NOPULL);
-    GPIO_Output_Reset(DTR_PIN);
+    GPIO_Configuration(DATA0_UART_DTR_PIN, IO_OUTPUT, IO_NOPULL);
+    GPIO_Output_Reset(DATA0_UART_DTR_PIN);
+
+    GPIO_Configuration(DATA1_UART_DTR_PIN, IO_OUTPUT, IO_NOPULL);
+    GPIO_Output_Reset(DATA1_UART_DTR_PIN);
 }
 
-void set_flowcontrol_dtr_pin(uint8_t set) {
+void set_flowcontrol_dtr_pin(uint8_t set, int channel) {
     if (set == ON) {
-        GPIO_Output_Set(DTR_PIN);
+        GPIO_Output_Set(channel ? DATA1_UART_DTR_PIN : DATA0_UART_DTR_PIN);
     } else {
-        GPIO_Output_Reset(DTR_PIN);
+        GPIO_Output_Reset(channel ? DATA1_UART_DTR_PIN : DATA0_UART_DTR_PIN);
     }
 }
 
 // DSR pin
 // input, active high
 void init_flowcontrol_dsr_pin(void) {
-    GPIO_Configuration(DSR_PIN, IO_INPUT, IO_NOPULL);
+    GPIO_Configuration(DATA0_UART_DSR_PIN, IO_INPUT, IO_NOPULL);
+    GPIO_Configuration(DATA1_UART_DSR_PIN, IO_INPUT, IO_NOPULL);
 }
 
-uint8_t get_flowcontrol_dsr_pin(void) {
-    return GPIO_Input_Read(DSR_PIN);
+uint8_t get_flowcontrol_dsr_pin(int channel) {
+    return GPIO_Input_Read(channel ? DATA1_UART_DSR_PIN : DATA0_UART_DSR_PIN);
 }
 
 void init_connection_status_io(void) {

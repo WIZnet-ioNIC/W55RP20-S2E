@@ -140,7 +140,7 @@ int8_t DNS_run_handler(uint8_t * dns_ip, uint8_t * name, uint8_t * ip_from_dns, 
 }
 
 
-int8_t process_dns(void) {
+int8_t process_dns(int channel) {
     DevConfig *dev_config = get_DevConfig_pointer();
     int8_t ret = 0;
     uint8_t dns_retry = 0;
@@ -148,13 +148,13 @@ int8_t process_dns(void) {
 #ifdef _MAIN_DEBUG_
     printf(" - DNS Client running\r\n");
 #endif
-    if (get_device_status() != ST_ATMODE) {
-        set_device_status(ST_UPGRADE);
+    if (get_device_status(channel) != ST_ATMODE) {
+        set_device_status(ST_UPGRADE, channel);
     }
 
     do {
-        ret = get_ipaddr_from_dns((uint8_t *)dev_config->network_connection.dns_domain_name,
-                                  dev_config->network_connection.remote_ip,
+        ret = get_ipaddr_from_dns((uint8_t *)dev_config->network_connection[channel].dns_domain_name,
+                                  dev_config->network_connection[channel].remote_ip,
                                   (DNS_WAIT_TIME * 300));
         dns_retry++;
 
@@ -173,8 +173,8 @@ int8_t process_dns(void) {
         }
     } while (ret != TRUE);
 
-    if (get_device_status() != ST_ATMODE) {
-        set_device_status(ST_OPEN);
+    if (get_device_status(channel) != ST_ATMODE) {
+        set_device_status(ST_OPEN, channel);
     }
     return ret;
 }

@@ -126,6 +126,10 @@ target_link_libraries(BOOT_S2E_FILES PUBLIC
 
 add_library(BOOT_PLATFORM_FILES STATIC)
 
+if(${BOARD_NAME} STREQUAL W55RP20_S2E OR ${BOARD_NAME} STREQUAL W232N)
+pico_generate_pio_header(BOOT_PLATFORM_FILES ${BOOT_PORT_DIR}/platform_handler/src/uart_tx.pio)
+endif()
+
 target_sources(BOOT_PLATFORM_FILES PUBLIC
         ${BOOT_PORT_DIR}/platform_handler/src/dhcp_cb.c
         ${BOOT_PORT_DIR}/platform_handler/src/deviceHandler.c

@@ -34,7 +34,7 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #if (DEVICE_BOARD_NAME == WIZ5XXSR_RP)
 #define DEVICE_ID_DEFAULT                   "WIZ5XXSR-RP"
 #elif (DEVICE_BOARD_NAME == W55RP20_S2E)
-#define DEVICE_ID_DEFAULT                   "W55RP20-S2E"
+#define DEVICE_ID_DEFAULT                   "W55RP20-S2E-2CH"
 #elif (DEVICE_BOARD_NAME == W232N)
 #define DEVICE_ID_DEFAULT                   "W232N"
 #elif (DEVICE_BOARD_NAME == IP20)
@@ -88,6 +88,8 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define LEDn    3
 
 #elif ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N) || (DEVICE_BOARD_NAME == IP20))
+#define DEBUG_UART_TX_PIN       29
+
 #define DTR_PIN                 8
 #define DSR_PIN                 9
 

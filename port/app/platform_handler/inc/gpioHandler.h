@@ -70,8 +70,8 @@ uint8_t get_connection_status_io(uint16_t pin);
 
 
 // todo:
-void set_flowcontrol_dtr_pin(uint8_t set);
-uint8_t get_flowcontrol_dsr_pin(void);
+void set_flowcontrol_dtr_pin(uint8_t set, int channel);
+uint8_t get_flowcontrol_dsr_pin(int channel);
 
 uint8_t get_user_io_enabled(uint8_t io_sel);
 uint8_t get_user_io_type(uint8_t io_sel);

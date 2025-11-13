@@ -24,7 +24,7 @@
 #include "util.h"
 
 //unsigned char tempBuf[DEBUG_BUFFER_SIZE] = {0,};
-static int wiz_tls_init_state;
+static int wiz_tls_init_state[DEVICE_UART_CNT];
 
 int WIZnetRecvTimeOut(void *ctx, unsigned char *buf, size_t len, uint32_t timeout) {
     uint32_t start_ms = millis();
@@ -75,8 +75,8 @@ void WIZnetDebugCB(void *ctx, int level, const char *file, int line, const char 
 
 /*  SSL context initialization
  * */
-int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd) {
-    struct __ssl_option *ssl_option = (struct __ssl_option *) & (get_DevConfig_pointer()->ssl_option);
+int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd, int channel) {
+    struct __ssl_option *ssl_option = (struct __ssl_option *) & (get_DevConfig_pointer()->ssl_option[channel]);
     int ret = 1;
     const char *pers = "ssl_client1";
     uint8_t *rootca_addr = NULL;
@@ -141,7 +141,7 @@ int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd) {
     */
     if (ssl_option->root_ca_option != MBEDTLS_SSL_VERIFY_NONE) {
         PRT_SSL(" Loading the CA root certificate len = %d\r\n", ssl_option->rootca_len);
-        rootca_addr = (uint8_t *)(FLASH_ROOTCA_ADDR + XIP_BASE);
+        rootca_addr = (uint8_t *)((channel ? FLASH_ROOTCA1_ADDR : FLASH_ROOTCA0_ADDR) + XIP_BASE);
         ret = mbedtls_x509_crt_parse(tlsContext->cacert, (const char *)rootca_addr, ssl_option->rootca_len + 1);
         if (ret < 0) {
             PRT_SSL(" failed\r\n  !  mbedtls_x509_crt_parse returned -0x%x while parsing root cert\r\n", -ret);
@@ -150,7 +150,7 @@ int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd) {
         PRT_SSL("ok! mbedtls_x509_crt_parse returned -0x%x while parsing root cert\r\n", -ret);
 
         uint8_t ip_temp[4];
-        struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection);
+        struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
         if (!is_ipaddr(network_connection->dns_domain_name, ip_temp)) {
             if ((ret = mbedtls_ssl_set_hostname(tlsContext->ssl, network_connection->dns_domain_name)) != 0) {
                 PRT_SSL(" failed mbedtls_ssl_set_hostname returned %d\r\n", ret);
@@ -166,8 +166,8 @@ int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd) {
     }
 
     if (ssl_option->client_cert_enable == ENABLE) {
-        clica_addr = (uint8_t *)(FLASH_CLICA_ADDR + XIP_BASE);
-        pkey_addr = (uint8_t *)(FLASH_PRIKEY_ADDR + XIP_BASE);
+        clica_addr = (uint8_t *)((channel ? FLASH_CLICA1_ADDR : FLASH_CLICA0_ADDR) + XIP_BASE);
+        pkey_addr = (uint8_t *)((channel ? FLASH_PRIKEY1_ADDR : FLASH_PRIKEY0_ADDR) + XIP_BASE);
 
         ret = mbedtls_x509_crt_parse((tlsContext->clicert), (const char *)clica_addr, ssl_option->clica_len + 1);
         if (ret != 0) {
@@ -255,10 +255,10 @@ int wiz_tls_socket(wiz_tls_context* tlsContext, uint8_t sock, unsigned int port)
     return socket((uint8_t)(tlsContext->socket_fd), Sn_MR_TCP, (uint16_t)port, 0x00);
 }
 
-int wiz_tls_connect(wiz_tls_context* tlsContext, char * addr, unsigned int port) {
+int wiz_tls_connect(wiz_tls_context* tlsContext, char * addr, unsigned int port, int channel) {
     int ret;
     uint32_t flags;
-    struct __ssl_option *ssl_option = (struct __ssl_option *) & (get_DevConfig_pointer()->ssl_option);
+    struct __ssl_option *ssl_option = (struct __ssl_option *) & (get_DevConfig_pointer()->ssl_option[channel]);
 
     PRT_SSL(" Performing the SSL/TLS handshake...\r\n");
 
@@ -334,7 +334,7 @@ int wiz_tls_socket_connect(wiz_tls_context* tlsContext, char * addr, unsigned in
     return (0);
 }
 
-int wiz_tls_close(wiz_tls_context* tlsContext) {
+int wiz_tls_close(wiz_tls_context* tlsContext, int channel) {
     uint8_t sock = (uint8_t)(tlsContext->socket_fd);
 
     wiz_tls_close_notify(tlsContext);
@@ -342,7 +342,7 @@ int wiz_tls_close(wiz_tls_context* tlsContext) {
     wiz_tls_deinit(tlsContext);
 
     close(sock);
-    set_wiz_tls_init_state(DISABLE);
+    set_wiz_tls_init_state(DISABLE, channel);
 
     return (0);
 }
@@ -429,16 +429,15 @@ int check_pkey(wiz_tls_context* tlsContext, uint8_t *pkey_data, uint32_t pkey_le
     return ret;
 }
 
-int get_wiz_tls_init_state(void) {
-    return wiz_tls_init_state;
+int get_wiz_tls_init_state(int channel) {
+    return wiz_tls_init_state[channel];
 }
 
-
-void set_wiz_tls_init_state(int state) {
+void set_wiz_tls_init_state(int state, int channel) {
     if (state > 0) {
-        wiz_tls_init_state = ENABLE;
+        wiz_tls_init_state[channel] = ENABLE;
     } else {
-        wiz_tls_init_state = DISABLE;
+        wiz_tls_init_state[channel] = DISABLE;
     }
 }
 

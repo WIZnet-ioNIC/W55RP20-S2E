@@ -36,14 +36,14 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define DEVICE_ID_DEFAULT                   "WIZ5XXSR-RP"//"S2E_SSL-MB" // Device name
 #elif (DEVICE_BOARD_NAME == W55RP20_S2E)
 #define __USE_UART_IF_SELECTOR__            // Use Serial interface port selector pin
-#define DEVICE_ID_DEFAULT                   "W55RP20-S2E"//"S2E_SSL-MB" // Device name
+#define DEVICE_ID_DEFAULT                   "W55RP20-S2E-2CH"//"S2E_SSL-MB" // Device name
 #elif (DEVICE_BOARD_NAME == W232N)
 #define DEVICE_ID_DEFAULT                   "W232N"//"S2E_SSL-MB" // Device name
 #elif (DEVICE_BOARD_NAME == IP20)
 #define DEVICE_ID_DEFAULT                   "IP20"//"S2E_SSL-MB" // Device name
 #endif
 #define DEVICE_CLOCK_SELECT                 CLOCK_SOURCE_EXTERNAL // or CLOCK_SOURCE_INTERNAL
-#define DEVICE_UART_CNT                     (1)
+#define DEVICE_UART_CNT                     (2)
 #define DEVICE_SETTING_PASSWORD_DEFAULT     "00000000"
 #define DEVICE_GROUP_DEFAULT                "WORKGROUP" // Device group
 #define DEVICE_TARGET_SYSTEM_CLOCK   PLL_SYS_KHZ
@@ -90,19 +90,29 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define LEDn    3
 
 #elif ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N) || (DEVICE_BOARD_NAME == IP20))
-#define UART_IF_SEL_PIN        12
-
-#define DTR_PIN                 8
-#define DSR_PIN                 9
 
 #define STATUS_PHYLINK_PIN      10
-#define STATUS_TCPCONNECT_PIN   11
+#define DEBUG_UART_TX_PIN       29
 
-// UART1
-#define DATA0_UART_TX_PIN      4
-#define DATA0_UART_RX_PIN      5
-#define DATA0_UART_CTS_PIN     6
-#define DATA0_UART_RTS_PIN     7
+// DATA0 - UART1
+#define DATA0_UART_TX_PIN            4
+#define DATA0_UART_RX_PIN            5
+#define DATA0_UART_CTS_PIN           6
+#define DATA0_UART_RTS_PIN           7
+#define DATA0_UART_DTR_PIN           8
+#define DATA0_UART_DSR_PIN           9
+#define DATA0_UART_IF_SEL_PIN        12   //High : 485/422, Low or NC : TTL/232
+#define DATA0_STATUS_TCPCONNECT_PIN  11
+
+// DATA1 - UART0
+#define DATA1_UART_TX_PIN            0
+#define DATA1_UART_RX_PIN            1
+#define DATA1_UART_CTS_PIN           2
+#define DATA1_UART_RTS_PIN           3
+#define DATA1_UART_DTR_PIN           27
+#define DATA1_UART_DSR_PIN           28
+#define DATA1_UART_IF_SEL_PIN        16   //High : 485/422, Low or NC : TTL/232
+#define DATA1_STATUS_TCPCONNECT_PIN  26
 
 #define WIZCHIP_PIN_SCK        21
 #define WIZCHIP_PIN_MOSI       23
@@ -111,16 +121,24 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define WIZCHIP_PIN_RST        25
 #define WIZCHIP_PIN_IRQ        24
 
-#define BOOT_MODE_PIN          15
-#define FAC_RSTn_PIN           18
-#define HW_TRIG_PIN            14
+#define BOOT_MODE_PIN          15    //When this pin is Low during a device reset, it enters AT Command Mode  
+#define FAC_RSTn_PIN           18    //Holding Low for more than 5 seconds triggers a factory reset
+#define HW_TRIG_PIN            14    //When this pin is Low during a device reset, it enters AT Command Mode
 #define DATA0_UART_PORTNUM          (1)
 
 #define LED1_PIN      STATUS_PHYLINK_PIN        //STATUS_PHYLINK
-#define LED2_PIN      STATUS_TCPCONNECT_PIN    //STATUS_TCP_PIN
+#define LED2_PIN      DATA0_STATUS_TCPCONNECT_PIN    //STATUS_TCP_PIN
 #define LED3_PIN      19    //Blink
 #define LEDn          3
 #endif
+
+#ifdef __USE_UART_SPI_IF_SELECTOR__
+typedef enum {
+    UART_IF = 0,
+    SPI_IF
+} if_TypeDef;
+#endif
+
 
 typedef enum {
     LED1 = 0, // PHY link status
@@ -136,7 +154,7 @@ void init_hw_trig_pin(void);
 uint8_t get_hw_trig_pin(void);
 
 void init_uart_if_sel_pin(void);
-uint8_t get_uart_if_sel_pin(void);
+uint8_t get_uart_if_sel_pin(int channel);
 void init_factory_reset_pin(void);
 uint8_t get_phylink(void);
 uint8_t get_factory_reset_pin(void);

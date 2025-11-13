@@ -36,6 +36,7 @@
 #include "netHandler.h"
 #include "socket.h"
 #include "mbrtu.h"
+#include "mbascii.h"
 
 #include "w5x00_gpio_irq.h"
 #include "w5x00_spi.h"
@@ -56,8 +57,8 @@
 #define SEGCP_TCP_TASK_STACK_SIZE 1024
 #define SEGCP_TCP_TASK_PRIORITY 51
 
-#define SEGCP_UART_TASK_STACK_SIZE 512
-#define SEGCP_UART_TASK_PRIORITY 50
+#define SEGCP_SERIAL_TASK_STACK_SIZE 512
+#define SEGCP_SERIAL_TASK_PRIORITY 50
 
 #define SEG_TASK_STACK_SIZE (1024 * 8)
 #define SEG_TASK_PRIORITY 18
@@ -74,9 +75,6 @@
 #define HTTP_WEBSERVER_TASK_STACK_SIZE 2048
 #define HTTP_WEBSERVER_TASK_PRIORITY 23
 
-#define ETH_INTERRUPT_TASK_STACK_SIZE 512
-#define ETH_INTERRUPT_TASK_PRIORITY 60
-
 #define START_TASK_STACK_SIZE 512
 #define START_TASK_PRIORITY 65
 
@@ -88,22 +86,19 @@
 xSemaphoreHandle net_segcp_udp_sem = NULL;
 xSemaphoreHandle net_segcp_tcp_sem = NULL;
 xSemaphoreHandle net_http_webserver_sem = NULL;
-xSemaphoreHandle net_seg_sem = NULL;
-xSemaphoreHandle eth_interrupt_sem = NULL;
-xSemaphoreHandle segcp_udp_sem = NULL;
-xSemaphoreHandle segcp_tcp_sem = NULL;
+xSemaphoreHandle net_seg_sem[DEVICE_UART_CNT] = {NULL, };
 xSemaphoreHandle segcp_uart_sem = NULL;
-xSemaphoreHandle seg_u2e_sem = NULL;
-xSemaphoreHandle seg_e2u_sem = NULL;;
-xSemaphoreHandle seg_sem = NULL;
-xSemaphoreHandle seg_socket_sem = NULL;
+xSemaphoreHandle seg_u2e_sem[DEVICE_UART_CNT] = {NULL, };
+xSemaphoreHandle seg_e2s_sem = NULL;
+xSemaphoreHandle seg_sem[DEVICE_UART_CNT] = {NULL, };
+xSemaphoreHandle seg_socket_sem[DEVICE_UART_CNT] = {NULL, };
 xSemaphoreHandle seg_timer_sem = NULL;
 xSemaphoreHandle wizchip_critical_sem = NULL;
 xSemaphoreHandle flash_critical_sem = NULL;
 
-TimerHandle_t seg_inactivity_timer = NULL;
-TimerHandle_t seg_keepalive_timer = NULL;
-TimerHandle_t seg_auth_timer = NULL;
+TimerHandle_t seg_inactivity_timer[DEVICE_UART_CNT] = {NULL, };
+TimerHandle_t seg_keepalive_timer[DEVICE_UART_CNT] = {NULL, };
+TimerHandle_t seg_auth_timer[DEVICE_UART_CNT] = {NULL, };
 TimerHandle_t reset_timer = NULL;
 
 /**
@@ -115,7 +110,6 @@ static void RP2040_Init(void);
 static void RP2040_W5X00_Init(void);
 static void set_W5X00_NetTimeout(void);
 void start_task(void *argument);
-void eth_interrupt_task(void *argument);
 
 /**
     ----------------------------------------------------------------------------------------------------
@@ -183,73 +177,73 @@ void start_task(void *argument) {
 
     RP2040_Init();
     RP2040_W5X00_Init();
-
     load_DevConfig_from_storage();
     RP2040_Board_Init();
-    DATA0_UART_Configuration();
+    DATA_UART_Configuration();
     check_mac_address();
 
-    Net_Conf();
-    display_Dev_Info_main();
-    display_Net_Info();
-
-    set_W5X00_NetTimeout();
-    DATA0_UART_Interrupt_Enable();
-    Timer_Configuration();
-    init_connection_status_io();
-
+    DATA_UART_Interrupt_Enable();
     if (get_hw_trig_pin() == 0) {
         init_trigger_modeswitch(DEVICE_AT_MODE);
     }
 
-    serial_mode = get_serial_communation_protocol();
+    Net_Conf();
+    devConfig_print_all();
+    //display_Dev_Info_main();
+    //display_Net_Info();
+
+    set_W5X00_NetTimeout();
+
+    Timer_Configuration();
+    init_connection_status_io();
+
+    serial_mode = get_serial_communation_protocol(SEG_DATA0_CH);
     if (serial_mode == SEG_SERIAL_MODBUS_RTU) {
-        PRT_INFO(" > Modbus Mode\r\n");
-        eMBRTUInit(dev_config->serial_option.baud_rate);
+        PRT_INFO(" > CH0 Modbus Mode\r\n");
+        eMBRTUInit(dev_config->serial_option[SEG_DATA0_CH].baud_rate, SEG_DATA0_CH);
+    } else if (serial_mode == SEG_SERIAL_MODBUS_ASCII) {
+        PRT_INFO(" > CH0 Modbus ASCII Mode\r\n");
+        eMBAsciiInit(SEG_DATA0_CH);
     }
 
-    switch (dev_config->network_connection.working_mode) {
-    case TCP_CLIENT_MODE:
-    case TCP_SERVER_MODE:
-    case TCP_MIXED_MODE:
-    case SSL_TCP_CLIENT_MODE:
-    case UDP_MODE:
-        wizchip_gpio_interrupt_initialize(SEG_DATA0_SOCK, SIK_RECEIVED);
-        break;
-
-    default:
-        break;
+    serial_mode = get_serial_communation_protocol(SEG_DATA1_CH);
+    if (serial_mode == SEG_SERIAL_MODBUS_RTU) {
+        PRT_INFO(" > CH1 Modbus Mode\r\n");
+        eMBRTUInit(dev_config->serial_option[SEG_DATA1_CH].baud_rate, SEG_DATA1_CH);
+    } else if (serial_mode == SEG_SERIAL_MODBUS_ASCII) {
+        PRT_INFO(" > CH1 Modbus ASCII Mode\r\n");
+        eMBAsciiInit(SEG_DATA1_CH);
     }
-
-    GPIO_Configuration(WIZCHIP_PIN_IRQ, IO_INPUT, IO_PULLUP); //Set interrupt Pin
-    GPIO_Configuration_IRQ(WIZCHIP_PIN_IRQ, IO_IRQ_FALL);
-    GPIO_Configuration_Callback();
 
     net_segcp_udp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     net_segcp_tcp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     net_http_webserver_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    net_seg_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    eth_interrupt_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    segcp_udp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    segcp_tcp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    net_seg_sem[SEG_DATA0_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    net_seg_sem[SEG_DATA1_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     segcp_uart_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    seg_e2u_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    seg_u2e_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    seg_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    seg_e2s_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    seg_u2e_sem[SEG_DATA0_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    seg_u2e_sem[SEG_DATA1_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_timer_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    seg_socket_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)1);
+    seg_sem[SEG_DATA0_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    seg_sem[SEG_DATA1_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    seg_socket_sem[SEG_DATA0_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)1);
+    seg_socket_sem[SEG_DATA1_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)1);
 
     xTaskCreate(net_status_task, "Net_Status_Task", NET_TASK_STACK_SIZE, NULL, NET_TASK_PRIORITY, NULL);
     xTaskCreate(segcp_udp_task, "SEGCP_udp_Task", SEGCP_UDP_TASK_STACK_SIZE, NULL, SEGCP_UDP_TASK_PRIORITY, NULL);
-    xTaskCreate(segcp_uart_task, "SEGCP_uart_Task", SEGCP_UART_TASK_STACK_SIZE, NULL, SEGCP_UART_TASK_PRIORITY, NULL);
+    xTaskCreate(segcp_serial_task, "SEGCP_serial_Task", SEGCP_SERIAL_TASK_STACK_SIZE, NULL, SEGCP_SERIAL_TASK_PRIORITY, NULL);
     xTaskCreate(segcp_tcp_task, "SEGCP_tcp_Task", SEGCP_TCP_TASK_STACK_SIZE, NULL, SEGCP_TCP_TASK_PRIORITY, NULL);
 
-    xTaskCreate(eth_interrupt_task, "ETH_INTERRUPT_Task", ETH_INTERRUPT_TASK_STACK_SIZE, NULL, ETH_INTERRUPT_TASK_PRIORITY, NULL);
-    xTaskCreate(seg_task, "SEG_Task", SEG_TASK_STACK_SIZE, NULL, SEG_TASK_PRIORITY, NULL);
-    xTaskCreate(seg_u2e_task, "SEG_U2E_Task", SEG_U2E_TASK_STACK_SIZE, NULL, SEG_U2E_TASK_PRIORITY, NULL);
-    xTaskCreate(seg_recv_task, "SEG_Recv_Task", SEG_RECV_TASK_STACK_SIZE, NULL, SEG_RECV_TASK_PRIORITY, NULL);
+    //xTaskCreate(seg_task, "SEG_Task", SEG_TASK_STACK_SIZE, NULL, SEG_TASK_PRIORITY, NULL);
+    xTaskCreate(seg0_task, "SEG0_Task", SEG_TASK_STACK_SIZE, NULL, SEG_TASK_PRIORITY, NULL);
+    xTaskCreate(seg1_task, "SEG1_Task", SEG_TASK_STACK_SIZE, NULL, SEG_TASK_PRIORITY, NULL);
+    xTaskCreate(seg0_u2e_task, "SEG0_U2E_Task", SEG_U2E_TASK_STACK_SIZE, NULL, SEG_U2E_TASK_PRIORITY, NULL);
+    xTaskCreate(seg1_u2e_task, "SEG1_U2E_Task", SEG_U2E_TASK_STACK_SIZE, NULL, SEG_U2E_TASK_PRIORITY, NULL);
+    //xTaskCreate(seg_recv_task, "SEG1_Recv_Task", SEG_RECV_TASK_STACK_SIZE, NULL, SEG_RECV_TASK_PRIORITY, NULL);
+    xTaskCreate(seg0_recv_task, "SEG0_Recv_Task", SEG_RECV_TASK_STACK_SIZE, NULL, SEG_RECV_TASK_PRIORITY, NULL);
+    xTaskCreate(seg1_recv_task, "SEG1_Recv_Task", SEG_RECV_TASK_STACK_SIZE, NULL, SEG_RECV_TASK_PRIORITY + 1, NULL);
     xTaskCreate(seg_timer_task, "SEG_Timer_task", SEG_TIMER_TASK_STACK_SIZE, NULL, SEG_TIMER_TASK_PRIORITY, NULL);
-
     xTaskCreate(http_webserver_task, "http_webserver_task", HTTP_WEBSERVER_TASK_STACK_SIZE, NULL, HTTP_WEBSERVER_TASK_PRIORITY, NULL);
 
 #if defined(MBEDTLS_PLATFORM_C) && defined(MBEDTLS_PLATFORM_MEMORY)
@@ -259,22 +253,11 @@ void start_task(void *argument) {
 #ifdef __USE_WATCHDOG__
     watchdog_enable(8388, 0);
 #endif
+
     while (1) {
         vTaskDelay(1000000000);
     }
 
-}
-
-void eth_interrupt_task(void *argument) {
-    uint16_t reg_val;
-
-    while (1) {
-        xSemaphoreTake(eth_interrupt_sem, portMAX_DELAY);
-        ctlsocket(SEG_DATA0_SOCK, CS_GET_INTERRUPT, (void *)&reg_val);
-        if (reg_val & SIK_RECEIVED) {
-            xSemaphoreGive(seg_e2u_sem);
-        }
-    }
 }
 
 void vApplicationPassiveIdleHook(void) {

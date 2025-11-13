@@ -9,13 +9,13 @@ typedef enum {
 } eMBRcvState;
 
 
-extern volatile eMBRcvState eRcvState;
-extern volatile uint8_t mb_state_rtu_finish;
+extern volatile eMBRcvState eRcvState[];
+extern volatile uint8_t mb_state_rtu_finish[];
 
-void xMBPortTimersInit(uint32_t usTim1Timerout50us);
-void vMBPortTimersEnable(void);
-void vMBPortTimersDisable(void);
-void xMBRTUTimerT35Expired(void);
+void xMBPortTimersInit(uint32_t usTim1Timerout50us, int channel);
+void vMBPortTimersEnable(int channel);
+void vMBPortTimersDisable(int channel);
+void xMBRTUTimerT35Expired(int channel);
 
 #endif
 

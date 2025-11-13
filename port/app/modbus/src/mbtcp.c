@@ -41,30 +41,28 @@
 
 #define MB_TCP_PROTOCOL_ID  0   /* 0 = Modbus Protocol */
 
-uint8_t mbTCPtid1, mbTCPtid2;
-static uint8_t    aucTCPBuf[MB_TCP_BUF_SIZE];
+uint8_t mbTCPtid1[DEVICE_UART_CNT], mbTCPtid2[DEVICE_UART_CNT];
+static uint8_t    aucTCPBuf[DEVICE_UART_CNT][MB_TCP_BUF_SIZE];
 
-volatile uint8_t* pucRTUBufferCur;
-volatile uint16_t usRTUBufferPos;
+volatile uint8_t* pucRTUBufferCur[DEVICE_UART_CNT];
+volatile uint16_t usRTUBufferPos[DEVICE_UART_CNT];
 
-extern volatile uint8_t* pucASCIIBufferCur;
-extern volatile uint16_t usASCIIBufferPos;
+extern volatile uint8_t* pucASCIIBufferCur[DEVICE_UART_CNT];
+extern volatile uint16_t usASCIIBufferPos[DEVICE_UART_CNT];
 
-static bool mbTCPGet(uint8_t sock, uint8_t ** ppucMBTCPFrame, uint16_t * usTCPLength) {
-    struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection);
+static bool mbTCPGet(uint8_t sock, uint8_t ** ppucMBTCPFrame, uint16_t * usTCPLength, int channel) {
+    struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
 
     uint16_t len;
     uint16_t usTCPBufPos;
     uint8_t  peerip[4];
     uint16_t peerport;
-    uint16_t reg_val = SIK_RECEIVED & 0x00FF;;
 
     len = getSn_RX_RSR(sock);
 
     if (len > 0) {
         if (network_connection->working_mode == UDP_MODE) {
-            usTCPBufPos = recvfrom(SOCK_DATA, aucTCPBuf, len, peerip, &peerport);
-            ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
+            usTCPBufPos = recvfrom(sock, aucTCPBuf[channel], len, peerip, &peerport);
 
             if (memcmp(peerip, network_connection->remote_ip, sizeof(peerip)) || network_connection->remote_port != peerport) {
                 network_connection->remote_ip[0] = peerip[0];
@@ -74,22 +72,21 @@ static bool mbTCPGet(uint8_t sock, uint8_t ** ppucMBTCPFrame, uint16_t * usTCPLe
                 network_connection->remote_port = peerport;
             }
         } else {
-            usTCPBufPos = recv(sock, aucTCPBuf, len);
-            ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
+            usTCPBufPos = recv(sock, aucTCPBuf[channel], len);
         }
-        *ppucMBTCPFrame = &aucTCPBuf[0];
+        *ppucMBTCPFrame = aucTCPBuf[channel];
         *usTCPLength = usTCPBufPos;
         return TRUE;
     }
     return FALSE;
 }
 
-static bool mbTCPPackage(uint8_t sock, uint8_t* pucRcvAddress, uint8_t** ppucFrame, uint16_t * pusLength) {
+static bool mbTCPPackage(uint8_t sock, uint8_t* pucRcvAddress, uint8_t** ppucFrame, uint16_t * pusLength, int channel) {
     uint8_t		*pucMBTCPFrame;
     uint16_t	usLength;
     uint16_t	usPID;
 
-    if (mbTCPGet(sock, &pucMBTCPFrame, &usLength) != FALSE) {
+    if (mbTCPGet(sock, &pucMBTCPFrame, &usLength, channel) != FALSE) {
         usPID = pucMBTCPFrame[MB_TCP_PID] << 8U;
         usPID |= pucMBTCPFrame[MB_TCP_PID + 1];
 
@@ -98,8 +95,8 @@ static bool mbTCPPackage(uint8_t sock, uint8_t* pucRcvAddress, uint8_t** ppucFra
                 that the processing part deals with this frame.
             */
             *pucRcvAddress = pucMBTCPFrame[MB_TCP_UID];
-            mbTCPtid1 = pucMBTCPFrame[MB_TCP_TID1];
-            mbTCPtid2 = pucMBTCPFrame[MB_TCP_TID2];
+            mbTCPtid1[channel] = pucMBTCPFrame[MB_TCP_TID1];
+            mbTCPtid2[channel] = pucMBTCPFrame[MB_TCP_TID2];
 
             *ppucFrame = &pucMBTCPFrame[MB_TCP_FUNC];
             *pusLength = usLength - MB_TCP_FUNC;
@@ -109,39 +106,39 @@ static bool mbTCPPackage(uint8_t sock, uint8_t* pucRcvAddress, uint8_t** ppucFra
     return FALSE;
 }
 
-bool MBtcp2rtuFrame(uint8_t sock) {
+bool MBtcp2rtuFrame(uint8_t sock, int channel) {
     uint8_t pucRcvAddress;
     uint16_t pusLength;
     uint8_t* ppucFrame;
     uint16_t usCRC16;
 
-    if (mbTCPPackage(sock, &pucRcvAddress, &ppucFrame, &pusLength) != FALSE) {
-        pucRTUBufferCur = ppucFrame - 1;
-        pucRTUBufferCur[MB_SER_PDU_ADDR_OFF] = (uint8_t)pucRcvAddress;
-        usRTUBufferPos = pusLength + MB_RTU_ADDR_SIZE;
-        usCRC16 = usMBCRC16((uint8_t *) pucRTUBufferCur, usRTUBufferPos);
-        pucRTUBufferCur[usRTUBufferPos++] = (uint8_t)(usCRC16 & 0xFF);
-        pucRTUBufferCur[usRTUBufferPos++] = (uint8_t)(usCRC16 >> 8);
+    if (mbTCPPackage(sock, &pucRcvAddress, &ppucFrame, &pusLength, channel) == TRUE) {
+        pucRTUBufferCur[channel] = ppucFrame - 1;
+        pucRTUBufferCur[channel][MB_SER_PDU_ADDR_OFF] = (uint8_t)pucRcvAddress;
+        usRTUBufferPos[channel] = pusLength + MB_RTU_ADDR_SIZE;
+        usCRC16 = usMBCRC16((uint8_t *) pucRTUBufferCur[channel], usRTUBufferPos[channel]);
+        pucRTUBufferCur[channel][usRTUBufferPos[channel]++] = (uint8_t)(usCRC16 & 0xFF);
+        pucRTUBufferCur[channel][usRTUBufferPos[channel]++] = (uint8_t)(usCRC16 >> 8);
         return TRUE;
     }
 
     return FALSE;
 }
 
-bool MBtcp2asciiFrame(uint8_t sock) {
+bool MBtcp2asciiFrame(uint8_t sock, int channel) {
     uint8_t pucRcvAddress;
     uint16_t pusLength;
     uint8_t* ppucFrame;
     uint8_t usLRC;
 
-    if (mbTCPPackage(sock, &pucRcvAddress, &ppucFrame, &pusLength) != FALSE) {
-        pucASCIIBufferCur = ppucFrame - 1;
-        pucASCIIBufferCur[MB_SER_PDU_ADDR_OFF] = pucRcvAddress;
+    if (mbTCPPackage(sock, &pucRcvAddress, &ppucFrame, &pusLength, channel) != FALSE) {
+        pucASCIIBufferCur[channel] = ppucFrame - 1;
+        pucASCIIBufferCur[channel][MB_SER_PDU_ADDR_OFF] = pucRcvAddress;
 
-        usASCIIBufferPos = pusLength + MB_RTU_ADDR_SIZE;
+        usASCIIBufferPos[channel] = pusLength + MB_RTU_ADDR_SIZE;
 
-        usLRC = prvucMBLRC((uint8_t *) pucASCIIBufferCur, usASCIIBufferPos);
-        pucASCIIBufferCur[usASCIIBufferPos++] = usLRC;
+        usLRC = prvucMBLRC((uint8_t *) pucASCIIBufferCur[channel], usASCIIBufferPos[channel]);
+        pucASCIIBufferCur[channel][usASCIIBufferPos[channel]++] = usLRC;
 
         return TRUE;
     }

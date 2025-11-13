@@ -35,11 +35,11 @@
     Variables
     ----------------------------------------------------------------------------------------------------
 */
-extern wiz_tls_context s2e_tlsContext;
+extern wiz_tls_context s2e_tlsContext[];
 void (*user_sub_callback)(uint8_t *, uint32_t);
 
-MQTTPubAckInfo_t incomingPubAckRecords[MQTT_INCOMING_PUB_RECORD_MAX];
-MQTTPubAckInfo_t outgoingPubRelRecords[MQTT_OUTGOING_PUBREL_RECORD_MAX];
+MQTTPubAckInfo_t incomingPubAckRecords[DEVICE_UART_CNT][MQTT_INCOMING_PUB_RECORD_MAX];
+MQTTPubAckInfo_t outgoingPubRelRecords[DEVICE_UART_CNT][MQTT_OUTGOING_PUBREL_RECORD_MAX];
 
 /**
     ----------------------------------------------------------------------------------------------------
@@ -122,7 +122,8 @@ int mqtt_transport_yield(mqtt_config_t *mqtt_config) {
 
 int8_t mqtt_transport_init(uint8_t sock, mqtt_config_t *mqtt_config, uint8_t cleanSession, uint8_t ssl_flag, uint8_t *recv_buf,
                            uint32_t recv_buf_len, TransportInterface_t *transport_interface, NetworkContext_t *network_context,
-                           uint8_t *ClientId, uint8_t *userName, uint8_t *password, uint32_t keepAlive, void (*sub_callback)(uint8_t *, uint32_t)) {
+                           uint8_t *ClientId, uint8_t *userName, uint8_t *password, uint32_t keepAlive,
+                           void (*sub_callback)(uint8_t *, uint32_t), int channel) {
     int ret;
 
     if (ClientId == NULL) {
@@ -174,6 +175,7 @@ int8_t mqtt_transport_init(uint8_t sock, mqtt_config_t *mqtt_config, uint8_t cle
     mqtt_config->subscribe_count = 0;
 
     network_context->socketDescriptor = sock;
+    network_context->channel = channel;
     transport_interface->pNetworkContext = network_context;
 
     user_sub_callback = sub_callback;
@@ -194,8 +196,8 @@ int8_t mqtt_transport_init(uint8_t sock, mqtt_config_t *mqtt_config, uint8_t cle
 
     ret = MQTT_InitStatefulQoS(
               &mqtt_config->mqtt_context,
-              incomingPubAckRecords, MQTT_INCOMING_PUB_RECORD_MAX,
-              outgoingPubRelRecords, MQTT_OUTGOING_PUBREL_RECORD_MAX
+              incomingPubAckRecords[channel], MQTT_INCOMING_PUB_RECORD_MAX,
+              outgoingPubRelRecords[channel], MQTT_OUTGOING_PUBREL_RECORD_MAX
           );
 
     if (ret != 0) {
@@ -251,13 +253,14 @@ int8_t mqtt_transport_connect(mqtt_config_t *mqtt_config, uint32_t mqtt_conn_tim
     return 0;
 }
 
-int mqtt_transport_close(uint8_t sock, mqtt_config_t *mqtt_config) {
+int mqtt_transport_close(uint8_t sock, mqtt_config_t *mqtt_config, int channel) {
 
 #ifdef __USE_S2E_OVER_TLS__
     if (mqtt_config->ssl_flag == true) {
-        wiz_tls_close_notify(&s2e_tlsContext);
-        wiz_tls_session_reset(&s2e_tlsContext);
-        wiz_tls_deinit(&s2e_tlsContext);
+        wiz_tls_close_notify(&s2e_tlsContext[channel]);
+        wiz_tls_session_reset(&s2e_tlsContext[channel]);
+        wiz_tls_deinit(&s2e_tlsContext[channel]);
+        set_wiz_tls_init_state(DISABLE, channel);
     }
 #endif
     mqtt_config->subscribe_count = 0;
@@ -265,7 +268,7 @@ int mqtt_transport_close(uint8_t sock, mqtt_config_t *mqtt_config) {
     close(sock);
 
 #ifdef __USE_S2E_OVER_TLS__
-    set_wiz_tls_init_state(DISABLE);
+    set_wiz_tls_init_state(DISABLE, channel);
 #endif
 
     return 0;
@@ -324,7 +327,7 @@ int32_t mqtts_write(NetworkContext_t *pNetworkContext, const void *pBuffer, size
     int32_t size = 0;
 
     if (getSn_SR(pNetworkContext->socketDescriptor) == SOCK_ESTABLISHED) {
-        size = wiz_tls_write(&s2e_tlsContext, (uint8_t *)pBuffer, bytesToSend);
+        size = wiz_tls_write(&s2e_tlsContext[pNetworkContext->channel], (uint8_t *)pBuffer, bytesToSend);
     }
 
     return size;
@@ -334,7 +337,7 @@ int32_t mqtts_read(NetworkContext_t *pNetworkContext, void *pBuffer, size_t byte
     int32_t size = 0;
 
     if (getSn_SR(pNetworkContext->socketDescriptor) == SOCK_ESTABLISHED) {
-        size = wiz_tls_read(&s2e_tlsContext, pBuffer, bytesToRecv);
+        size = wiz_tls_read(&s2e_tlsContext[pNetworkContext->channel], pBuffer, bytesToRecv);
     }
 
     return size;

@@ -14,6 +14,6 @@ void net_status_task(void *argument);
 uint8_t set_stop_dhcp_flag(uint8_t flag);
 uint8_t get_stop_dhcp_flag(void);
 int8_t process_dhcp(void);
-void wizchip_recovery(uint8_t working_mode);
+void wizchip_recovery(void);
 
 #endif /* NETHANDLER_H_ */

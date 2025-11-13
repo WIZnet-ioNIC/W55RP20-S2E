@@ -190,7 +190,7 @@ void load_boot_DevConfig_from_storage(void) {
     read_storage(STORAGE_MAC, dev_config.network_common.mac, 6);
 
     if (dev_config.serial_common.serial_debug_en) {
-        stdio_init_all();
+        debug_uart_enable();
     }
 
     PRT_INFO("MAC = %02X%02X%02X%02X%02X%02X\r\n", dev_config.network_common.mac[0], dev_config.network_common.mac[1], dev_config.network_common.mac[2], \

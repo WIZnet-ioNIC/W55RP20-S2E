@@ -44,7 +44,7 @@
 
 #define UART_ID uart1
 
-#define DEBUG_UART_DEFAULT_BAUDRATE     (115200)
+#define DEBUG_UART_DEFAULT_BAUDRATE     (3000000)
 
 enum baud {
     baud_300 = 0,
@@ -140,6 +140,8 @@ uint8_t get_uart_rs485_sel(void);
 void uart_rs485_rs422_init(void);
 void uart_rs485_disable(void);
 void uart_rs485_enable(void);
+
+void debug_uart_enable(void);
 
 //#define MIN(_a, _b) (_a < _b) ? _a : _b
 #define MEM_FREE(mem_p) do{ if(mem_p) { free(mem_p); mem_p = NULL; } }while(0)	//

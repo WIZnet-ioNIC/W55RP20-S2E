@@ -3,11 +3,12 @@
 #include "mbtcp.h"
 #include "common.h"
 #include "mbserial.h"
+#include "WIZnet_board.h"
 
-volatile uint8_t mb_state_ascii_finish;
+volatile uint8_t mb_state_ascii_finish[DEVICE_UART_CNT];
 
 #define MB_SER_PDU_SIZE_MIN     3       /*!< Minimum size of a Modbus ASCII frame. */
-#define MB_SER_PDU_SIZE_MAX     DATA_BUF_SIZE - 7     /*!< Maximum size of a Modbus ASCII frame. */
+#define MB_SER_PDU_SIZE_MAX     DATA_BUF_SIZE - 7    /*!< Maximum size of a Modbus ASCII frame. */
 #define MB_SER_PDU_SIZE_LRC     1       /*!< Size of LRC field in PDU. */
 #define MB_SER_PDU_ADDR_OFF     0       /*!< Offset of slave address in Ser-PDU. */
 #define MB_SER_PDU_PDU_OFF      1       /*!< Offset of Modbus-PDU in Ser-PDU. */
@@ -21,16 +22,20 @@ typedef enum {
 
 
 
-volatile uint8_t* pucASCIIBufferCur;
-volatile uint16_t usASCIIBufferPos;
+volatile uint8_t* pucASCIIBufferCur[DEVICE_UART_CNT];
+volatile uint16_t usASCIIBufferPos[DEVICE_UART_CNT];
 
-extern volatile uint8_t *pucTCPBufferCur;
-extern volatile uint16_t usTCPBufferPos;
+extern volatile uint8_t *pucTCPBufferCur[DEVICE_UART_CNT];
+extern volatile uint16_t usTCPBufferPos[DEVICE_UART_CNT];
 
-extern uint8_t g_send_buf[DATA_BUF_SIZE];
-volatile uint8_t *ucASCIIBuf = g_send_buf + 7;
+volatile uint8_t *ucASCIIBuf[DEVICE_UART_CNT];
 
-static eMBRcvState eRcvState;
+extern volatile eMBRcvState eRcvState[DEVICE_UART_CNT];
+extern uint8_t g_send_buf[DEVICE_UART_CNT][DATA_BUF_SIZE];
+
+void eMBAsciiInit(int channel) {
+    ucASCIIBuf[channel] = g_send_buf[channel] + 7;
+}
 
 uint8_t prvucMBCHAR2BIN(uint8_t ucCharacter) {
     if ((ucCharacter >= '0') && (ucCharacter <= '9')) {
@@ -69,19 +74,20 @@ uint8_t prvucMBLRC(uint8_t * pucFrame, uint16_t usLen) {
     return ucLRC;
 }
 
-static bool mbASCIIPackage(uint8_t * pucRcvAddress, uint8_t ** pucFrame, uint16_t * pusLength) {
+static bool mbASCIIPackage(uint8_t * pucRcvAddress, uint8_t ** pucFrame, uint16_t * pusLength, int channel) {
     uint16_t count;
-    for (count = 0; count < usASCIIBufferPos; count++) {
+
+    for (count = 0; count < usASCIIBufferPos[channel]; count++) {
         if (count % 2) {
-            pucASCIIBufferCur[(uint16_t)(count / 2)] |= prvucMBCHAR2BIN(ucASCIIBuf[count]);
+            pucASCIIBufferCur[channel][(uint16_t)(count / 2)] |= prvucMBCHAR2BIN(ucASCIIBuf[channel][count]);
         } else {
-            pucASCIIBufferCur[count / 2] = (uint8_t)(prvucMBCHAR2BIN(ucASCIIBuf[count]) << 4);
+            pucASCIIBufferCur[channel][count / 2] = (uint8_t)(prvucMBCHAR2BIN(ucASCIIBuf[channel][count]) << 4);
         }
     }
-    if (prvucMBLRC((uint8_t *) pucASCIIBufferCur, usASCIIBufferPos / 2) == 0) {
-        *pucRcvAddress = pucASCIIBufferCur[MB_SER_PDU_ADDR_OFF];
-        *pusLength = (uint16_t)(usASCIIBufferPos / 2 - MB_SER_PDU_PDU_OFF - MB_SER_PDU_SIZE_LRC);
-        *pucFrame = (uint8_t *) & pucASCIIBufferCur[MB_SER_PDU_PDU_OFF];
+    if (prvucMBLRC((uint8_t *) pucASCIIBufferCur[channel], usASCIIBufferPos[channel] / 2) == 0) {
+        *pucRcvAddress = pucASCIIBufferCur[channel][MB_SER_PDU_ADDR_OFF];
+        *pusLength = (uint16_t)(usASCIIBufferPos[channel] / 2 - MB_SER_PDU_PDU_OFF - MB_SER_PDU_SIZE_LRC);
+        *pucFrame = (uint8_t *) & pucASCIIBufferCur[channel][MB_SER_PDU_PDU_OFF];
 
         return TRUE;
     }
@@ -90,63 +96,63 @@ static bool mbASCIIPackage(uint8_t * pucRcvAddress, uint8_t ** pucFrame, uint16_
 }
 
 
-bool MBascii2tcpFrame(void) {
+bool MBascii2tcpFrame(int channel) {
     uint8_t pucRcvAddress;
     uint16_t pusLength;
     uint8_t* ppucFrame;
 
-    if (mbASCIIPackage(&pucRcvAddress, &ppucFrame, &pusLength) != FALSE) {
+    if (mbASCIIPackage(&pucRcvAddress, &ppucFrame, &pusLength, channel) != FALSE) {
 
-        pucTCPBufferCur = ppucFrame - 7;
+        pucTCPBufferCur[channel] = ppucFrame - 7;
 
-        pucTCPBufferCur[0] = mbTCPtid1;
-        pucTCPBufferCur[1] = mbTCPtid2;
+        pucTCPBufferCur[channel][0] = mbTCPtid1[channel];
+        pucTCPBufferCur[channel][1] = mbTCPtid2[channel];
 
-        pucTCPBufferCur[2] = 0;
-        pucTCPBufferCur[3] = 0;
+        pucTCPBufferCur[channel][2] = 0;
+        pucTCPBufferCur[channel][3] = 0;
 
-        pucTCPBufferCur[4] = (pusLength + 1) >> 8U;
-        pucTCPBufferCur[5] = (pusLength + 1) & 0xFF;
+        pucTCPBufferCur[channel][4] = (pusLength + 1) >> 8U;
+        pucTCPBufferCur[channel][5] = (pusLength + 1) & 0xFF;
 
-        pucTCPBufferCur[6] = pucRcvAddress;
+        pucTCPBufferCur[channel][6] = pucRcvAddress;
 
-        usTCPBufferPos = pusLength + 7;
+        usTCPBufferPos[channel] = pusLength + 7;
         return TRUE;
     }
     return FALSE;
 }
 
-void ASCII_Uart_RX(void) {
+void ASCII_Uart_RX(int channel) {
     uint8_t ucByte = 0;
 
     while (1) {
         /* Always read the character. */
-        if (UART_read(&ucByte, 1) <= 0) {
+        if (UART_read(&ucByte, 1, channel) <= 0) {
             return;
         }
 
-        switch (eRcvState) {
+        switch (eRcvState[channel]) {
         case STATE_RX_IDLE:
-            usASCIIBufferPos = 0;
+            usASCIIBufferPos[channel] = 0;
             if (ucByte == MB_ASCII_START) {
-                eRcvState = STATE_RX_RCV;
+                eRcvState[channel] = STATE_RX_RCV;
             }
             break;
         case STATE_RX_RCV:
-            if (usASCIIBufferPos < MB_SER_PDU_SIZE_MAX) {
+            if (usASCIIBufferPos[channel] < MB_SER_PDU_SIZE_MAX) {
                 if (ucByte == MB_ASCII_DEFAULT_CR) {
-                    eRcvState = STATE_RX_END;
+                    eRcvState[channel] = STATE_RX_END;
                 } else {
-                    ucASCIIBuf[usASCIIBufferPos++] = ucByte;
+                    ucASCIIBuf[channel][usASCIIBufferPos[channel]++] = ucByte;
                 }
             } else {
-                eRcvState = STATE_RX_ERROR;
+                eRcvState[channel] = STATE_RX_ERROR;
             }
             break;
         case STATE_RX_END:
             if (ucByte == MB_ASCII_DEFAULT_LF) {
-                mb_state_ascii_finish = TRUE;
-                eRcvState = STATE_RX_IDLE;
+                mb_state_ascii_finish[channel] = TRUE;
+                eRcvState[channel] = STATE_RX_IDLE;
                 return;
             }
             break;
