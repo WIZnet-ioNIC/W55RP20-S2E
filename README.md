@@ -34,7 +34,16 @@ W55RP20-S2E was developed by configuring the development environment for **Windo
 
 If you want development environments other than the development environment for Windows, note that you can find other ways to configure development environment in **'Chapter 9. Building on other platforms'**  section of the document above.
 
+<a name="applying_patches"></a>
+### Applying Patches
 
+Some features of the W55RP20-S2E firmware require patches to be applied to the **pico-sdk**.  
+To apply the provided patch files, run the following commands from the repository root:
+
+```bash
+cd .\libraries\pico-sdk\
+git apply ..\..\patches\001_pico-sdk_watchdog.patch
+```
 
 <a name="hardware_requirements"></a>
 
