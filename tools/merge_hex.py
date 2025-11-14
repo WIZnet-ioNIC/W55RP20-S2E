@@ -8,8 +8,12 @@ APP_DIR = "build/main/App"
 OUTPUT_DIR = "bin_files"
 
 # Create output directory if it doesn't exist
-if os.path.exists(OUTPUT_DIR):
-    shutil.rmtree(OUTPUT_DIR)
+try:
+    if os.path.exists(OUTPUT_DIR):
+        shutil.rmtree(OUTPUT_DIR)
+except PermissionError:
+    print(f"Warning: Could not remove {OUTPUT_DIR}. Directory may be in use.")
+    pass  # Continue if directory exists
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Input ELF and BIN paths
