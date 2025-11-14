@@ -164,3 +164,14 @@ add_custom_target(
 
 # Ensure restyle runs after Boot and App_linker are built
 add_dependencies(restyle Boot App_linker)
+
+## Automatically run hex_to_uf2_converter.py after merge_hex
+add_custom_target(
+    hex_to_uf2_converter ALL
+    COMMAND python ${CMAKE_SOURCE_DIR}/tools/hex_to_uf2_converter.py
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+    COMMENT "Run hex_to_uf2_converter.py to create merged UF2 file"
+)
+
+# Ensure hex_to_uf2_converter runs after merge_hex is completed
+add_dependencies(hex_to_uf2_converter merge_hex)
