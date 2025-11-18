@@ -27,9 +27,7 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define __USE_HW_FACTORY_RESET__            // Use Factory reset pin
 #define __USE_SAFE_SAVE__                   // When this option is enabled, data verify is additionally performed in the flash save of config-data.
 #define __USE_WATCHDOG__                  // WDT timeout 30 Second
-#if (DEVICE_BOARD_NAME != IP20)
 #define __USE_S2E_OVER_TLS__                // Use S2E TCP client over SSL/TLS mode
-#endif
 #define __USE_UART_485_422__
 //#define __USE_USERS_GPIO__
 #if (DEVICE_BOARD_NAME == WIZ5XXSR_RP)

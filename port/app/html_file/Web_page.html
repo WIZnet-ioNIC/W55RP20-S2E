@@ -202,9 +202,6 @@
 	 }
 	 ch0info_block(o.opmode);
 	 
-	 // Update opmode options based on device name
-	 updateOpmodeOptions();
-
 	 if(o.uart == '0'){
 	 	 selset('selBaud1',o.baud);
 		 selset('selDb1',o.databit);
@@ -256,31 +253,8 @@
 		server_enabled = 0;
  	}
  }
- 
- function updateOpmodeOptions(){
- 	var deviceName = $('txtDname').value;
- 	var opmodeSelect = $('txtOpmode');
- 	var sslOption = opmodeSelect.querySelector('option[value="4"]');
- 	var mqttsOption = opmodeSelect.querySelector('option[value="6"]');
- 	
- 	if(deviceName === 'IP20'){
- 		// Hide SSL Client and MQTTS Client options for IP20
- 		if(sslOption) sslOption.style.display = 'none';
- 		if(mqttsOption) mqttsOption.style.display = 'none';
- 		
- 		// If currently selected option is SSL or MQTTS, change to TCP Server
- 		if(opmodeSelect.value === '4' || opmodeSelect.value === '6'){
- 			opmodeSelect.value = '1'; // TCP Server
- 			ch0info_block('1');
- 		}
- 	} else {
- 		// Show all options for other device names
- 		if(sslOption) sslOption.style.display = '';
- 		if(mqttsOption) mqttsOption.style.display = '';
- 	}
- }
- 
- function setDevReset(){
+
+  function setDevReset(){
  	setTimeout(function(){
 		 dout=new AJAX('set_devreset.cgi', function(t){
 		 	try{eval(t);}catch(e){alert(e);}
