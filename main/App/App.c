@@ -188,9 +188,9 @@ void start_task(void *argument) {
     }
 
     Net_Conf();
-    devConfig_print_all();
-    //display_Dev_Info_main();
-    //display_Net_Info();
+    //devConfig_print_all();
+    display_Dev_Info_main();
+    display_Net_Info();
 
     set_W5X00_NetTimeout();
 
