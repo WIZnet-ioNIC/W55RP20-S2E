@@ -1,0 +1,31 @@
+diff --git a/Ethernet/socket.c b/Ethernet/socket.c
+index 412a65d..1882b6d 100644
+--- a/Ethernet/socket.c
++++ b/Ethernet/socket.c
+@@ -408,6 +408,7 @@ int32_t recv(uint8_t sn, uint8_t * buf, uint16_t len)
+ //
+       while(1)
+       {
++#if 0
+          recvsize = getSn_RX_RSR(sn);
+          tmp = getSn_SR(sn);
+          if (tmp != SOCK_ESTABLISHED)
+@@ -427,6 +428,7 @@ int32_t recv(uint8_t sn, uint8_t * buf, uint16_t len)
+                return SOCKERR_SOCKSTATUS;
+             }
+          }
++#endif
+          if((sock_io_mode & (1<<sn)) && (recvsize == 0)) return SOCK_BUSY;
+          if(recvsize != 0) break;
+       };
+@@ -629,8 +631,8 @@ int32_t recvfrom(uint8_t sn, uint8_t * buf, uint16_t len, uint8_t * addr, uint16
+    {
+       while(1)
+       {
+-         pack_len = getSn_RX_RSR(sn);
+-         if(getSn_SR(sn) == SOCK_CLOSED) return SOCKERR_SOCKCLOSED;
++         //pack_len = getSn_RX_RSR(sn);
++         //if(getSn_SR(sn) == SOCK_CLOSED) return SOCKERR_SOCKCLOSED;
+          if( (sock_io_mode & (1<<sn)) && (pack_len == 0) ) return SOCK_BUSY;
+          if(pack_len != 0) break;
+       };
