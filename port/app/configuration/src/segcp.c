@@ -477,7 +477,11 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     sprintf(trep, "%d", get_connection_status_io(STATUS_PHYLINK_PIN)); // STATUS_PHYLINK_PIN (in) == DTR_PIN (out)
                     break;
                 case SEGCP_S1:
+#if (DEVICE_BOARD_NAME == PLATYPUS_S2E)
+                    sprintf(trep, "%d", !get_connection_status_io(STATUS_TCPCONNECT_PIN)); // STATUS_TCPCONNECT_PIN (in) == DSR_PIN (in)
+#else
                     sprintf(trep, "%d", get_connection_status_io(STATUS_TCPCONNECT_PIN)); // STATUS_TCPCONNECT_PIN (in) == DSR_PIN (in)
+#endif
                     break;
                 case SEGCP_RX:
                     uart_rx_flush();

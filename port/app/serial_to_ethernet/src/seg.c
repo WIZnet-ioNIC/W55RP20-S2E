@@ -87,8 +87,8 @@ extern TimerHandle_t seg_inactivity_timer;
 extern TimerHandle_t seg_keepalive_timer;
 extern TimerHandle_t seg_auth_timer;
 
-uint16_t u2e_size = 0;
-uint16_t e2u_size = 0;
+int u2e_size = 0;
+int e2u_size = 0;
 
 // UDP: Peer netinfo
 uint8_t peerip[4] = {0, };
@@ -242,18 +242,30 @@ void set_device_status(teDEVSTATUS status) {
         }
 
         // Status indicator pins
-        set_connection_status_io(STATUS_TCPCONNECT_PIN, ON); // Status I/O pin to low
+#if (DEVICE_BOARD_NAME == PLATYPUS_S2E)
+        set_connection_status_io(STATUS_TCPCONNECT_PIN, OFF); // Status I/O pin to low
+#else
+        set_connection_status_io(STATUS_TCPCONNECT_PIN, ON); // Status I/O pin to high
+#endif
     }
 
     else if (prev_working_state == ST_CONNECT && network_connection->working_state == ST_OPEN) {
         if (device_option->device_serial_disconnect_data[0] != 0) {
             platform_uart_puts((const char *)device_option->device_serial_disconnect_data, strlen((const char *)device_option->device_serial_disconnect_data));
         }
+#if (DEVICE_BOARD_NAME == PLATYPUS_S2E)
+        // Status indicator pins
+        set_connection_status_io(STATUS_TCPCONNECT_PIN, ON); // Status I/O pin to low
+    } else {
+        set_connection_status_io(STATUS_TCPCONNECT_PIN, ON);    // Status I/O pin to high
+    }
+#else
         // Status indicator pins
         set_connection_status_io(STATUS_TCPCONNECT_PIN, OFF); // Status I/O pin to low
     } else {
         set_connection_status_io(STATUS_TCPCONNECT_PIN, OFF);    // Status I/O pin to high
     }
+#endif
 }
 
 uint8_t get_device_status(void) {
@@ -1508,13 +1520,21 @@ void ether_to_uart(uint8_t sock) {
                             PRT_SEG(" > UDP Peer IP/Port: %d.%d.%d.%d : %d\r\n", peerip[0], peerip[1], peerip[2], peerip[3], peerport);
                         }
                     }
-                } else if (network_connection->working_state == ST_CONNECT) {
+                    //} else if (network_connection->working_state == ST_CONNECT) {
+                } else {
 #ifdef __USE_S2E_OVER_TLS__
                     if (network_connection->working_mode == SSL_TCP_CLIENT_MODE) {
                         e2u_size = wiz_tls_read(&s2e_tlsContext, g_recv_buf, len);
-                    } else
-#endif
+                    } else {
                         e2u_size = recv(sock, g_recv_buf, len);
+                    }
+                }
+#else
+                    e2u_size = recv(sock, g_recv_buf, len);
+                }
+#endif
+                if (e2u_size < 0) {
+                    e2u_size = 0;
                 }
                 reg_val = SIK_RECEIVED & 0x00FF;
                 ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);

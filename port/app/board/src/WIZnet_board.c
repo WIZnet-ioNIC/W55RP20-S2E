@@ -94,8 +94,13 @@ uint8_t get_uart_if_sel_pin(void) {
 void init_tcpconnection_status_pin(void) {
     GPIO_Configuration(STATUS_TCPCONNECT_PIN, IO_OUTPUT, IO_NOPULL);
 
+#if (DEVICE_BOARD_NAME == PLATYPUS_S2E)
+    set_connection_status_io(STATUS_TCPCONNECT_PIN, ON);
+#else
     // Pin initial state; Low
-    GPIO_Output_Reset(STATUS_TCPCONNECT_PIN);
+    //GPIO_Output_Reset(STATUS_TCPCONNECT_PIN);
+    set_connection_status_io(STATUS_TCPCONNECT_PIN, OFF);
+#endif
 }
 
 

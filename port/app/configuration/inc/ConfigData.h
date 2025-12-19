@@ -22,9 +22,15 @@
 #define MAX_SAVE_RETRY              5
 #define SAVE_INTERVAL_MS            1000
 
+#if (DEVICE_BOARD_NAME == PLATYPUS_S2E)
+#define MAC_OUI0  0xEC
+#define MAC_OUI1  0x74
+#define MAC_OUI2  0xCD
+#else
 #define MAC_OUI0  0x00
 #define MAC_OUI1  0x08
 #define MAC_OUI2  0xDC
+#endif
 
 enum bank_num {
     APP_BANK0 = 0,
