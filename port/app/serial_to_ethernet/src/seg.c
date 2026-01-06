@@ -1247,9 +1247,6 @@ void proc_SEG_tcp_mixed(uint8_t sock) {
                 if (get_uart_buffer_usedsize() || u2e_size) {
                     xSemaphoreGive(seg_u2e_sem);
                 }
-                //uart_to_ether(sock);
-
-                // Mixed-mode flag switching in advance
                 mixed_state = MIXED_SERVER;
             }
 

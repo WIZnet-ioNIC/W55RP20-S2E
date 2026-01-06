@@ -1709,7 +1709,6 @@ void segcp_uart_task(void *argument) {
 
     while (1) {
         xSemaphoreTake(segcp_uart_sem, portMAX_DELAY);
-        PRT_SEGCP("start segcp_uart\r\n");
 
         // Serial AT command mode enabled, initial settings
         if ((opmode == DEVICE_GW_MODE) && (sw_modeswitch_at_mode_on == SEG_ENABLE)) {

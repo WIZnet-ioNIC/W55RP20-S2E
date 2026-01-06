@@ -41,11 +41,6 @@
 #define UART_CTS_LOW                    0
 
 #define UART_ID uart1
-
-//#define DEBUG_UART_DEFAULT_BAUDRATE     (115200)
-#define DEBUG_UART_DEFAULT_BAUDRATE     (921600)
-//#define DEBUG_UART_DEFAULT_BAUDRATE     (3000000)
-
 enum baud {
     baud_300 = 0,
     baud_600 = 1,
