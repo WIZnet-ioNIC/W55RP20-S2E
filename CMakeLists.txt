@@ -117,7 +117,13 @@ add_definitions(-DMBEDTLS_CONFIG_FILE="${APP_PORT_DIR}/mbedtls/inc/SSLConfig.h")
 add_definitions(-DSET_TRUSTED_CERT_IN_SAMPLES)
 add_definitions(-DPICO_USE_FASTEST_SUPPORTED_CLOCK=1)
 add_definitions(-DPICO_FLASH_SPI_CLKDIV=4)
-#add_definitions(-DUART_PIO_DEBUG)
+
+# UART PIO Debug option - comment out to disable
+#set(UART_PIO_DEBUG ON)  # Set to OFF or comment out this line to disable
+if(UART_PIO_DEBUG)
+    add_definitions(-DUART_PIO_DEBUG)
+endif()
+
 if(${BOARD_NAME} STREQUAL PLATYPUS_S2E)
     add_definitions(-DPICO_DEFAULT_UART_BAUD_RATE=115200)
 else() 
