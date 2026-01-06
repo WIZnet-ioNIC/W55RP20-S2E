@@ -141,6 +141,10 @@ void uart_rs485_rs422_init(void);
 void uart_rs485_disable(void);
 void uart_rs485_enable(void);
 
+#ifdef UART_PIO_DEBUG
+void debug_uart_enable(void);
+#endif
+
 //#define MIN(_a, _b) (_a < _b) ? _a : _b
 #define MEM_FREE(mem_p) do{ if(mem_p) { free(mem_p); mem_p = NULL; } }while(0)	//
 //#define BITSET(var_v, bit_v) SET_BIT(var_v, bit_v)	//(var_v |= bit_v)

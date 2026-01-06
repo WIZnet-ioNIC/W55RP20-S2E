@@ -44,7 +44,7 @@ void device_set_factory_default(void) {
 void device_socket_termination(void) {
     uint8_t i;
     for (i = 0; i < _WIZCHIP_SOCK_NUM_; i++) {
-        process_socket_termination(i, SOCK_TERMINATION_DELAY);
+        process_socket_termination(i, SOCK_TERMINATION_DELAY, TRUE);
     }
 }
 

@@ -107,7 +107,7 @@ void net_status_task(void *argument) {
                         if (ret == DHCP_FAILED) {
                             PRT_ERR("NET_IP_UP DHCP Failed\r\n");
                             wizchip_recovery(dev_config->network_connection.working_mode);
-                            process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
+                            process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, TRUE);
                             break;
                         }
                     }
@@ -120,7 +120,7 @@ void net_status_task(void *argument) {
                         set_device_status(ST_OPEN);
                     }
                     PRT_INFO("NET_IP_UP PHY_LINK_OFF\r\n");
-                    process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
+                    process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, TRUE);
 #else   //device reset
                     device_raw_reboot();
 #endif

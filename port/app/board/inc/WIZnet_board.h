@@ -120,6 +120,10 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define HW_TRIG_PIN            14
 #define DATA0_UART_PORTNUM          (1)
 
+#ifdef UART_PIO_DEBUG
+#define DEBUG_UART_TX_PIN      0
+#endif
+
 #define LED1_PIN      STATUS_PHYLINK_PIN        //STATUS_PHYLINK
 #define LED2_PIN      STATUS_TCPCONNECT_PIN    //STATUS_TCP_PIN
 #define LED3_PIN      19    //Blink

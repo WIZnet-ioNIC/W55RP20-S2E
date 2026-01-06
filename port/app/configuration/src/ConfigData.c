@@ -214,7 +214,11 @@ void load_DevConfig_from_storage(void) {
     read_storage(STORAGE_MAC, dev_config.network_common.mac, 6);
 
     if (dev_config.serial_common.serial_debug_en) {
+#ifdef UART_PIO_DEBUG
+        debug_uart_enable();
+#else
         stdio_init_all();
+#endif
     }
 
     PRT_INFO("MAC = %02X%02X%02X%02X%02X%02X\r\n", dev_config.network_common.mac[0], dev_config.network_common.mac[1], dev_config.network_common.mac[2], \
