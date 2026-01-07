@@ -16,6 +16,7 @@
 #include "pico/stdlib.h"
 #include "pico/binary_info.h"
 #include "pico/critical_section.h"
+#include "pico/stdio/driver.h"
 
 #include "hardware/clocks.h"
 #include "hardware/dma.h"
