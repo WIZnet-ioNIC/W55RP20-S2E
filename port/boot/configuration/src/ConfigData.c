@@ -53,6 +53,8 @@ void set_DevConfig_to_factory_value(void) {
     dev_config.device_common.device_type[1] = 0x02;
 #elif (DEVICE_BOARD_NAME == IP20)
     dev_config.device_common.device_type[1] = 0x03;
+#elif (DEVICE_BOARD_NAME == PLATYPUS_S2E)
+    dev_config.device_common.device_type[1] = 0x04;
 #endif
     dev_config.device_common.device_type[2] = 0x01;
 

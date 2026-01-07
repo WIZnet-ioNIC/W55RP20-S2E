@@ -21,7 +21,7 @@
 
 typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 
-#if ((DEVICE_BOARD_NAME == WIZ5XXSR_RP) || DEVICE_BOARD_NAME == W55RP20_S2E || DEVICE_BOARD_NAME == W232N || DEVICE_BOARD_NAME == IP20) // Chip product
+#if ((DEVICE_BOARD_NAME == WIZ5XXSR_RP) || DEVICE_BOARD_NAME == W55RP20_S2E || DEVICE_BOARD_NAME == W232N || DEVICE_BOARD_NAME == IP20 || DEVICE_BOARD_NAME == PLATYPUS_S2E) // Chip product
 #define __USE_DHCP_INFINITE_LOOP__          // When this option is enabled, if DHCP IP allocation failed, process_dhcp() function will try to DHCP steps again.
 #define __USE_DNS_INFINITE_LOOP__           // When this option is enabled, if DNS query failed, process_dns() function will try to DNS steps again.
 #define __USE_HW_FACTORY_RESET__            // Use Factory reset pin
@@ -33,7 +33,7 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 //#define __USE_USERS_GPIO__
 #if (DEVICE_BOARD_NAME == WIZ5XXSR_RP)
 #define DEVICE_ID_DEFAULT                   "WIZ5XXSR-RP"
-#elif (DEVICE_BOARD_NAME == W55RP20_S2E)
+#elif (DEVICE_BOARD_NAME == W55RP20_S2E || DEVICE_BOARD_NAME == PLATYPUS_S2E)
 #define DEVICE_ID_DEFAULT                   "W55RP20-S2E"
 #elif (DEVICE_BOARD_NAME == W232N)
 #define DEVICE_ID_DEFAULT                   "W232N"
@@ -87,12 +87,17 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define LED3_PIN      12    //Blink
 #define LEDn    3
 
-#elif ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N) || (DEVICE_BOARD_NAME == IP20))
+#elif ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N) || (DEVICE_BOARD_NAME == IP20) || (DEVICE_BOARD_NAME == PLATYPUS_S2E))
 #define DTR_PIN                 8
 #define DSR_PIN                 9
 
+#if (DEVICE_BOARD_NAME == PLATYPUS_S2E)
+#define STATUS_PHYLINK_PIN      11
+#define STATUS_TCPCONNECT_PIN   10
+#else
 #define STATUS_PHYLINK_PIN      10
 #define STATUS_TCPCONNECT_PIN   11
+#endif
 
 // UART1
 #define DATA0_UART_TX_PIN      4

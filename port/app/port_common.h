@@ -18,6 +18,7 @@
 #include "pico/flash.h"
 #include "pico/multicore.h"
 #include "pico/critical_section.h"
+#include "pico/stdio/driver.h"
 #include "pico/rand.h"
 
 #include "hardware/clocks.h"
@@ -31,8 +32,10 @@
 #include "hardware/spi.h"
 #include "hardware/watchdog.h"
 
-#if ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N) || (DEVICE_BOARD_NAME == IP20))
+#if ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N) || (DEVICE_BOARD_NAME == IP20) || (DEVICE_BOARD_NAME == PLATYPUS_S2E))
 #include "hardware/pio.h"
+#else
+#include "hardware/spi.h"
 #endif
 
 #include "RP2040.h"

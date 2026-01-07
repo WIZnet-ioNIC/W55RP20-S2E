@@ -479,7 +479,11 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     sprintf(trep, "%d", get_connection_status_io(STATUS_PHYLINK_PIN)); // STATUS_PHYLINK_PIN (in) == DTR_PIN (out)
                     break;
                 case SEGCP_S1:
+#if (DEVICE_BOARD_NAME == PLATYPUS_S2E)
+                    sprintf(trep, "%d", !get_connection_status_io(STATUS_TCPCONNECT_PIN)); // STATUS_TCPCONNECT_PIN (in) == DSR_PIN (in)
+#else
                     sprintf(trep, "%d", get_connection_status_io(STATUS_TCPCONNECT_PIN)); // STATUS_TCPCONNECT_PIN (in) == DSR_PIN (in)
+#endif
                     break;
                 case SEGCP_RX:
                     data_buffer_flush();
@@ -687,7 +691,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
 #endif
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     else {
-                        process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
+                        process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, TRUE);
                         dev_config->network_connection.working_mode = tmp_byte;
                     }
                     break;
@@ -1302,7 +1306,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                                 dev_config->network_common.local_ip[3],
                                 (uint16_t)DEVICE_FWUP_PORT);
 
-                        process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY);
+                        process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, TRUE);
                         PRT_SEGCP("SEGCP_FW:OK\r\n");
                     }
                     break;
@@ -1744,7 +1748,7 @@ void segcp_serial_task(void *argument) {
             init_trigger_modeswitch(DEVICE_AT_MODE);
 
             // Socket disconnect (TCP only) / close
-            process_socket_termination(SOCK_DATA, SOCK_TERMINATION_DELAY);
+            process_socket_termination(SOCK_DATA, SOCK_TERMINATION_DELAY, TRUE);
 
             // Mode switch flag disabled
             sw_modeswitch_at_mode_on = SEG_DISABLE;
