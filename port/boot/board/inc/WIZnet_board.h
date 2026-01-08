@@ -18,6 +18,7 @@
 #define W55RP20_S2E 1
 #define W232N       2
 #define IP20        3
+#define PLATYPUS_S2E 4
 
 typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 
