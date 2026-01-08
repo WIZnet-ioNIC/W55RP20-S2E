@@ -542,7 +542,12 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     sprintf(trep, "%d", get_connection_status_io(STATUS_PHYLINK_PIN)); // STATUS_PHYLINK_PIN (in) == DTR_PIN (out)
                     break;
                 case SEGCP_S1:
+#if (DEVICE_BOARD_NAME == PLATYPUS_S2E)
+                    sprintf(trep, "%d", !get_connection_status_io(DATA0_STATUS_TCPCONNECT_PIN)); // STATUS_TCPCONNECT_PIN (in) == DSR_PIN (in)
+#else
                     sprintf(trep, "%d", get_connection_status_io(DATA0_STATUS_TCPCONNECT_PIN)); // STATUS_TCPCONNECT_PIN (in) == DSR_PIN (in)
+#endif
+
                     break;
                 case SEGCP_RX:
                     data_buffer_flush(SEG_DATA0_CH);
@@ -782,8 +787,8 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param_len != 1 || tmp_byte > MQTTS_CLIENT_MODE) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
-                        process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH);
-                        process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH);
+                        process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
+                        process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
                         dev_config->network_connection[0].working_mode = tmp_byte;
                     }
                     break;
@@ -793,8 +798,8 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param_len != 1 || tmp_byte > MQTTS_CLIENT_MODE) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
-                        process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH);
-                        process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH);
+                        process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
+                        process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
                         dev_config->network_connection[1].working_mode = tmp_byte;
                     }
                     break;
@@ -1436,7 +1441,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         dev_config->ssl_option[0].rootca_len = tmp_ptr - temp_buf;
                         temp_buf[dev_config->ssl_option[0].rootca_len] = 0;
 
-                        PRT_SEGCP("rootca_data = \r\n%s\r\n", temp_buf);
+                        //PRT_SEGCP("rootca_data = \r\n%s\r\n", temp_buf);
 
                         ret_2 = check_ca(temp_buf, dev_config->ssl_option[0].rootca_len);
                         if (ret_2 < 0) {
@@ -1585,8 +1590,8 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                                 dev_config->network_common.local_ip[3],
                                 (uint16_t)DEVICE_FWUP_PORT);
 
-                        process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH);
-                        process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH);
+                        process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
+                        process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
                         PRT_SEGCP("SEGCP_FW:OK\r\n");
                     }
                     break;
@@ -2021,8 +2026,8 @@ void segcp_serial_task(void *argument) {
             init_trigger_modeswitch(DEVICE_AT_MODE);
 
             // Socket disconnect (TCP only) / close
-            process_socket_termination(SOCK_DATA0, SOCK_TERMINATION_DELAY, SEG_DATA0_CH);
-            process_socket_termination(SOCK_DATA1, SOCK_TERMINATION_DELAY, SEG_DATA1_CH);
+            process_socket_termination(SOCK_DATA0, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
+            process_socket_termination(SOCK_DATA1, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
 
             // Mode switch flag disabled
             sw_modeswitch_at_mode_on = SEG_DISABLE;

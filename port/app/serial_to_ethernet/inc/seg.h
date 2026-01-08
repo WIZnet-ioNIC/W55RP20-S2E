@@ -107,7 +107,7 @@ void set_device_status(teDEVSTATUS status, int channel);
 uint8_t get_device_status(int channel);
 uint8_t get_serial_communation_protocol(int channel);
 
-uint8_t process_socket_termination(uint8_t sock, uint32_t timeout, int channel);
+uint8_t process_socket_termination(uint8_t sock, uint32_t timeout, int channel, uint8_t mutex);
 
 // Send Keep-alive packet manually (once)
 void send_keepalive_packet_manual(uint8_t sock);

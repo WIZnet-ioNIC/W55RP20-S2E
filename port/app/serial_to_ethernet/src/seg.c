@@ -82,7 +82,7 @@ extern xSemaphoreHandle seg_spi_pending_sem;
 extern xSemaphoreHandle net_seg_sem[DEVICE_UART_CNT];
 extern xSemaphoreHandle seg_timer_sem;
 extern xSemaphoreHandle segcp_uart_sem;
-extern xSemaphoreHandle seg_socket_sem[DEVICE_UART_CNT];
+extern xSemaphoreHandle seg_critical_sem[DEVICE_UART_CNT];
 extern xSemaphoreHandle seg_sem[DEVICE_UART_CNT];
 
 extern TimerHandle_t seg_inactivity_timer[DEVICE_UART_CNT];
@@ -306,9 +306,7 @@ void proc_SEG_udp(uint8_t sock, int channel) {
             flag |= SF_MULTI_ENABLE;
         }
         flag |= SOCK_IO_NONBLOCK;
-        xSemaphoreTake(seg_socket_sem[channel], portMAX_DELAY);
         int8_t s = socket(sock, Sn_MR_UDP, network_connection->local_port, 0);
-        xSemaphoreGive(seg_socket_sem[channel]);
 
         if (s == sock) {
             set_device_status(ST_UDP, channel);
@@ -360,7 +358,7 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
         ret = connect(sock, network_connection->remote_ip, network_connection->remote_port);
         if (ret < 0) {
             PRT_SEG(" > SEG:TCP_CLIENT_MODE:ConnectNetwork Err %d\r\n", ret);
-            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             break;
         }
 
@@ -425,14 +423,13 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
                 ether_to_uart(sock, channel); // receive remaining packets
             }
         }
-        //process_socket_termination(sock, SOCK_TERMINATION_DELAY);
         disconnect(sock);
         break;
 
     case SOCK_FIN_WAIT:
     case SOCK_CLOSED:
         set_device_status(ST_OPEN, channel);
-        process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+        process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
 
         u2e_size[channel] = 0;
         e2u_size[channel] = 0;
@@ -447,10 +444,8 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
 #ifdef _SEG_DEBUG_
         PRT_SEG(" > TCP CLIENT: client_any_port = %d\r\n", client_any_port);
 #endif
-        xSemaphoreTake(seg_socket_sem[channel], portMAX_DELAY);
-        int8_t s = socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
-        xSemaphoreGive(seg_socket_sem[channel]);
 
+        int8_t s = socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
         if (s == sock) {
             if ((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time) {
                 modeswitch_gap_time = serial_data_packing->packing_time;
@@ -464,7 +459,7 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
             if (serial_common->serial_debug_en) {
                 PRT_SEG(" > SEG:TCP_CLIENT_MODE:SOCKOPEN FAILED\r\n");
             }
-            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
         }
         break;
 
@@ -511,7 +506,7 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
         ret = connect(sock, network_connection->remote_ip, network_connection->remote_port);
         if (ret < 0) {
             PRT_SEG(" > SEG:TCP_CLIENT_OVER_TLS_MODE:ConnectNetwork Err %d\r\n", ret);
-            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             break;
         }
 
@@ -540,7 +535,7 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
 #endif
 
         if (ret != 0) { // TLS connection failed
-            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             if (serial_common->serial_debug_en) {
                 PRT_SEG(" > SEG:TCP_CLIENT_OVER_TLS_MODE: CONNECTION FAILED\r\n");
             }
@@ -607,13 +602,12 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
                 ether_to_uart(sock, channel);    // receive remaining packets
             }
         }
-        //process_socket_termination(sock, SOCK_TERMINATION_DELAY); // including disconnect(sock) function
         disconnect(sock);
         break;
 
     case SOCK_FIN_WAIT:
     case SOCK_CLOSED:
-        process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+        process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
         set_device_status(ST_OPEN, channel);
         if (wiz_tls_init(&s2e_tlsContext[channel], (int *)sock, channel) > 0) {
             u2e_size[channel] = 0;
@@ -626,9 +620,7 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
             }
 
             PRT_SEG(" > TCP CLIENT over TLS: client_any_port = %d\r\n", client_any_port);
-            xSemaphoreTake(seg_socket_sem[channel], portMAX_DELAY);
             int s = wiz_tls_socket(&s2e_tlsContext[channel], sock, source_port);
-            xSemaphoreGive(seg_socket_sem[channel]);
             if (s == sock) {
                 // Replace the command mode switch code GAP time (default: 500ms)
                 if ((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time) {
@@ -643,7 +635,7 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
                 PRT_SEG("wiz_tls_socket() failed\r\n");
                 wiz_tls_deinit(&s2e_tlsContext[channel]);
                 set_wiz_tls_init_state(DISABLE, channel);
-                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             }
         } else {
             PRT_SEG("wiz_tls_init() failed\r\n");
@@ -696,7 +688,7 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
         ret = connect(sock, network_connection->remote_ip, network_connection->remote_port);
         if (ret < 0) {
             PRT_SEG(" > SEG:MQTT_CLIENT_MODE:ConnectNetwork Err %d\r\n", ret);
-            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             break;
         }
         PRT_SEG(" > SEG:MQTT_CLIENT_MODE:TCP_CONNECTION\r\n");
@@ -707,7 +699,7 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
         ret = mqtt_transport_connect(&g_mqtt_config[channel], tcp_option->reconnection);
         if (ret < 0) {
             PRT_SEG(" > SEG:MQTT_CLIENT_MODE:MQTTConnect Err %d\r\n", ret);
-            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             break;
         }
         PRT_SEG(" > SEG:MQTT_CLIENT_MODE:MQTT_CONNECTION\r\n");
@@ -716,7 +708,7 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
             ret = mqtt_transport_subscribe(&g_mqtt_config[channel], mqtt_option->qos, (char *)mqtt_option->sub_topic_0);
             if (ret < 0) {
                 PRT_SEG(" > SEG:MQTT_CLIENT_MODE:MQTTSubscribe Err %d\r\n", ret);
-                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
                 break;
             }
         }
@@ -724,7 +716,7 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
             ret = mqtt_transport_subscribe(&g_mqtt_config[channel], mqtt_option->qos, (char *)mqtt_option->sub_topic_1);
             if (ret < 0) {
                 PRT_SEG(" > SEG:MQTT_CLIENT_MODE:MQTTSubscribe Err %d\r\n", ret);
-                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
                 break;
             }
         }
@@ -732,7 +724,7 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
             ret = mqtt_transport_subscribe(&g_mqtt_config[channel], mqtt_option->qos, (char *)mqtt_option->sub_topic_2);
             if (ret < 0) {
                 PRT_SEG(" > SEG:MQTT_CLIENT_MODE:MQTTSubscribe Err %d\r\n", ret);
-                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
                 break;
             }
         }
@@ -791,7 +783,7 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
 
     case SOCK_FIN_WAIT:
     case SOCK_CLOSED:
-        process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+        process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
         set_device_status(ST_OPEN, channel);
 
         u2e_size[channel] = 0;
@@ -804,10 +796,8 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
         }
 
         PRT_SEG(" > MQTT CLIENT: client_any_port = %d\r\n", client_any_port);
-        xSemaphoreTake(seg_socket_sem[channel], portMAX_DELAY);
-        int8_t s = socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
-        xSemaphoreGive(seg_socket_sem[channel]);
 
+        int8_t s = socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
         if (s == sock) {
             // Replace the command mode switch code GAP time (default: 500ms)
             if ((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time) {
@@ -821,7 +811,7 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
             if (serial_common->serial_debug_en) {
                 PRT_SEG(" > SEG:MQTT_CLIENT_MODE:SOCKOPEN FAILED\r\n");
             }
-            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             break;
         }
         void (*sub_callback)(uint8_t *, uint32_t);
@@ -837,7 +827,7 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
 
         if (ret < 0) {
             PRT_SEG(" > SEG:MQTT_CLIENT_MODE:INITIALIZE FAILED\r\n");
-            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
         }
 
         break;
@@ -882,7 +872,7 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
         ret = connect(sock, network_connection->remote_ip, network_connection->remote_port);
         if (ret < 0) {
             PRT_SEG(" > SEG:TCP_CLIENT_OVER_TLS_MODE:ConnectNetwork Err %d\r\n", ret);
-            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             break;
         }
         reg_val = SIK_ALL & 0x00FF;
@@ -896,7 +886,7 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
                               channel);
 
         if (ret != 0) { // TLS connection failed
-            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             if (serial_common->serial_debug_en) {
                 PRT_SEG(" > SEG:MQTTS_CLIENT_MODE: CONNECTION FAILED\r\n");
             }
@@ -908,7 +898,7 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
         ret = mqtt_transport_connect(&g_mqtt_config[channel], tcp_option->reconnection);
         if (ret < 0) {
             PRT_SEG(" > SEG:MQTTS_CLIENT_MODE:ConnectNetwork Err %d\r\n", ret);
-            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             break;
         }
 
@@ -918,7 +908,7 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
             ret = mqtt_transport_subscribe(&g_mqtt_config[channel], mqtt_option->qos, (char *)mqtt_option->sub_topic_0);
             if (ret < 0) {
                 PRT_SEG(" > SEG:MQTTS_CLIENT_MODE:MQTTSubscribe Err %d\r\n", ret);
-                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
                 break;
             }
         }
@@ -926,7 +916,7 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
             ret = mqtt_transport_subscribe(&g_mqtt_config[channel], mqtt_option->qos, (char *)mqtt_option->sub_topic_1);
             if (ret < 0) {
                 PRT_SEG(" > SEG:MQTTS_CLIENT_MODE:MQTTSubscribe Err %d\r\n", ret);
-                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
                 break;
             }
         }
@@ -934,7 +924,7 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
             ret = mqtt_transport_subscribe(&g_mqtt_config[channel], mqtt_option->qos, (char *)mqtt_option->sub_topic_2);
             if (ret < 0) {
                 PRT_SEG(" > SEG:MQTTS_CLIENT_MODE:MQTTSubscribe Err %d\r\n", ret);
-                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
                 break;
             }
         }
@@ -994,7 +984,7 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
 
     case SOCK_FIN_WAIT:
     case SOCK_CLOSED:
-        process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+        process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
         set_device_status(ST_OPEN, channel);
 
         if (wiz_tls_init(&s2e_tlsContext[channel], (int *)sock, channel) > 0) {
@@ -1009,9 +999,8 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
             }
 
             PRT_SEG(" > MQTTS_CLIENT_MODE:client_any_port = %d\r\n", client_any_port);
-            xSemaphoreTake(seg_socket_sem[channel], portMAX_DELAY);
+
             int s = wiz_tls_socket(&s2e_tlsContext[channel], sock, source_port);
-            xSemaphoreGive(seg_socket_sem[channel]);
             if (s == sock) {
                 // Replace the command mode switch code GAP time (default: 500ms)
                 if ((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time) {
@@ -1026,7 +1015,7 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
                 PRT_SEG("wiz_tls_socket() failed\r\n");
                 wiz_tls_deinit(&s2e_tlsContext[channel]);
                 set_wiz_tls_init_state(DISABLE, channel);
-                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             }
 
             void (*sub_callback)(uint8_t *, uint32_t);
@@ -1040,7 +1029,7 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
                                       mqtt_option->client_id, mqtt_option->user_name, mqtt_option->password, mqtt_option->keepalive,
                                       sub_callback, channel);
             if (ret < 0) {
-                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
                 PRT_SEG(" > SEG:MQTTS_CLIENT_MODE:INITIALIZE FAILED\r\n");
             }
         } else {
@@ -1152,21 +1141,17 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
             }
         }
         disconnect(sock);
-        //process_socket_termination(sock, SOCK_TERMINATION_DELAY);
         break;
 
     case SOCK_FIN_WAIT:
     case SOCK_CLOSED:
-        process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+        process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
         set_device_status(ST_OPEN, channel);
 
         u2e_size[channel] = 0;
         e2u_size[channel] = 0;
 
-        xSemaphoreTake(seg_socket_sem[channel], portMAX_DELAY);
         int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
-        xSemaphoreGive(seg_socket_sem[channel]);
-
         if (s == sock) {
             // Replace the command mode switch code GAP time (default: 500ms)
             if ((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time) {
@@ -1183,7 +1168,7 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
             if (serial_common->serial_debug_en) {
                 PRT_SEG(" > SEG:TCP_SERVER_MODE:SOCKOPEN FAILED\r\n");
             }
-            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
         }
         break;
 
@@ -1225,7 +1210,7 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
             // TCP connect exception checker; e.g., dns failed / zero srcip ... and etc.
             if (check_tcp_connect_exception(channel) == ON) {
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
-                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
                 reconnection_count = 0;
                 data_buffer_flush(channel);
                 mixed_state[channel] = MIXED_SERVER;
@@ -1237,7 +1222,7 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
             ret = connect(sock, network_connection->remote_ip, network_connection->remote_port);
             if (ret < 0) {
                 PRT_SEG(" > SEG:TCP_MIXED_MODE:ConnectNetwork Err %d\r\n", ret);
-                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             }
 
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
@@ -1245,7 +1230,7 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
 
             if (reconnection_count >= MAX_RECONNECTION_COUNT) {
                 PRT_SEG("reconnection_count >= MAX_RECONNECTION_COUNT\r\n");
-                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
                 reconnection_count = 0;
                 data_buffer_flush(channel);
                 mixed_state[channel] = MIXED_SERVER;
@@ -1346,7 +1331,6 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
                 ether_to_uart(sock, channel);    // receive remaining packets
             }
         }
-        //process_socket_termination(sock, SOCK_TERMINATION_DELAY);
         disconnect(sock);
         break;
 
@@ -1354,16 +1338,13 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
     case SOCK_CLOSED:
         PRT_SEG("case SOCK_FIN_WAIT or SOCK_CLOSED\r\n");
         set_device_status(ST_OPEN, channel);
-        process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+        process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
 
         if (mixed_state[channel] == MIXED_SERVER) { // MIXED_SERVER
             u2e_size[channel] = 0;
             e2u_size[channel] = 0;
 
-            xSemaphoreTake(seg_socket_sem[channel], portMAX_DELAY);
             int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
-            xSemaphoreGive(seg_socket_sem[channel]);
-
             if (s == sock) {
                 // Replace the command mode switch code GAP time (default: 500ms)
                 if ((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time) {
@@ -1380,7 +1361,7 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
                 if (serial_common->serial_debug_en) {
                     PRT_SEG(" > SEG:TCP_MIXED_MODE:SERVER_SOCKOPEN FAILED\r\n");
                 }
-                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             }
         } else { // MIXED_CLIENT
             PRT_INFO(" > SEG:TCP_MIXED_MODE:CLIENT_SOCKCLOSED\r\n");
@@ -1394,9 +1375,7 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
 #ifdef _SEG_DEBUG_
             PRT_SEG(" > TCP CLIENT: any_port = %d\r\n", source_port);
 #endif
-            xSemaphoreTake(seg_socket_sem[channel], portMAX_DELAY);
             int8_t s = socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
-            xSemaphoreGive(seg_socket_sem[channel]);
             if (s == sock) {
                 // Replace the command mode switch code GAP time (default: 500ms)
                 if ((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time) {
@@ -1410,7 +1389,7 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
                 if (serial_common->serial_debug_en) {
                     PRT_SEG(" > SEG:TCP_MIXED_MODE:CLIENT_SOCKOPEN FAILED\r\n");
                 }
-                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             }
         }
         break;
@@ -1777,7 +1756,7 @@ void send_keepalive_packet_manual(uint8_t sock) {
 }
 
 
-uint8_t process_socket_termination(uint8_t sock, uint32_t timeout, int channel) {
+uint8_t process_socket_termination(uint8_t sock, uint32_t timeout, int channel, uint8_t mutex) {
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
 
     int8_t ret;
@@ -1801,7 +1780,9 @@ uint8_t process_socket_termination(uint8_t sock, uint32_t timeout, int channel) 
     if (sock_status == SOCK_CLOSED) {
         return sock;
     }
-    xSemaphoreTake(seg_socket_sem[channel], portMAX_DELAY);
+    if (mutex == TRUE) {
+        xSemaphoreTake(seg_critical_sem[channel], portMAX_DELAY);
+    }
     if (network_connection->working_mode != UDP_MODE) { // TCP_SERVER_MODE / TCP_CLIENT_MODE / TCP_MIXED_MODE
         if ((sock_status == SOCK_ESTABLISHED) || (sock_status == SOCK_CLOSE_WAIT)) {
             do {
@@ -1814,7 +1795,9 @@ uint8_t process_socket_termination(uint8_t sock, uint32_t timeout, int channel) 
     }
 
     close(sock);
-    xSemaphoreGive(seg_socket_sem[channel]);
+    if (mutex == TRUE) {
+        xSemaphoreGive(seg_critical_sem[channel]);
+    }
     xSemaphoreGive(seg_sem[channel]);
     return sock;
 }
@@ -2267,7 +2250,9 @@ void seg0_task(void *argument)  {
             PRT_SEGCP("get_net_status() != NET_LINK_DISCONNECTED\r\n");
             xSemaphoreTake(net_seg_sem[SEG_DATA0_CH], portMAX_DELAY);
         }
+        xSemaphoreTake(seg_critical_sem[SEG_DATA0_CH], portMAX_DELAY);
         do_seg(SEG_DATA0_SOCK, SEG_DATA0_CH);
+        xSemaphoreGive(seg_critical_sem[SEG_DATA0_CH]);
         xSemaphoreTake(seg_sem[SEG_DATA0_CH], pdMS_TO_TICKS(10));
     }
 }
@@ -2279,7 +2264,9 @@ void seg1_task(void *argument)  {
             PRT_SEGCP("get_net_status() != NET_LINK_DISCONNECTED\r\n");
             xSemaphoreTake(net_seg_sem[SEG_DATA1_CH], portMAX_DELAY);
         }
+        xSemaphoreTake(seg_critical_sem[SEG_DATA1_CH], portMAX_DELAY);
         do_seg(SEG_DATA1_SOCK, SEG_DATA1_CH);
+        xSemaphoreGive(seg_critical_sem[SEG_DATA1_CH]);
         xSemaphoreTake(seg_sem[SEG_DATA1_CH], pdMS_TO_TICKS(10));
     }
 }
@@ -2290,18 +2277,19 @@ void seg0_u2e_task(void *argument)  {
 
     while (1) {
         xSemaphoreTake(seg_u2e_sem[SEG_DATA0_CH], portMAX_DELAY);
-
         switch (serial_mode) {
         case SEG_SERIAL_PROTOCOL_NONE :
+            xSemaphoreTake(seg_critical_sem[SEG_DATA0_CH], portMAX_DELAY);
             if (get_data_buffer_usedsize(SEG_DATA0_CH) || u2e_size[SEG_DATA0_CH]) {
                 if ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state[SEG_DATA0_CH] == MIXED_SERVER) && (ST_OPEN == get_device_status(SEG_DATA0_CH))) {
-                    process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH);
+                    process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, FALSE);
                     mixed_state[SEG_DATA0_CH] = MIXED_CLIENT;
                     xSemaphoreGive(seg_sem[SEG_DATA0_CH]);
                 } else if ((ST_CONNECT == get_device_status(SEG_DATA0_CH)) || network_connection->working_mode == UDP_MODE) {
                     uart_to_ether(SEG_DATA0_SOCK, SEG_DATA0_CH);
                 }
             }
+            xSemaphoreGive(seg_critical_sem[SEG_DATA0_CH]);
             break;
 
         case SEG_SERIAL_MODBUS_RTU :
@@ -2335,15 +2323,17 @@ void seg1_u2e_task(void *argument)  {
 
         switch (serial_mode) {
         case SEG_SERIAL_PROTOCOL_NONE :
+            xSemaphoreTake(seg_critical_sem[SEG_DATA1_CH], portMAX_DELAY);
             if (get_data_buffer_usedsize(SEG_DATA1_CH) || u2e_size[SEG_DATA1_CH]) {
                 if ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state[SEG_DATA1_CH] == MIXED_SERVER) && (ST_OPEN == get_device_status(SEG_DATA1_CH))) {
-                    process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH);
+                    process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, FALSE);
                     mixed_state[SEG_DATA1_CH] = MIXED_CLIENT;
                     xSemaphoreGive(seg_sem[SEG_DATA1_CH]);
                 } else if ((ST_CONNECT == get_device_status(SEG_DATA1_CH)) || network_connection->working_mode == UDP_MODE) {
                     uart_to_ether(SEG_DATA1_SOCK, SEG_DATA1_CH);
                 }
             }
+            xSemaphoreGive(seg_critical_sem[SEG_DATA1_CH]);
             break;
 
         case SEG_SERIAL_MODBUS_RTU :
@@ -2483,9 +2473,9 @@ void seg_timer_task(void *argument)  {
                 flag_inactivity[i] = SEG_DISABLE;
 #endif
                 if (i == SEG_DATA0_CH) {
-                    process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH);
+                    process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
                 } else if (i == SEG_DATA1_CH) {
-                    process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH);
+                    process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
                 }
             }
 
@@ -2515,9 +2505,9 @@ void seg_timer_task(void *argument)  {
                     printf(" > CONNECTION PW: AUTH TIMEOUT\r\n");
 #endif
                     if (i == SEG_DATA0_CH) {
-                        process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH);
+                        process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
                     } else if (i == SEG_DATA1_CH) {
-                        process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH);
+                        process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
                     }
                 }
             }

@@ -43,8 +43,6 @@
 #define DATA0_UART_ID uart1
 #define DATA1_UART_ID uart0
 
-#define DEBUG_UART_DEFAULT_BAUDRATE     (3000000)
-
 enum baud {
     baud_300 = 0,
     baud_600 = 1,
@@ -125,7 +123,5 @@ uint8_t get_uart_rs485_sel(int channel);
 void uart_rs485_rs422_init(int channel);
 void uart_rs485_disable(int channel);
 void uart_rs485_enable(int channel);
-
-void debug_uart_enable(void);
 
 #endif /* UARTHANDLER_H_ */

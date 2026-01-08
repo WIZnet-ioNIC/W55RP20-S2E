@@ -12,7 +12,6 @@
 #include "dns.h"
 
 bool repeating_timer_callback(struct repeating_timer *t) ;
-bool seg_recv_timer_callback(struct repeating_timer *t);
 
 volatile uint32_t delaytime_msec = 0;
 
@@ -29,8 +28,6 @@ static volatile time_t devtime_msec = 0;
 extern uint8_t factory_flag;
 static uint32_t factory_time;
 struct repeating_timer timer;
-
-struct repeating_timer seg_recv_timer;
 
 void Timer_Configuration(void) {
     add_repeating_timer_us(-1000, repeating_timer_callback, NULL, &timer);

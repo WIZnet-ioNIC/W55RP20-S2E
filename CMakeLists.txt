@@ -36,6 +36,7 @@ pico_sdk_init()
 set(BOARD_NAME W55RP20_S2E)
 #set(BOARD_NAME W232N)
 #set(BOARD_NAME IP20)
+#set(BOARD_NAME PLATYPUS_S2E)
 
 if(${BOARD_NAME} STREQUAL WIZ5XXSR_RP)
     set(WIZCHIP W5100S)
@@ -53,6 +54,10 @@ elseif(${BOARD_NAME} STREQUAL IP20)
     set(WIZNET_CHIP W5500)
     add_definitions(-D_WIZCHIP_=W5500)
     add_definitions(-DDEVICE_BOARD_NAME=IP20)
+elseif(${BOARD_NAME} STREQUAL PLATYPUS_S2E)
+    set(WIZNET_CHIP W5500)
+    add_definitions(-D_WIZCHIP_=W5500)
+    add_definitions(-DDEVICE_BOARD_NAME=PLATYPUS_S2E)
 else() 
     message(FATAL_ERROR "BOARD_NAME is wrong = ${BOARD_NAME}")
 endif()
@@ -112,7 +117,18 @@ add_definitions(-DMBEDTLS_CONFIG_FILE="${APP_PORT_DIR}/mbedtls/inc/SSLConfig.h")
 add_definitions(-DSET_TRUSTED_CERT_IN_SAMPLES)
 add_definitions(-DPICO_USE_FASTEST_SUPPORTED_CLOCK=1)
 add_definitions(-DPICO_FLASH_SPI_CLKDIV=4)
-add_definitions(-DPICO_DEFAULT_UART_BAUD_RATE=921600)
+
+# UART PIO Debug option - comment out to disable
+#set(UART_PIO_DEBUG ON)  # Set to OFF or comment out this line to disable
+if(UART_PIO_DEBUG)
+    add_definitions(-DUART_PIO_DEBUG)
+endif()
+
+if(${BOARD_NAME} STREQUAL PLATYPUS_S2E)
+    add_definitions(-DPICO_DEFAULT_UART_BAUD_RATE=115200)
+else() 
+    add_definitions(-DPICO_DEFAULT_UART_BAUD_RATE=3000000)
+endif()
 
 # Set compile options
 #add_compile_options(
