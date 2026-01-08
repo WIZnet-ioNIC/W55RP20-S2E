@@ -67,7 +67,11 @@ int main(void) {
     DevConfig *dev_config = get_DevConfig_pointer();
 
     RP2040_Init();
+#ifdef UART_PIO_DEBUG
+    debug_uart_enable();
+#else
     stdio_init_all();
+#endif
     //RP2040_W5X00_Init();
     PRT_INFO("Hello Bootloader\r\n");
     //while(1);
