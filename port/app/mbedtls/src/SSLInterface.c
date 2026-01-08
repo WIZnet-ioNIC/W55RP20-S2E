@@ -28,9 +28,17 @@ static int wiz_tls_init_state;
 
 int WIZnetRecvTimeOut(void *ctx, unsigned char *buf, size_t len, uint32_t timeout) {
     uint32_t start_ms = millis();
+    int ret;
+    uint16_t recv_size;
+
     do {
-        if (getSn_RX_RSR((uint8_t)ctx)) {
-            return recv((uint8_t)ctx, (uint8_t *)buf, (uint16_t)len);
+        recv_size = getSn_RX_RSR((uint8_t)ctx);
+        if (recv_size) {
+            ret = recv((uint8_t)ctx, (uint8_t *)buf, recv_size > len ? len : recv_size);
+            if (ret < 0) {
+                ret = 0;
+            }
+            return ret;
         }
         vTaskDelay(10);
     } while ((millis() - start_ms) < timeout);
@@ -41,19 +49,34 @@ int WIZnetRecvTimeOut(void *ctx, unsigned char *buf, size_t len, uint32_t timeou
 
 /*Shell for mbedtls recv function*/
 int WIZnetRecv(void *ctx, unsigned char *buf, unsigned int len) {
-    return (recv((uint8_t)ctx, (uint8_t *)buf, (uint16_t)len));
+    int ret;
+    uint16_t recv_size;
+
+    recv_size = getSn_RX_RSR((uint8_t)ctx);
+    if (recv_size > 0) {
+        ret = recv((uint8_t)ctx, (uint8_t *)buf, recv_size > len ? len : recv_size);
+        if (ret < 0) {
+            ret = 0;
+        }
+        return ret;
+    }
+    return 0;
 }
 
 /*Shell for mbedtls recv non-block function*/
 int WIZnetRecvNB(void *ctx, unsigned char *buf, unsigned int len) {
-    uint32_t recv_len = 0;
+    int ret;
+    uint16_t recv_size;
 
-    getsockopt((uint8_t)(ctx), SO_RECVBUF, &recv_len);
-    if (recv_len > 0) {
-        return recv((uint8_t)ctx, (uint8_t *)buf, (uint16_t)len);
-    } else {
-        return 0;
+    recv_size = getSn_RX_RSR((uint8_t)ctx);
+    if (recv_size > 0) {
+        ret = recv((uint8_t)ctx, (uint8_t *)buf, recv_size > len ? len : recv_size);
+        if (ret < 0) {
+            ret = 0;
+        }
+        return ret;
     }
+    return 0;
 }
 
 
@@ -398,7 +421,7 @@ int check_ca(uint8_t *ca_data, uint32_t ca_len) {
     mbedtls_x509_crt_init(&ca_cert);
 
 
-    PRT_SSL("ca_len = %d\r\n", ca_len);
+    //PRT_SSL("ca_len = %d\r\n", ca_len);
     ret = mbedtls_x509_crt_parse(&ca_cert, (const char *)ca_data, ca_len + 1);
     if (ret < 0) {
         PRT_SSL(" failed\r\n  !  mbedtls_x509_crt_parse returned -0x%x while parsing root cert\r\n", -ret);
@@ -416,7 +439,7 @@ int check_pkey(wiz_tls_context* tlsContext, uint8_t *pkey_data, uint32_t pkey_le
     mbedtls_pk_context pk_cert;
     mbedtls_pk_init(&pk_cert);
 
-    PRT_SSL("pkey_len = %d\r\n", pkey_len);
+    //PRT_SSL("pkey_len = %d\r\n", pkey_len);
 
     ret = mbedtls_pk_parse_key(&pk_cert, (const char *)pkey_data, pkey_len + 1, NULL, 0, mbedtls_ctr_drbg_random, tlsContext->ctr_drbg);
     if (ret != 0) {

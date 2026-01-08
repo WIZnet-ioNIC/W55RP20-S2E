@@ -1157,7 +1157,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         dev_config->ssl_option.rootca_len = tmp_ptr - temp_buf;
                         temp_buf[dev_config->ssl_option.rootca_len] = 0;
 
-                        PRT_SEGCP("rootca_data = \r\n%s\r\n", temp_buf);
+                        //PRT_SEGCP("rootca_data = \r\n%s\r\n", temp_buf);
 
                         ret_2 = check_ca(temp_buf, dev_config->ssl_option.rootca_len);
                         if (ret_2 < 0) {
@@ -1226,7 +1226,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                             strcat(trep, SEGCP_DELIMETER);
                         }
                     }
-                    PRT_SEGCP("g_clica_buf = \r\n%s\r\n", temp_buf);
+                    //PRT_SEGCP("g_clica_buf = \r\n%s\r\n", temp_buf);
                     vPortFree(temp_buf);
                     return ret;
                 }
@@ -1281,7 +1281,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                             strcat(trep, SEGCP_DELIMETER);
                         }
                     }
-                    PRT_SEGCP("pkey_data = \r\n%s\r\n", temp_buf);
+                    //PRT_SEGCP("pkey_data = \r\n%s\r\n", temp_buf);
                     vPortFree(temp_buf);
                     return ret;
                 }

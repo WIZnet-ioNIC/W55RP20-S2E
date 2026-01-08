@@ -87,8 +87,7 @@ void net_status_task(void *argument) {
                         PRT_INFO("flag_process_dns_success = ON\r\n");
                     } else {
                         PRT_ERR("NET_LINK_CONNECTED DNS Failed\r\n");
-                        wizchip_recovery(dev_config->network_connection.working_mode);
-                        break;
+                        flag_process_dns_success = OFF;
                     }
                     display_Dev_Info_dns();
                 }

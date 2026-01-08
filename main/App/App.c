@@ -253,7 +253,9 @@ void start_task(void *argument) {
     segcp_uart_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_e2u_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_u2e_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    seg_spi_pending_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    if (get_uart_spi_if()) {
+        seg_spi_pending_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    }
     seg_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_timer_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_critical_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)1);
@@ -267,7 +269,9 @@ void start_task(void *argument) {
 
     xTaskCreate(eth_interrupt_task, "ETH_INTERRUPT_Task", ETH_INTERRUPT_TASK_STACK_SIZE, NULL, ETH_INTERRUPT_TASK_PRIORITY, NULL);
     xTaskCreate(seg_task, "SEG_Task", SEG_TASK_STACK_SIZE, NULL, SEG_TASK_PRIORITY, NULL);
-    xTaskCreate(spi_data_transfer_task, "SPI_TRANSFER_TASK", SEG_SPI_TRANSFER_TASK_SIZE, NULL, SEG_SPI_TRANSFER_PRIORITY, NULL);
+    if (get_uart_spi_if()) {
+        xTaskCreate(spi_data_transfer_task, "SPI_TRANSFER_TASK", SEG_SPI_TRANSFER_TASK_SIZE, NULL, SEG_SPI_TRANSFER_PRIORITY, NULL);
+    }
     //xTaskCreate(spi_data_transfer_task, "SPI_TRANSFER_TASK", SEG_SPI_TRANSFER_TASK_SIZE, NULL, SEG_SPI_TRANSFER_PRIORITY, &task_handle);
     //vTaskCoreAffinitySet(task_handle, 1 << 1); // Set SPI transfer task to core 1
 

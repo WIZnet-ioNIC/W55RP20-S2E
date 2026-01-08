@@ -1762,9 +1762,6 @@ uint8_t process_socket_termination(uint8_t sock, uint32_t timeout, uint8_t mutex
         xSemaphoreTake(seg_critical_sem, portMAX_DELAY);
     }
     if (network_connection->working_mode != UDP_MODE) { // TCP_SERVER_MODE / TCP_CLIENT_MODE / TCP_MIXED_MODE
-        //if (network_connection->working_mode == TCP_MIXED_MODE)
-        //    mixed_state = MIXED_SERVER;
-
         if ((sock_status == SOCK_ESTABLISHED) || (sock_status == SOCK_CLOSE_WAIT)) {
             do {
                 ret = disconnect(sock);
