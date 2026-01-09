@@ -15,7 +15,7 @@
 
 #include "wizchip_conf.h"
 #include "w5x00_spi.h"
-#if ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N) || (DEVICE_BOARD_NAME == IP20))
+#if ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N) || (DEVICE_BOARD_NAME == IP20) || (DEVICE_BOARD_NAME == PLATYPUS_S2E))
 #include "wiznet_spi_pio.h"
 #endif
 
@@ -25,7 +25,7 @@
     ----------------------------------------------------------------------------------------------------
 */
 /* SPI */
-#if ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N) || (DEVICE_BOARD_NAME == IP20))
+#if ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N) || (DEVICE_BOARD_NAME == IP20) || (DEVICE_BOARD_NAME == PLATYPUS_S2E))
 #define USE_SPI_PIO
 #elif (DEVICE_BOARD_NAME == WIZ5XXSR_RP)
 /* SPI */

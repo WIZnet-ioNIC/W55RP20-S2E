@@ -2001,9 +2001,9 @@ uint8_t check_tcp_connect_exception(int channel) {
     getSIPR(srcip);
 
     // DNS failed
-    if ((network_connection->dns_use == SEG_ENABLE) && (flag_process_dns_success != ON)) {
+    if ((network_connection->dns_use == SEG_ENABLE) && (flag_process_dns_success[channel] != ON)) {
         if (serial_common->serial_debug_en) {
-            PRT_SEG(" > SEG:CONNECTION FAILED - DNS Failed flag_process_dns_success = %d\r\n", flag_process_dns_success);
+            PRT_SEG(" > SEG:CONNECTION FAILED - DNS Failed flag_process_dns_success[%d] = %d\r\n", channel, flag_process_dns_success[channel]);
         }
         ret = ON;
     }

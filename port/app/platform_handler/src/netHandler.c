@@ -5,6 +5,7 @@
 #include <task.h>
 #include <semphr.h>
 
+#include "WIZnet_board.h"
 #include "port_common.h"
 #include "netHandler.h"
 #include "deviceHandler.h"
@@ -33,7 +34,7 @@ NetStatus g_net_status = NET_LINK_DISCONNECTED;
 
 uint8_t flag_process_dhcp_success = OFF;
 uint8_t flag_dhcp_stop = OFF;
-uint8_t flag_process_dns_success = OFF;
+uint8_t flag_process_dns_success[DEVICE_UART_CNT] = {OFF, };
 
 NetStatus get_net_status(void) {
     return g_net_status;
@@ -85,11 +86,11 @@ void net_status_task(void *argument) {
                     //PRT_INFO("DNS waiting 3 seconds...\r\n");
                     //vTaskDelay(3000); // Wait for 3 seconds before starting DHCP
                     if (process_dns(SEG_DATA0_CH) == DNS_RET_SUCCESS) {
-                        flag_process_dns_success = ON;
-                        PRT_INFO("flag_process_dns_success = ON\r\n");
+                        flag_process_dns_success[SEG_DATA0_CH] = ON;
+                        PRT_INFO("flag_process_dns_success[SEG_DATA0_CH] = ON\r\n");
                     } else {
                         PRT_ERR("NET_LINK_CONNECTED DNS CH0 Failed\r\n");
-                        wizchip_recovery();
+                        flag_process_dns_success[SEG_DATA0_CH] = OFF;
                         break;
                     }
                     display_Dev_Info_dns(SEG_DATA0_CH);
@@ -102,11 +103,11 @@ void net_status_task(void *argument) {
                         memcpy(dev_config->network_connection[SEG_DATA1_CH].remote_ip, dev_config->network_connection[SEG_DATA0_CH].remote_ip, 4);
                     } else {
                         if (process_dns(SEG_DATA1_CH)) {
-                            flag_process_dns_success = ON;
-                            printf("flag_process_dns_success = ON\r\n");
+                            flag_process_dns_success[SEG_DATA1_CH] = ON;
+                            printf("flag_process_dns_success[SEG_DATA1_CH] = ON\r\n");
                         } else {
                             PRT_ERR("NET_LINK_CONNECTED DNS CH1 Failed\r\n");
-                            wizchip_recovery();
+                            flag_process_dns_success[SEG_DATA1_CH] = OFF;
                             break;
                         }
                     }
@@ -219,7 +220,8 @@ void wizchip_recovery(void) {
     PRT_INFO("W5500 RESET\r\n");
 
     g_net_status = NET_LINK_DISCONNECTED;
-    flag_process_dns_success = OFF;
+    flag_process_dns_success[SEG_DATA0_CH] = OFF;
+    flag_process_dns_success[SEG_DATA1_CH] = OFF;
     flag_process_dhcp_success = OFF;
 
     wizchip_reset();

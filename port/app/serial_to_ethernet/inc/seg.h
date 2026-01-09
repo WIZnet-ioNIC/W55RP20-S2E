@@ -47,7 +47,7 @@
 
 extern uint8_t opmode;
 extern uint8_t flag_process_dhcp_success;
-extern uint8_t flag_process_dns_success;
+extern uint8_t flag_process_dns_success[DEVICE_UART_CNT];
 extern char * str_working[];
 
 typedef enum {SEG_UART_RX, SEG_UART_TX, SEG_ETHER_RX, SEG_ETHER_TX, SEG_ALL} teDATADIR;

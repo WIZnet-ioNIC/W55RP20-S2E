@@ -28,9 +28,17 @@ static int wiz_tls_init_state[DEVICE_UART_CNT];
 
 int WIZnetRecvTimeOut(void *ctx, unsigned char *buf, size_t len, uint32_t timeout) {
     uint32_t start_ms = millis();
+    int ret;
+    uint16_t recv_size;
+
     do {
-        if (getSn_RX_RSR((uint8_t)ctx)) {
-            return recv((uint8_t)ctx, (uint8_t *)buf, (uint16_t)len);
+        recv_size = getSn_RX_RSR((uint8_t)ctx);
+        if (recv_size) {
+            ret = recv((uint8_t)ctx, (uint8_t *)buf, recv_size > len ? len : recv_size);
+            if (ret < 0) {
+                ret = 0;
+            }
+            return ret;
         }
         vTaskDelay(10);
     } while ((millis() - start_ms) < timeout);
@@ -41,19 +49,34 @@ int WIZnetRecvTimeOut(void *ctx, unsigned char *buf, size_t len, uint32_t timeou
 
 /*Shell for mbedtls recv function*/
 int WIZnetRecv(void *ctx, unsigned char *buf, unsigned int len) {
-    return (recv((uint8_t)ctx, (uint8_t *)buf, (uint16_t)len));
+    int ret;
+    uint16_t recv_size;
+
+    recv_size = getSn_RX_RSR((uint8_t)ctx);
+    if (recv_size > 0) {
+        ret = recv((uint8_t)ctx, (uint8_t *)buf, recv_size > len ? len : recv_size);
+        if (ret < 0) {
+            ret = 0;
+        }
+        return ret;
+    }
+    return 0;
 }
 
 /*Shell for mbedtls recv non-block function*/
 int WIZnetRecvNB(void *ctx, unsigned char *buf, unsigned int len) {
-    uint32_t recv_len = 0;
+    int ret;
+    uint16_t recv_size;
 
-    getsockopt((uint8_t)(ctx), SO_RECVBUF, &recv_len);
-    if (recv_len > 0) {
-        return recv((uint8_t)ctx, (uint8_t *)buf, (uint16_t)len);
-    } else {
-        return 0;
+    recv_size = getSn_RX_RSR((uint8_t)ctx);
+    if (recv_size > 0) {
+        ret = recv((uint8_t)ctx, (uint8_t *)buf, recv_size > len ? len : recv_size);
+        if (ret < 0) {
+            ret = 0;
+        }
+        return ret;
     }
+    return 0;
 }
 
 

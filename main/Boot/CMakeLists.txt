@@ -23,7 +23,7 @@ target_cl_options("-fdata-sections")
 target_link_options(${TARGET_NAME} PRIVATE "LINKER:--gc-sections")
 
 pico_enable_stdio_usb(${TARGET_NAME} 0)
-pico_enable_stdio_uart(${TARGET_NAME} 0)
+pico_enable_stdio_uart(${TARGET_NAME} 1)
 
 pico_add_extra_outputs(${TARGET_NAME})
 pico_set_binary_type(${TARGET_NAME} copy_to_ram)

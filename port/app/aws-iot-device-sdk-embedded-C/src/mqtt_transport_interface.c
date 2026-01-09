@@ -314,12 +314,18 @@ int32_t mqtt_write(NetworkContext_t *pNetworkContext, const void *pBuffer, size_
 }
 
 int32_t mqtt_read(NetworkContext_t *pNetworkContext, void *pBuffer, size_t bytesToRecv) {
-    int32_t size = 0;
+    int32_t ret;
+    uint16_t recv_size;
 
-    if (getSn_RX_RSR(pNetworkContext->socketDescriptor) > 0) {
-        size = recv(pNetworkContext->socketDescriptor, pBuffer, bytesToRecv);
+    recv_size = getSn_RX_RSR(pNetworkContext->socketDescriptor);
+    if (recv_size > 0) {
+        ret = recv(pNetworkContext->socketDescriptor, pBuffer, recv_size > bytesToRecv ? bytesToRecv : recv_size);
+        if (ret < 0) {
+            ret = 0;
+        }
+        return ret;
     }
-    return size;
+    return 0;
 }
 
 #ifdef __USE_S2E_OVER_TLS__

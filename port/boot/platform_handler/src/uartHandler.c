@@ -6,7 +6,9 @@
 #include "seg.h"
 #include "port_common.h"
 #include "WIZnet_board.h"
+#ifdef UART_PIO_DEBUG
 #include "uart_tx.pio.h"
+#endif
 
 /* Private typedef -----------------------------------------------------------*/
 
@@ -459,12 +461,13 @@ void set_uart_rts_pin_low(void) {
 
 #endif
 
+#ifdef UART_PIO_DEBUG
 static void debug_uart_init(void) {
     gpio_init(DEBUG_UART_TX_PIN);
     gpio_set_dir(DEBUG_UART_TX_PIN, GPIO_OUT);
 
     uint offset = pio_add_program(pio0, &uart_tx_program);
-    uart_tx_program_init(pio0, 0, offset, DEBUG_UART_TX_PIN, DEBUG_UART_DEFAULT_BAUDRATE);
+    uart_tx_program_init(pio0, 0, offset, DEBUG_UART_TX_PIN, PICO_DEFAULT_UART_BAUD_RATE);
 }
 
 static void debug_uart_puts(const char *buf, int len) {
@@ -482,3 +485,4 @@ void debug_uart_enable(void) {
     debug_uart_init();
     stdio_set_driver_enabled(&debug_driver, true);
 }
+#endif

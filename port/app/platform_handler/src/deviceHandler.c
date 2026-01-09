@@ -42,8 +42,8 @@ void device_set_factory_default(void) {
 
 
 void device_socket_termination(void) {
-    process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
-    process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
+    process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, FALSE);
+    process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, FALSE);
 
     for (int i = SEG_DATA1_SOCK + 1; i < _WIZCHIP_SOCK_NUM_; i++) {
         close(i);
@@ -492,7 +492,7 @@ void display_Dev_Info_dns(int channel) {
     DevConfig *dev_config = get_DevConfig_pointer();
 
     if (dev_config->network_connection[channel].dns_use) {
-        if (flag_process_dns_success == ON) {
+        if (flag_process_dns_success[channel] == ON) {
             PRT_INFO(" # DNS: %s => %d.%d.%d.%d : %d\r\n", dev_config->network_connection[channel].dns_domain_name,
                      dev_config->network_connection[channel].remote_ip[0],
                      dev_config->network_connection[channel].remote_ip[1],

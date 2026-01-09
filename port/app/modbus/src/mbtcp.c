@@ -54,7 +54,7 @@ static bool mbTCPGet(uint8_t sock, uint8_t ** ppucMBTCPFrame, uint16_t * usTCPLe
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
 
     uint16_t len;
-    uint16_t usTCPBufPos;
+    int usTCPBufPos;
     uint8_t  peerip[4];
     uint16_t peerport;
 
@@ -63,6 +63,9 @@ static bool mbTCPGet(uint8_t sock, uint8_t ** ppucMBTCPFrame, uint16_t * usTCPLe
     if (len > 0) {
         if (network_connection->working_mode == UDP_MODE) {
             usTCPBufPos = recvfrom(sock, aucTCPBuf[channel], len, peerip, &peerport);
+            if (usTCPBufPos < 0) {
+                usTCPBufPos = 0;
+            }
 
             if (memcmp(peerip, network_connection->remote_ip, sizeof(peerip)) || network_connection->remote_port != peerport) {
                 network_connection->remote_ip[0] = peerip[0];
@@ -73,6 +76,9 @@ static bool mbTCPGet(uint8_t sock, uint8_t ** ppucMBTCPFrame, uint16_t * usTCPLe
             }
         } else {
             usTCPBufPos = recv(sock, aucTCPBuf[channel], len);
+            if (usTCPBufPos < 0) {
+                usTCPBufPos = 0;
+            }
         }
         *ppucMBTCPFrame = aucTCPBuf[channel];
         *usTCPLength = usTCPBufPos;

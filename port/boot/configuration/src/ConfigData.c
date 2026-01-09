@@ -53,6 +53,8 @@ void set_DevConfig_to_factory_value(void) {
     dev_config.device_common.device_type[1] = 0x02;
 #elif (DEVICE_BOARD_NAME == IP20)
     dev_config.device_common.device_type[1] = 0x03;
+#elif (DEVICE_BOARD_NAME == PLATYPUS_S2E)
+    dev_config.device_common.device_type[1] = 0x04;
 #endif
     dev_config.device_common.device_type[2] = 0x01;
 
@@ -190,7 +192,7 @@ void load_boot_DevConfig_from_storage(void) {
     read_storage(STORAGE_MAC, dev_config.network_common.mac, 6);
 
     if (dev_config.serial_common.serial_debug_en) {
-        debug_uart_enable();
+        stdio_init_all();
     }
 
     PRT_INFO("MAC = %02X%02X%02X%02X%02X%02X\r\n", dev_config.network_common.mac[0], dev_config.network_common.mac[1], dev_config.network_common.mac[2], \
