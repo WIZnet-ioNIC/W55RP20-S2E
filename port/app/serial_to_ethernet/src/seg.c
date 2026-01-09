@@ -444,7 +444,6 @@ void proc_SEG_tcp_client(uint8_t sock) {
             source_port = get_tcp_any_port();
         }
 
-
 #ifdef _SEG_DEBUG_
         PRT_SEG(" > TCP CLIENT: client_any_port = %d\r\n", client_any_port);
 #endif
@@ -1125,7 +1124,6 @@ void proc_SEG_tcp_server(uint8_t sock) {
         break;
     }
 }
-
 
 void proc_SEG_tcp_mixed(uint8_t sock) {
     struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option);
