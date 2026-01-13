@@ -119,7 +119,7 @@ add_definitions(-DPICO_USE_FASTEST_SUPPORTED_CLOCK=1)
 add_definitions(-DPICO_FLASH_SPI_CLKDIV=4)
 
 # UART PIO Debug option - comment out to disable
-#set(UART_PIO_DEBUG ON)  # Set to OFF or comment out this line to disable
+set(UART_PIO_DEBUG ON)  # Set to OFF or comment out this line to disable
 if(UART_PIO_DEBUG)
     add_definitions(-DUART_PIO_DEBUG)
 endif()
