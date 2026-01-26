@@ -10,6 +10,7 @@
 
 volatile uint16_t phylink_check_time_msec = 0;
 uint8_t flag_check_phylink = 0;
+uint8_t serial_if = 0;  //0:UART, 1:SPI
 
 // LEDs on board
 const uint16_t LED_PIN[LEDn] = {LED1_PIN, LED2_PIN, LED3_PIN};
@@ -71,7 +72,33 @@ uint8_t get_hw_trig_pin(void) {
     return 0; // Low
 }
 
+void init_uart_spi_if_sel_pin(void) {
+    GPIO_Configuration(UART_SPI_IF_SEL_PIN, IO_INPUT, IO_PULLDOWN);
+    if (GPIO_Input_Read(UART_SPI_IF_SEL_PIN)) {
+        serial_if = 1;
+    } else {
+        serial_if = 0;
+    }
+}
 
+<<<<<<< HEAD
+=======
+uint8_t get_uart_spi_if(void) {
+    // Status of interface selector pin input; [0] UART mode, [1] SPI mode
+    return serial_if;
+}
+
+uint8_t get_spi_uart_if_sel_pin(void) {
+    // Status of UART interface selector pin input; [0] RS-232/TTL mode, [1] RS-422/485 mode
+    if (GPIO_Input_Read(UART_SPI_IF_SEL_PIN)) {
+        return UART_IF_RS485;
+    } else {
+        return UART_IF_DEFAULT;
+    }
+}
+
+
+>>>>>>> SPI
 void init_uart_if_sel_pin(void) {
     GPIO_Configuration(UART_IF_SEL_PIN, IO_INPUT, IO_PULLDOWN);
 }

@@ -3,13 +3,14 @@
 #include "port_common.h"
 #include "WIZnet_board.h"
 
+#include "bufferHandler.h"
 #include "uartHandler.h"
 #include "common.h"
 #include "mbserial.h"
 #include "mbrtu.h"
 #include "mbascii.h"
 
-BUFFER_DECLARATION(data0_rx);
+BUFFER_DECLARATION(data0_serial_rx);
 
 /*****************************************************************************
     Private functions
@@ -21,6 +22,7 @@ BUFFER_DECLARATION(data0_rx);
 */
 
 int UART_read(void *data, int bytes) {
+<<<<<<< HEAD
     uint32_t i;
     uint8_t *data_ptr = data;
     if (IS_BUFFER_EMPTY(data0_rx)) {
@@ -32,6 +34,9 @@ int UART_read(void *data, int bytes) {
     }
     BUFFER_OUT_MOVE(data0_rx, i);
     return i;
+=======
+    return data_buffer_gets(data, bytes);
+>>>>>>> SPI
 }
 
 uint32_t UART_write(void *data, int bytes) {

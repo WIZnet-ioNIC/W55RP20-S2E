@@ -22,11 +22,16 @@
 #define UART_IF_RS422                   1
 #define UART_IF_RS485                   2
 #define UART_IF_RS485_REVERSE           3
+<<<<<<< HEAD
+=======
+#define SPI_IF_SLAVE                    4
+>>>>>>> SPI
 
 #define UART_IF_STR_RS232_TTL          "TTL/RS-232"
 //#define UART_IF_STR_RS232               "RS-232"
 #define UART_IF_STR_RS422               "RS-422"
 #define UART_IF_STR_RS485               "RS-485"
+#define SPI_IF_STR_SLAVE                "SPI_SLAVE"
 
 // If the define '__USE_UART_IF_SELECTOR__' disabled, default UART interface is selected to be 'UART_IF_DEFAULT'
 //#define UART_IF_DEFAULT                 UART_IF_RS485
@@ -101,6 +106,7 @@ extern uint8_t * uart_if_table[];
 void on_uart_rx(void);
 void DEBUG_UART_Configuration(void);
 void DATA0_UART_Configuration(void);
+void DATA0_UART_Deinit(void);
 void DATA0_UART_Interrupt_Enable(void);
 void DATA1_UART_Configuration(void);
 
@@ -119,23 +125,20 @@ int32_t platform_uart_getc(void);                                 // Ring Buffer
 int32_t platform_uart_getc_nonblk(void);
 int32_t platform_uart_puts(uint8_t* buf, uint16_t bytes);
 int32_t platform_uart_gets(uint8_t* buf, uint16_t bytes);
-
 uint8_t get_byte_from_uart(void);                        // UART Port -> User
 void get_byte_from_uart_it(void);                        // UART Port -> User (global variable for IRQ handler)
-void put_byte_to_uart_buffer(uint8_t ch);          // User -> Ring Buffer
-
-uint16_t get_uart_buffer_usedsize(void);
-uint16_t get_uart_buffer_freesize(void);
-int8_t is_uart_buffer_empty(void);
-int8_t is_uart_buffer_full(void);
-
-void uart_rx_flush(void);                                // UART buffer flush
-
+void put_byte_to_data_buffer(uint8_t ch);          // User -> Ring Buffer
+uint16_t get_data_buffer_usedsize(void);
+uint16_t get_data_buffer_freesize(void);
+int8_t is_data_buffer_empty(void);
+int8_t is_data_buffer_full(void);
+void data_buffer_flush(void);
 uint8_t get_uart_rs485_sel(void);
 void uart_rs485_rs422_init(void);
 void uart_rs485_disable(void);
 void uart_rs485_enable(void);
 
+<<<<<<< HEAD
 #ifdef UART_PIO_DEBUG
 void debug_uart_enable(void);
 #endif
@@ -177,4 +180,6 @@ void debug_uart_enable(void);
 #define BUFFER_OUT_2ND_SIZE(_name) (_name##_wr)
 #define IS_BUFFER_OUT_SEPARATED(_name) (_name##_rd > _name##_wr)
 
+=======
+>>>>>>> SPI
 #endif /* UARTHANDLER_H_ */
