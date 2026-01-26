@@ -22,21 +22,7 @@ BUFFER_DECLARATION(data0_serial_rx);
 */
 
 int UART_read(void *data, int bytes) {
-<<<<<<< HEAD
-    uint32_t i;
-    uint8_t *data_ptr = data;
-    if (IS_BUFFER_EMPTY(data0_rx)) {
-        return RET_NOK;
-    }
-
-    for (i = 0; i < bytes; i++) {
-        data_ptr[i] = (uint8_t)BUFFER_OUT(data0_rx);
-    }
-    BUFFER_OUT_MOVE(data0_rx, i);
-    return i;
-=======
     return data_buffer_gets(data, bytes);
->>>>>>> SPI
 }
 
 uint32_t UART_write(void *data, int bytes) {

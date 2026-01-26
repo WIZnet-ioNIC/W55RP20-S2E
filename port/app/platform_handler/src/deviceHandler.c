@@ -349,23 +349,13 @@ void display_Dev_Info_main(void) {
 
     PRT_INFO(" - System clock: %lu Hz\n", clock_get_hz(clk_sys));
     PRT_INFO(" - Peri clock: %lu Hz\n", clock_get_hz(clk_peri));
-<<<<<<< HEAD
-
-=======
->>>>>>> SPI
     PRT_INFO(" - Device type: %s\r\n", dev_config->device_common.device_name);
     PRT_INFO(" - Device name: %s\r\n", dev_config->device_option.device_alias);
     PRT_INFO(" - Device group: %s\r\n", dev_config->device_option.device_group);
 
     PRT_INFO(" - Device mode: %s\r\n", str_working[dev_config->network_connection.working_mode]);
 
-<<<<<<< HEAD
-    PRT_INFO(" - Data channel: [UART Port %d] %s mode\r\n", ((dev_config->serial_option.uart_interface == UART_IF_RS232_TTL) ||
-             (dev_config->serial_option.uart_interface == UART_IF_RS232_TTL)) ? 0 : 1,
-             uart_if_table[dev_config->serial_option.uart_interface]);
-=======
     PRT_INFO(" - Serial %s mode\r\n", (uart_if_table[dev_config->serial_option.uart_interface]));
->>>>>>> SPI
     PRT_INFO(" - Network settings: \r\n");
     PRT_INFO("\t- Obtaining IP settings: [%s]\r\n", (dev_config->network_option.dhcp_use == 1) ? "Automatic - DHCP" : "Static");
     PRT_INFO("\t- TCP/UDP ports\r\n");
@@ -397,63 +387,6 @@ void display_Dev_Info_main(void) {
     if (dev_config->serial_option.uart_interface != SPI_IF_SLAVE) {
         PRT_INFO(" - Serial settings: \r\n");
 
-<<<<<<< HEAD
-    //todo:
-    PRT_INFO("\t- Communication Protocol: ");
-    serial_mode = get_serial_communation_protocol();
-    if (serial_mode) {
-        PRT_INFO("[%s]\r\n", (serial_mode == SEG_SERIAL_MODBUS_RTU) ? STR_MODBUS_RTU : STR_MODBUS_ASCII);
-    } else {
-        PRT_INFO("[%s]\r\n", STR_DISABLED);
-    }
-
-    PRT_INFO("\t- Data %s port:\r\n", STR_UART);
-    PRT_INFO("\t   + UART IF: [%s]\r\n", uart_if_table[dev_config->serial_option.uart_interface]);
-    printf("\t   + %ld-", baud_table[dev_config->serial_option.baud_rate]);
-    printf("%d-", word_len_table[dev_config->serial_option.data_bits]);
-    printf("%s-", parity_table[dev_config->serial_option.parity]);
-    printf("%d / ", stop_bit_table[dev_config->serial_option.stop_bits]);
-    if (dev_config->serial_option.uart_interface == UART_IF_RS232_TTL) {
-        printf("Flow control: %s", flow_ctrl_table[dev_config->serial_option.flow_control]);
-    } else if ((dev_config->serial_option.uart_interface == UART_IF_RS422) || (dev_config->serial_option.uart_interface == UART_IF_RS485)) {
-        if ((dev_config->serial_option.flow_control == flow_rtsonly) || (dev_config->serial_option.flow_control == flow_reverserts)) {
-            printf("Flow control: %s", flow_ctrl_table[dev_config->serial_option.flow_control]);
-        } else {
-            printf("Flow control: %s", flow_ctrl_table[0]); // RS-422/485; flow control - NONE only
-        }
-    }
-    PRT_INFO("\r\n");
-
-    PRT_INFO("\t- Debug %s port:\r\n", STR_UART);
-    PRT_INFO("\t   + %s / %s %s\r\n", "921600-8-N-1", "NONE", "(fixed)");
-
-    PRT_INFO(" - Serial data packing options:\r\n");
-    PRT_INFO("\t- Time: ");
-    if (dev_config->serial_data_packing.packing_time) {
-        PRT_INFO("[%d] (msec)\r\n", dev_config->serial_data_packing.packing_time);
-    } else {
-        PRT_INFO("%s\r\n", STR_DISABLED);
-    }
-    PRT_INFO("\t- Size: ");
-    if (dev_config->serial_data_packing.packing_size) {
-        PRT_INFO("[%d] (bytes)\r\n", dev_config->serial_data_packing.packing_size);
-    } else {
-        PRT_INFO("%s\r\n", STR_DISABLED);
-    }
-    PRT_INFO("\t- Char: ");
-    if (dev_config->serial_data_packing.packing_delimiter_length == 1) {
-        PRT_INFO("[%.2X] (hex only)\r\n", dev_config->serial_data_packing.packing_delimiter[0]);
-    } else {
-        PRT_INFO("%s\r\n", STR_DISABLED);
-    }
-
-    PRT_INFO(" - Serial command mode switch code:\r\n");
-    PRT_INFO("\t- %s\r\n", (dev_config->serial_command.serial_command == 1) ? STR_ENABLED : STR_DISABLED);
-    PRT_INFO("\t- [%.2X][%.2X][%.2X] (Hex only)\r\n",
-             dev_config->serial_command.serial_trigger[0],
-             dev_config->serial_command.serial_trigger[1],
-             dev_config->serial_command.serial_trigger[2]);
-=======
         //todo:
         PRT_INFO("\t- Communication Protocol: ");
         serial_mode = get_serial_communation_protocol();
@@ -510,7 +443,6 @@ void display_Dev_Info_main(void) {
     PRT_INFO("\t- Debug %s port:\r\n", STR_UART);
     PRT_INFO("\t   + %s / %s %s\r\n", "921600-8-N-1", "NONE", "(fixed)");
 
->>>>>>> SPI
 
 #ifdef __USE_USERS_GPIO__ // not used
     PRT_INFO(" - Hardware information: User I/O pins\r\n");

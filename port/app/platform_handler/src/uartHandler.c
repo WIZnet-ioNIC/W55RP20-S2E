@@ -34,11 +34,7 @@ uint8_t word_len_table[] = {7, 8, 9};
 uint8_t * parity_table[] = {(uint8_t *)"N", (uint8_t *)"ODD", (uint8_t *)"EVEN"};
 uint8_t stop_bit_table[] = {1, 2};
 uint8_t * flow_ctrl_table[] = {(uint8_t *)"NONE", (uint8_t *)"XON/XOFF", (uint8_t *)"RTS/CTS", (uint8_t *)"RTS Only", (uint8_t *)"RTS Only Reverse"};
-<<<<<<< HEAD
-uint8_t * uart_if_table[] = {(uint8_t *)UART_IF_STR_RS232_TTL, (uint8_t *)UART_IF_STR_RS422, (uint8_t *)UART_IF_STR_RS485, (uint8_t *)UART_IF_STR_RS485};
-=======
 uint8_t * uart_if_table[] = {(uint8_t *)UART_IF_STR_RS232_TTL, (uint8_t *)UART_IF_STR_RS422, (uint8_t *)UART_IF_STR_RS485, (uint8_t *)UART_IF_STR_RS485, (uint8_t *)SPI_IF_STR_SLAVE};
->>>>>>> SPI
 
 // XON/XOFF Status;
 static uint8_t xonoff_status = UART_XON;
@@ -76,21 +72,12 @@ void on_uart_rx(void) {
         ch = uart_getc(UART_ID);
 
         if (!(check_modeswitch_trigger(ch))) { // ret: [0] data / [!0] trigger code
-<<<<<<< HEAD
-            if (is_uart_buffer_full() == TRUE) {
-                uart_rx_flush();
-            }
-
-            if (check_serial_store_permitted(ch)) { // ret: [0] not permitted / [1] permitted
-                put_byte_to_uart_buffer(ch);
-=======
             if (is_data_buffer_full() == TRUE) {
                 data_buffer_flush();
             }
 
             if (check_serial_store_permitted(ch)) { // ret: [0] not permitted / [1] permitted
                 put_byte_to_data_buffer(ch);
->>>>>>> SPI
                 input_flag = 1;
             }
         }
@@ -243,14 +230,11 @@ void DATA0_UART_Configuration(void) {
     PRT_INFO("baud = %d\r\n", baud_table[serial_option->baud_rate]);
 }
 
-<<<<<<< HEAD
-=======
 void DATA0_UART_Deinit(void) {
     uart_deinit(UART_ID);
 }
 
 
->>>>>>> SPI
 void DATA0_UART_Interrupt_Enable(void) {
     // And set up and enable the interrupt handlers
     int UART_IRQ = UART_ID == uart0 ? UART0_IRQ : UART1_IRQ;
@@ -270,21 +254,13 @@ void DATA0_UART_Interrupt_Enable(void) {
 
 void check_uart_flow_control(uint8_t flow_ctrl) {
     if (flow_ctrl == flow_xon_xoff) {
-<<<<<<< HEAD
-        if ((xonoff_status == UART_XON) && (get_uart_buffer_usedsize() > UART_OFF_THRESHOLD)) { // Send the transmit stop command to peer - go XOFF
-=======
         if ((xonoff_status == UART_XON) && (get_data_buffer_usedsize() > UART_OFF_THRESHOLD)) { // Send the transmit stop command to peer - go XOFF
->>>>>>> SPI
             platform_uart_putc(UART_XOFF);
             xonoff_status = UART_XOFF;
 #ifdef _UART_DEBUG_
             printf(" >> SEND XOFF [%d / %d]\r\n", get_data_buffer_usedsize(), SEG_DATA_BUF_SIZE);
 #endif
-<<<<<<< HEAD
-        } else if ((xonoff_status == UART_XOFF) && (get_uart_buffer_usedsize() < UART_ON_THRESHOLD)) { // Send the transmit start command to peer. -go XON
-=======
         } else if ((xonoff_status == UART_XOFF) && (get_data_buffer_usedsize() < UART_ON_THRESHOLD)) { // Send the transmit start command to peer. -go XON
->>>>>>> SPI
             platform_uart_putc(UART_XON);
             xonoff_status = UART_XON;
 #ifdef _UART_DEBUG_
@@ -295,11 +271,7 @@ void check_uart_flow_control(uint8_t flow_ctrl) {
 #ifdef __USE_GPIO_HARDWARE_FLOWCONTROL__
     else if (flow_ctrl == flow_rts_cts) { // RTS pin control
         // Buffer full occurred
-<<<<<<< HEAD
-        if ((rts_status == UART_RTS_LOW) && (get_uart_buffer_usedsize(uartNum) > UART_OFF_THRESHOLD)) {
-=======
         if ((rts_status == UART_RTS_LOW) && (get_data_buffer_usedsize() > UART_OFF_THRESHOLD)) {
->>>>>>> SPI
             set_uart_rts_pin_high(uartNum);
             rts_status = UART_RTS_HIGH;
 #ifdef _UART_DEBUG_
@@ -308,11 +280,7 @@ void check_uart_flow_control(uint8_t flow_ctrl) {
         }
 
         // Clear the buffer full event
-<<<<<<< HEAD
-        if ((rts_status == UART_RTS_HIGH) && (get_uart_buffer_usedsize(uartNum) <= UART_OFF_THRESHOLD)) {
-=======
         if ((rts_status == UART_RTS_HIGH) && (get_data_buffer_usedsize() <= UART_OFF_THRESHOLD)) {
->>>>>>> SPI
             set_uart_rts_pin_low(uartNum);
             rts_status = UART_RTS_LOW;
 #ifdef _UART_DEBUG_
@@ -352,84 +320,6 @@ int32_t platform_uart_puts(uint8_t* buf, uint16_t bytes) {
     return bytes;
 }
 
-<<<<<<< HEAD
-int32_t platform_uart_getc(void) {
-    int32_t ch;
-
-    while (IS_BUFFER_EMPTY(data0_rx));
-    ch = (int32_t)BUFFER_OUT(data0_rx);
-    BUFFER_OUT_MOVE(data0_rx, 1);
-
-    return ch;
-}
-
-int32_t platform_uart_getc_nonblk(void) {
-    int32_t ch;
-
-    if (IS_BUFFER_EMPTY(data0_rx)) {
-        return RET_NOK;
-    }
-    ch = (int32_t)BUFFER_OUT(data0_rx);
-    BUFFER_OUT_MOVE(data0_rx, 1);
-
-    return ch;
-}
-
-int32_t platform_uart_gets(uint8_t* buf, uint16_t bytes) {
-    uint16_t lentot = 0, len1st = 0;
-
-    lentot = bytes = MIN(BUFFER_USED_SIZE(data0_rx), bytes);
-    if (IS_BUFFER_OUT_SEPARATED(data0_rx) && (len1st = BUFFER_OUT_1ST_SIZE(data0_rx)) < bytes) {
-        memcpy(buf, &BUFFER_OUT(data0_rx), len1st);
-        BUFFER_OUT_MOVE(data0_rx, len1st);
-        bytes -= len1st;
-    }
-    memcpy(buf + len1st, &BUFFER_OUT(data0_rx), bytes);
-    BUFFER_OUT_MOVE(data0_rx, bytes);
-
-    return lentot;
-}
-
-void uart_rx_flush(void) {
-    BUFFER_CLEAR(data0_rx);
-}
-
-void put_byte_to_uart_buffer(uint8_t ch) {
-    BUFFER_IN(data0_rx) = ch;
-    BUFFER_IN_MOVE(data0_rx, 1);
-}
-
-
-uint16_t get_uart_buffer_usedsize(void) {
-    uint16_t len = 0;
-
-    len = BUFFER_USED_SIZE(data0_rx);
-    return len;
-}
-
-uint16_t get_uart_buffer_freesize(void) {
-    uint16_t len = 0;
-
-    len = BUFFER_FREE_SIZE(data0_rx);
-    return len;
-}
-
-int8_t is_uart_buffer_empty(void) {
-    int8_t ret = 0;
-
-    ret = IS_BUFFER_EMPTY(data0_rx);
-    return ret;
-}
-
-int8_t is_uart_buffer_full(void) {
-    int8_t ret = 0;
-
-    ret = IS_BUFFER_FULL(data0_rx);
-    return ret;
-}
-
-=======
->>>>>>> SPI
 #ifdef __USE_UART_485_422__
 uint8_t get_uart_rs485_sel(void) {
     GPIO_Configuration(DATA0_UART_RTS_PIN, GPIO_IN, IO_PULLUP);// UART0 RTS pin: GPIO / Input

@@ -1,7 +1,4 @@
-<<<<<<< HEAD
-=======
 #include <stdint.h>
->>>>>>> SPI
 #include <stdlib.h>
 #include <string.h>
 #include "common.h"
@@ -82,10 +79,7 @@ extern volatile uint8_t mb_state_ascii_finish;
 
 extern xSemaphoreHandle seg_e2u_sem;
 extern xSemaphoreHandle seg_u2e_sem;
-<<<<<<< HEAD
-=======
 extern xSemaphoreHandle seg_spi_pending_sem;
->>>>>>> SPI
 extern xSemaphoreHandle seg_sem;
 extern xSemaphoreHandle net_seg_sem;
 extern xSemaphoreHandle seg_timer_sem;
@@ -304,11 +298,7 @@ void proc_SEG_udp(uint8_t sock) {
     case SOCK_CLOSED:
         if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
             // UART Ring buffer clear
-<<<<<<< HEAD
-            uart_rx_flush();
-=======
             data_buffer_flush();
->>>>>>> SPI
         }
 
         u2e_size = 0;
@@ -405,11 +395,7 @@ void proc_SEG_tcp_client(uint8_t sock) {
             }
 
             if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
-<<<<<<< HEAD
-                uart_rx_flush();    // UART Ring buffer clear
-=======
                 data_buffer_flush();    // UART Ring buffer clear
->>>>>>> SPI
             }
 
             if (tcp_option->inactivity) {
@@ -577,11 +563,7 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock) {
             }
 
             if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
-<<<<<<< HEAD
-                uart_rx_flush();    // UART Ring buffer clear
-=======
                 data_buffer_flush();    // UART Ring buffer clear
->>>>>>> SPI
             }
 
             if (tcp_option->inactivity) {
@@ -753,11 +735,7 @@ void proc_SEG_mqtt_client(uint8_t sock) {
             }
 
             if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
-<<<<<<< HEAD
-                uart_rx_flush();    // UART Ring buffer clear
-=======
                 data_buffer_flush();    // UART Ring buffer clear
->>>>>>> SPI
             }
 
             if (tcp_option->inactivity) {
@@ -940,11 +918,7 @@ void proc_SEG_mqtts_client(uint8_t sock) {
             }
 
             if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
-<<<<<<< HEAD
-                uart_rx_flush();
-=======
                 data_buffer_flush();
->>>>>>> SPI
             }
 
             if (tcp_option->inactivity) {
@@ -1073,11 +1047,7 @@ void proc_SEG_tcp_server(uint8_t sock) {
             }
 
             if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
-<<<<<<< HEAD
-                uart_rx_flush();    // UART Ring buffer clear
-=======
                 data_buffer_flush();    // UART Ring buffer clear
->>>>>>> SPI
             }
 
             if (tcp_option->inactivity) {
@@ -1158,6 +1128,7 @@ void proc_SEG_tcp_server(uint8_t sock) {
 void proc_SEG_tcp_mixed(uint8_t sock) {
     struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option);
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection);
+    struct __network_option *network_option = (struct __network_option *) & (get_DevConfig_pointer()->network_option);
     struct __serial_common *serial_common = (struct __serial_common *)&get_DevConfig_pointer()->serial_common;
     struct __serial_command *serial_command = (struct __serial_command *)&get_DevConfig_pointer()->serial_command;
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *) & (get_DevConfig_pointer()->serial_data_packing);
@@ -1189,11 +1160,7 @@ void proc_SEG_tcp_mixed(uint8_t sock) {
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
                 process_socket_termination(sock, SOCK_TERMINATION_DELAY, FALSE);
                 reconnection_count = 0;
-<<<<<<< HEAD
-                uart_rx_flush();
-=======
                 data_buffer_flush();
->>>>>>> SPI
                 mixed_state = MIXED_SERVER;
 #endif
                 return;
@@ -1209,15 +1176,11 @@ void proc_SEG_tcp_mixed(uint8_t sock) {
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
             reconnection_count++;
 
-            if (reconnection_count >= MAX_RECONNECTION_COUNT) {
-                PRT_SEG("reconnection_count >= MAX_RECONNECTION_COUNT\r\n");
+            if (reconnection_count >= network_option->tcp_rcr_val) {
+                PRT_SEG("reconnection_count >= network_option->tcp_rcr_val\r\n");
                 process_socket_termination(sock, SOCK_TERMINATION_DELAY, FALSE);
                 reconnection_count = 0;
-<<<<<<< HEAD
-                uart_rx_flush();
-=======
                 data_buffer_flush();
->>>>>>> SPI
                 mixed_state = MIXED_SERVER;
             }
 #ifdef _SEG_DEBUG_
@@ -1277,11 +1240,7 @@ void proc_SEG_tcp_mixed(uint8_t sock) {
             // Check the connection password auth timer
             if (mixed_state == MIXED_SERVER) {
                 // Connection Password option: TCP server mode only (+ mixed_server)
-<<<<<<< HEAD
-                uart_rx_flush();
-=======
                 data_buffer_flush();
->>>>>>> SPI
                 flag_auth_time = SEG_DISABLE;
                 if (tcp_option->pw_connect_en == SEG_ENABLE) {
                     if (seg_auth_timer == NULL) {
@@ -1290,11 +1249,7 @@ void proc_SEG_tcp_mixed(uint8_t sock) {
                     xTimerStart(seg_auth_timer, 0);
                 }
             } else {
-<<<<<<< HEAD
-                if (get_uart_buffer_usedsize() || u2e_size) {
-=======
                 if (get_data_buffer_usedsize() || u2e_size) {
->>>>>>> SPI
                     xSemaphoreGive(seg_u2e_sem);
                 }
                 mixed_state = MIXED_SERVER;
@@ -1326,11 +1281,7 @@ void proc_SEG_tcp_mixed(uint8_t sock) {
         if (mixed_state == MIXED_SERVER) { // MIXED_SERVER
             u2e_size = 0;
             e2u_size = 0;
-<<<<<<< HEAD
-            uart_rx_flush();
-=======
             data_buffer_flush();
->>>>>>> SPI
 
             int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
 
@@ -1400,15 +1351,11 @@ void uart_to_ether(uint8_t sock) {
 
     // UART ring buffer -> user's buffer
 
-<<<<<<< HEAD
-    len = get_serial_data();
-=======
     if (get_uart_spi_if()) {
         len = u2e_size;
     } else {
         len = get_serial_data();
     }
->>>>>>> SPI
 
     if (len > 0) {
         serial_input_time = 0;
@@ -1459,14 +1406,11 @@ void uart_to_ether(uint8_t sock) {
         if (sent_len > 0) {
             u2e_size -= sent_len;
         }
-<<<<<<< HEAD
-=======
 
         if (get_uart_spi_if()) {
             spi_send_ack();
             irq_set_enabled(SPI0_IRQ, true);
         }
->>>>>>> SPI
     }
 }
 
@@ -1476,20 +1420,12 @@ uint16_t get_serial_data(void) {
     uint16_t i;
     uint16_t len;
 
-<<<<<<< HEAD
-    len = get_uart_buffer_usedsize();
-=======
     len = get_data_buffer_usedsize();
->>>>>>> SPI
 
     if ((len + u2e_size) >= DATA_BUF_SIZE) { // Avoiding u2e buffer (g_send_buf) overflow
         /* Checking Data packing option: character delimiter */
         if ((serial_data_packing->packing_delimiter[0] != 0x00) && (len == 1)) {
-<<<<<<< HEAD
-            g_send_buf[u2e_size] = (uint8_t)platform_uart_getc();
-=======
             g_send_buf[u2e_size] = (uint8_t)data_buffer_getc();
->>>>>>> SPI
             if (serial_data_packing->packing_delimiter[0] == g_send_buf[u2e_size]) {
                 return u2e_size;
             }
@@ -1498,23 +1434,6 @@ uint16_t get_serial_data(void) {
         // serial data length value update for avoiding u2e buffer overflow
         len = DATA_BUF_SIZE - u2e_size;
     }
-<<<<<<< HEAD
-
-    if ((!serial_data_packing->packing_time) &&
-            (!serial_data_packing->packing_size) &&
-            (!serial_data_packing->packing_delimiter[0])) { // No Data Packing tiem / size / delimiters.
-        // ## 20150427 bugfix: Incorrect serial data storing (UART ring buffer to g_send_buf)
-        for (i = 0; i < len; i++) {
-            g_send_buf[u2e_size++] = (uint8_t)platform_uart_getc();
-        }
-
-        return u2e_size;
-    } else {
-        /* Checking Data packing options */
-        for (i = 0; i < len; i++) {
-            g_send_buf[u2e_size++] = (uint8_t)platform_uart_getc();
-
-=======
 
     if ((!serial_data_packing->packing_time) &&
             (!serial_data_packing->packing_size) &&
@@ -1530,7 +1449,6 @@ uint16_t get_serial_data(void) {
         for (i = 0; i < len; i++) {
             g_send_buf[u2e_size++] = (uint8_t)data_buffer_getc();
 
->>>>>>> SPI
             // Packing delimiter: character option
             if ((serial_data_packing->packing_delimiter[0] != 0x00) &&
                     (serial_data_packing->packing_delimiter[0] == g_send_buf[u2e_size - 1])) {
@@ -1546,11 +1464,7 @@ uint16_t get_serial_data(void) {
 
     // Packing delimiter: time option
     if ((serial_data_packing->packing_time != 0) && (u2e_size != 0) && (flag_serial_input_time_elapse)) {
-<<<<<<< HEAD
-        if (get_uart_buffer_usedsize() == 0) {
-=======
         if (get_data_buffer_usedsize() == 0) {
->>>>>>> SPI
             flag_serial_input_time_elapse = SEG_DISABLE;    // ##
         }
 
@@ -1703,8 +1617,6 @@ void ether_to_spi(uint8_t sock) {
     struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option);
     struct __device_option *device_option = (struct __device_option *) & (get_DevConfig_pointer()->device_option);
 
-<<<<<<< HEAD
-=======
     uint16_t len;
     uint16_t i;
     uint16_t reg_val;
@@ -1787,7 +1699,6 @@ void ether_to_spi(uint8_t sock) {
     } while (0);
 }
 
->>>>>>> SPI
 uint16_t get_tcp_any_port(void) {
     if (client_any_port) {
         if (client_any_port < 0xffff) {
@@ -1850,12 +1761,6 @@ uint8_t process_socket_termination(uint8_t sock, uint32_t timeout, uint8_t mutex
         xSemaphoreTake(seg_critical_sem, portMAX_DELAY);
     }
     if (network_connection->working_mode != UDP_MODE) { // TCP_SERVER_MODE / TCP_CLIENT_MODE / TCP_MIXED_MODE
-<<<<<<< HEAD
-        //if (network_connection->working_mode == TCP_MIXED_MODE)
-        //    mixed_state = MIXED_SERVER;
-
-=======
->>>>>>> SPI
         if ((sock_status == SOCK_ESTABLISHED) || (sock_status == SOCK_CLOSE_WAIT)) {
             do {
                 ret = disconnect(sock);
@@ -1984,11 +1889,7 @@ void restore_serial_data(uint8_t idx) {
     uint8_t i;
 
     for (i = 0; i < idx; i++) {
-<<<<<<< HEAD
-        put_byte_to_uart_buffer(ch_tmp[i]);
-=======
         put_byte_to_data_buffer(ch_tmp[i]);
->>>>>>> SPI
         ch_tmp[i] = 0x00;
     }
 
@@ -2134,16 +2035,12 @@ int wizchip_mqtt_publish(mqtt_config_t *mqtt_config, uint8_t *pub_topic, uint8_t
 void mqtt_subscribeMessageHandler(uint8_t *data, uint32_t data_len) {
     e2u_size = data_len;
     memcpy(g_recv_buf, data, data_len);
-<<<<<<< HEAD
-    ether_to_uart(SOCK_DATA); //socket parameter is not used in mqtt
-=======
 
     if (get_uart_spi_if()) {
         ether_to_spi(SEG_DATA0_SOCK);
     } else {
         ether_to_uart(SEG_DATA0_SOCK);
     }
->>>>>>> SPI
 }
 
 uint16_t debugSerial_dataTransfer(uint8_t * buf, uint16_t size, teDEBUGTYPE type) {
@@ -2307,11 +2204,7 @@ void seg_u2e_task(void *argument)  {
         switch (serial_mode) {
         case SEG_SERIAL_PROTOCOL_NONE :
             xSemaphoreTake(seg_critical_sem, portMAX_DELAY);
-<<<<<<< HEAD
-            if (get_uart_buffer_usedsize() || u2e_size) {
-=======
             if (get_data_buffer_usedsize() || u2e_size) {
->>>>>>> SPI
                 if ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state == MIXED_SERVER) && (ST_OPEN == get_device_status())) {
                     process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, FALSE);
                     mixed_state = MIXED_CLIENT;
@@ -2352,15 +2245,11 @@ void seg_recv_task(void *argument)  {
         xSemaphoreTake(seg_e2u_sem, portMAX_DELAY);
         switch (serial_mode) {
         case SEG_SERIAL_PROTOCOL_NONE :
-<<<<<<< HEAD
-            ether_to_uart(SEG_DATA0_SOCK);
-=======
             if (get_uart_spi_if()) {
                 ether_to_spi(SEG_DATA0_SOCK);
             } else {
                 ether_to_uart(SEG_DATA0_SOCK);
             }
->>>>>>> SPI
             break;
 
         case SEG_SERIAL_MODBUS_RTU :

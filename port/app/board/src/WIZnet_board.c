@@ -81,8 +81,6 @@ void init_uart_spi_if_sel_pin(void) {
     }
 }
 
-<<<<<<< HEAD
-=======
 uint8_t get_uart_spi_if(void) {
     // Status of interface selector pin input; [0] UART mode, [1] SPI mode
     return serial_if;
@@ -98,7 +96,6 @@ uint8_t get_spi_uart_if_sel_pin(void) {
 }
 
 
->>>>>>> SPI
 void init_uart_if_sel_pin(void) {
     GPIO_Configuration(UART_IF_SEL_PIN, IO_INPUT, IO_PULLDOWN);
 }

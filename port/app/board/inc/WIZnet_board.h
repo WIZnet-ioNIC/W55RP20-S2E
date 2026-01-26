@@ -36,10 +36,7 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #elif (DEVICE_BOARD_NAME == W55RP20_S2E || DEVICE_BOARD_NAME == PLATYPUS_S2E)
 #define __USE_UART_IF_SELECTOR__            // Use Serial interface port selector pin
 #define DEVICE_ID_DEFAULT                   "W55RP20-S2E"//"S2E_SSL-MB" // Device name
-<<<<<<< HEAD
-=======
 #define __USE_UART_SPI_IF_SELECTOR__        // Use UART or SPI interface port selector pin
->>>>>>> SPI
 #elif (DEVICE_BOARD_NAME == W232N)
 #define DEVICE_ID_DEFAULT                   "W232N"//"S2E_SSL-MB" // Device name
 #elif (DEVICE_BOARD_NAME == IP20)
@@ -93,12 +90,8 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define LEDn    3
 
 #elif ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N) || (DEVICE_BOARD_NAME == IP20) || (DEVICE_BOARD_NAME == PLATYPUS_S2E))
-<<<<<<< HEAD
-#define UART_IF_SEL_PIN        12
-=======
 #define UART_IF_SEL_PIN        12   //High : 485/422, Low or NC : TTL/232
 #define UART_SPI_IF_SEL_PIN    13   //High : SPI, Low or NC : UART
->>>>>>> SPI
 
 #define DTR_PIN                 8
 #define DSR_PIN                 9
@@ -117,8 +110,6 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define DATA0_UART_CTS_PIN     6
 #define DATA0_UART_RTS_PIN     7
 
-<<<<<<< HEAD
-=======
 // SPI0
 #define DATA0_SPI_SCK_PIN      2
 #define DATA0_SPI_TX_PIN       3
@@ -126,7 +117,6 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define DATA0_SPI_CSn_PIN      5
 #define DATA0_SPI_INT_PIN      26
 
->>>>>>> SPI
 #define WIZCHIP_PIN_SCK        21
 #define WIZCHIP_PIN_MOSI       23
 #define WIZCHIP_PIN_MISO       22
@@ -134,32 +124,20 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define WIZCHIP_PIN_RST        25
 #define WIZCHIP_PIN_IRQ        24
 
-<<<<<<< HEAD
-#define BOOT_MODE_PIN          15
-#define FAC_RSTn_PIN           18
-#define HW_TRIG_PIN            14
-=======
 #define BOOT_MODE_PIN          15    //When this pin is Low during a device reset, it enters AT Command Mode  
 #define FAC_RSTn_PIN           18    //Holding Low for more than 5 seconds triggers a factory reset
 #define HW_TRIG_PIN            14    //When this pin is Low during a device reset, it enters AT Command Mode
->>>>>>> SPI
 #define DATA0_UART_PORTNUM          (1)
 
 #ifdef UART_PIO_DEBUG
 #define DEBUG_UART_TX_PIN      0
 #endif
-<<<<<<< HEAD
-
-=======
->>>>>>> SPI
 #define LED1_PIN      STATUS_PHYLINK_PIN        //STATUS_PHYLINK
 #define LED2_PIN      STATUS_TCPCONNECT_PIN    //STATUS_TCP_PIN
 #define LED3_PIN      19    //Blink
 #define LEDn          3
 #endif
 
-<<<<<<< HEAD
-=======
 #ifdef __USE_UART_SPI_IF_SELECTOR__
 typedef enum {
     UART_IF = 0,
@@ -168,7 +146,6 @@ typedef enum {
 #endif
 
 
->>>>>>> SPI
 typedef enum {
     LED1 = 0, // PHY link status
     LED2 = 1, // TCP connection status
@@ -182,13 +159,10 @@ void RP2040_Board_Init(void);
 void init_hw_trig_pin(void);
 uint8_t get_hw_trig_pin(void);
 
-<<<<<<< HEAD
-=======
 
 void init_uart_spi_if_sel_pin(void);
 uint8_t get_uart_spi_if(void);
 
->>>>>>> SPI
 void init_uart_if_sel_pin(void);
 uint8_t get_uart_if_sel_pin(void);
 void init_factory_reset_pin(void);

@@ -219,13 +219,6 @@ void start_task(void *argument) {
 
     Timer_Configuration();
     init_connection_status_io();
-<<<<<<< HEAD
-
-    if (get_hw_trig_pin() == 0) {
-        init_trigger_modeswitch(DEVICE_AT_MODE);
-    }
-=======
->>>>>>> SPI
 
     serial_mode = get_serial_communation_protocol();
     if (serial_mode == SEG_SERIAL_MODBUS_RTU) {
@@ -267,11 +260,8 @@ void start_task(void *argument) {
     seg_timer_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_critical_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)1);
 
-<<<<<<< HEAD
-=======
     //TaskHandle_t task_handle;
 
->>>>>>> SPI
     xTaskCreate(net_status_task, "Net_Status_Task", NET_TASK_STACK_SIZE, NULL, NET_TASK_PRIORITY, NULL);
     xTaskCreate(segcp_udp_task, "SEGCP_udp_Task", SEGCP_UDP_TASK_STACK_SIZE, NULL, SEGCP_UDP_TASK_PRIORITY, NULL);
     xTaskCreate(segcp_serial_task, "SEGCP_serial_Task", SEGCP_SERIAL_TASK_STACK_SIZE, NULL, SEGCP_SERIAL_TASK_PRIORITY, NULL);
