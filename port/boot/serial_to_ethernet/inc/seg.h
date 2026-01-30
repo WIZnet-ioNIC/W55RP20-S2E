@@ -15,6 +15,9 @@
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
+#define SEG_DATA0_CH        0
+#define SEG_DATA1_CH        1
+
 #define DEFAULT_MODESWITCH_INTER_GAP        500 // 500ms (0.5sec)
 
 //#define MIXED_CLIENT_INFINITY_CONNECT

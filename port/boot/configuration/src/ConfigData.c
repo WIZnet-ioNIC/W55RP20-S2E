@@ -82,56 +82,56 @@ void set_DevConfig_to_factory_value(void) {
     dev_config.network_common.subnet[2] = 255;
     dev_config.network_common.subnet[3] = 0;
 
-    dev_config.network_connection.working_mode = TCP_SERVER_MODE; //UDP_MODE; //TCP_MIXED_MODE;
-    dev_config.network_connection.working_state = ST_OPEN;
+    dev_config.network_connection[SEG_DATA0_CH].working_mode = TCP_SERVER_MODE; //UDP_MODE; //TCP_MIXED_MODE;
+    dev_config.network_connection[SEG_DATA0_CH].working_state = ST_OPEN;
 
-    dev_config.network_connection.local_port = 5000;
+    dev_config.network_connection[SEG_DATA0_CH].local_port = 5000;
 
-    dev_config.network_connection.remote_port = 5000;
-    dev_config.network_connection.remote_ip[0] = 192;
-    dev_config.network_connection.remote_ip[1] = 168;
-    dev_config.network_connection.remote_ip[2] = 11;
-    dev_config.network_connection.remote_ip[3] = 3;
+    dev_config.network_connection[SEG_DATA0_CH].remote_port = 5000;
+    dev_config.network_connection[SEG_DATA0_CH].remote_ip[0] = 192;
+    dev_config.network_connection[SEG_DATA0_CH].remote_ip[1] = 168;
+    dev_config.network_connection[SEG_DATA0_CH].remote_ip[2] = 11;
+    dev_config.network_connection[SEG_DATA0_CH].remote_ip[3] = 3;
 
-    dev_config.network_connection.fixed_local_port = DISABLE;
-    dev_config.network_connection.dns_use = DISABLE;
+    dev_config.network_connection[SEG_DATA0_CH].fixed_local_port = DISABLE;
+    dev_config.network_connection[SEG_DATA0_CH].dns_use = DISABLE;
 
-    memset(dev_config.network_connection.dns_domain_name, 0x00, sizeof(dev_config.network_connection.dns_domain_name));
-    memcpy(dev_config.network_connection.dns_domain_name, "192.168.11.3", 12);
-    dev_config.serial_data_packing.packing_time = 0;
+    memset(dev_config.network_connection[SEG_DATA0_CH].dns_domain_name, 0x00, sizeof(dev_config.network_connection[SEG_DATA0_CH].dns_domain_name));
+    memcpy(dev_config.network_connection[SEG_DATA0_CH].dns_domain_name, "192.168.11.3", 12);
+    dev_config.serial_data_packing[SEG_DATA0_CH].packing_time = 0;
 
-    dev_config.serial_data_packing.packing_size = 0;
-    dev_config.serial_data_packing.packing_delimiter[0] = 0; // packing_delimiter used only one-byte (for WIZ107SR compatibility)
-    dev_config.serial_data_packing.packing_delimiter[1] = 0;
-    dev_config.serial_data_packing.packing_delimiter[2] = 0;
-    dev_config.serial_data_packing.packing_delimiter[3] = 0;
-    dev_config.serial_data_packing.packing_delimiter_length = 0;
-    dev_config.serial_data_packing.packing_data_appendix = 0;
+    dev_config.serial_data_packing[SEG_DATA0_CH].packing_size = 0;
+    dev_config.serial_data_packing[SEG_DATA0_CH].packing_delimiter[0] = 0; // packing_delimiter used only one-byte (for WIZ107SR compatibility)
+    dev_config.serial_data_packing[SEG_DATA0_CH].packing_delimiter[1] = 0;
+    dev_config.serial_data_packing[SEG_DATA0_CH].packing_delimiter[2] = 0;
+    dev_config.serial_data_packing[SEG_DATA0_CH].packing_delimiter[3] = 0;
+    dev_config.serial_data_packing[SEG_DATA0_CH].packing_delimiter_length = 0;
+    dev_config.serial_data_packing[SEG_DATA0_CH].packing_data_appendix = 0;
 
-    dev_config.tcp_option.inactivity = 0;        // sec, default: NONE
-    dev_config.tcp_option.reconnection = 3000;   // msec, default: 3 sec
-    dev_config.tcp_option.keepalive_en = ENABLE;
-    dev_config.tcp_option.keepalive_wait_time = 7000;
-    dev_config.tcp_option.keepalive_retry_time = 5000;
+    dev_config.tcp_option[SEG_DATA0_CH].inactivity = 0;        // sec, default: NONE
+    dev_config.tcp_option[SEG_DATA0_CH].reconnection = 3000;   // msec, default: 3 sec
+    dev_config.tcp_option[SEG_DATA0_CH].keepalive_en = ENABLE;
+    dev_config.tcp_option[SEG_DATA0_CH].keepalive_wait_time = 7000;
+    dev_config.tcp_option[SEG_DATA0_CH].keepalive_retry_time = 5000;
 
-    memset(dev_config.tcp_option.pw_connect, 0x00, sizeof(dev_config.tcp_option.pw_connect));
-    dev_config.tcp_option.pw_connect_en = DISABLE;
+    memset(dev_config.tcp_option[SEG_DATA0_CH].pw_connect, 0x00, sizeof(dev_config.tcp_option[SEG_DATA0_CH].pw_connect));
+    dev_config.tcp_option[SEG_DATA0_CH].pw_connect_en = DISABLE;
 
     // Default Settings for Data UART: 115200-8-N-1, No flowctrl
-    dev_config.serial_option.uart_interface = UART_IF_RS232;
-    dev_config.serial_option.protocol = SEG_SERIAL_PROTOCOL_NONE;
-    dev_config.serial_option.baud_rate = baud_115200;
-    dev_config.serial_option.data_bits = word_len8;
-    dev_config.serial_option.parity = parity_none;
-    dev_config.serial_option.stop_bits = stop_bit1;
-    dev_config.serial_option.flow_control = flow_none;
+    dev_config.serial_option[SEG_DATA0_CH].uart_interface = UART_IF_RS232;
+    dev_config.serial_option[SEG_DATA0_CH].protocol = SEG_SERIAL_PROTOCOL_NONE;
+    dev_config.serial_option[SEG_DATA0_CH].baud_rate = baud_115200;
+    dev_config.serial_option[SEG_DATA0_CH].data_bits = word_len8;
+    dev_config.serial_option[SEG_DATA0_CH].parity = parity_none;
+    dev_config.serial_option[SEG_DATA0_CH].stop_bits = stop_bit1;
+    dev_config.serial_option[SEG_DATA0_CH].flow_control = flow_none;
 
 #ifdef __USE_DSR_DTR_DEFAULT__
-    dev_config.serial_option.dtr_en = ENABLE;
-    dev_config.serial_option.dsr_en = ENABLE;
+    dev_config.serial_option[SEG_DATA0_CH].dtr_en = ENABLE;
+    dev_config.serial_option[SEG_DATA0_CH].dsr_en = ENABLE;
 #else
-    dev_config.serial_option.dtr_en = DISABLE;
-    dev_config.serial_option.dsr_en = DISABLE;
+    dev_config.serial_option[SEG_DATA0_CH].dtr_en = DISABLE;
+    dev_config.serial_option[SEG_DATA0_CH].dsr_en = DISABLE;
 #endif
 
     //dev_config.serial_info[0].serial_debug_en = DISABLE;
@@ -206,10 +206,10 @@ void load_boot_DevConfig_from_storage(void) {
         //device_raw_reboot();
     }
 
-    if ((dev_config.serial_option.flow_control == flow_rtsonly) || (dev_config.serial_option.flow_control == flow_reverserts)) { // Edit for supporting RTS only in 17/3/28 , recommend adapting to WIZ750SR
-        dev_config.serial_option.uart_interface = UART_IF_RS422;    //temporarily set RS422, Actual setting is done in DATA0_UART_Configuration.
+    if ((dev_config.serial_option[SEG_DATA0_CH].flow_control == flow_rtsonly) || (dev_config.serial_option[SEG_DATA0_CH].flow_control == flow_reverserts)) { // Edit for supporting RTS only in 17/3/28 , recommend adapting to WIZ750SR
+        dev_config.serial_option[SEG_DATA0_CH].uart_interface = UART_IF_RS422;    //temporarily set RS422, Actual setting is done in DATA0_UART_Configuration.
     } else {
-        dev_config.serial_option.uart_interface = get_uart_if_sel_pin();
+        dev_config.serial_option[SEG_DATA0_CH].uart_interface = get_uart_if_sel_pin();
     }
 
     if ((dev_config.network_common.mac[0] == 0xFF)) {
@@ -295,30 +295,30 @@ void display_Net_Info(void) {
     ctlnetwork(CN_GET_NETINFO, (void*) &gWIZNETINFO);
     PRT_INFO(" # MAC: %02X:%02X:%02X:%02X:%02X:%02X\r\n", gWIZNETINFO.mac[0], gWIZNETINFO.mac[1], gWIZNETINFO.mac[2], gWIZNETINFO.mac[3], gWIZNETINFO.mac[4], gWIZNETINFO.mac[5]);
     PRT_INFO(" # IP : %d.%d.%d.%d / Port : \r\n", gWIZNETINFO.ip[0], gWIZNETINFO.ip[1], gWIZNETINFO.ip[2], gWIZNETINFO.ip[3]);
-    PRT_INFO("%d ", dev_config->network_connection.local_port);
+    PRT_INFO("%d ", dev_config->network_connection[SEG_DATA0_CH].local_port);
     PRT_INFO("\r\n");
     PRT_INFO(" # GW : %d.%d.%d.%d\r\n", gWIZNETINFO.gw[0], gWIZNETINFO.gw[1], gWIZNETINFO.gw[2], gWIZNETINFO.gw[3]);
     PRT_INFO(" # SN : %d.%d.%d.%d\r\n", gWIZNETINFO.sn[0], gWIZNETINFO.sn[1], gWIZNETINFO.sn[2], gWIZNETINFO.sn[3]);
     PRT_INFO(" # DNS: %d.%d.%d.%d\r\n", gWIZNETINFO.dns[0], gWIZNETINFO.dns[1], gWIZNETINFO.dns[2], gWIZNETINFO.dns[3]);
 
-    if (dev_config->network_connection.working_mode != TCP_SERVER_MODE) {
-        if (dev_config->network_connection.dns_use == SEGCP_ENABLE) {
+    if (dev_config->network_connection[SEG_DATA0_CH].working_mode != TCP_SERVER_MODE) {
+        if (dev_config->network_connection[SEG_DATA0_CH].dns_use == SEGCP_ENABLE) {
             PRT_INFO(" # Destination Domain: %s / Port: %d\r\n",
-                     dev_config->network_connection.dns_domain_name,
-                     dev_config->network_connection.remote_port);
+                     dev_config->network_connection[SEG_DATA0_CH].dns_domain_name,
+                     dev_config->network_connection[SEG_DATA0_CH].remote_port);
         } else {
             PRT_INFO(" # Destination IP: %d.%d.%d.%d / Port: %d\r\n",
-                     dev_config->network_connection.remote_ip[0],
-                     dev_config->network_connection.remote_ip[1],
-                     dev_config->network_connection.remote_ip[2],
-                     dev_config->network_connection.remote_ip[3],
-                     dev_config->network_connection.remote_port);
+                     dev_config->network_connection[SEG_DATA0_CH].remote_ip[0],
+                     dev_config->network_connection[SEG_DATA0_CH].remote_ip[1],
+                     dev_config->network_connection[SEG_DATA0_CH].remote_ip[2],
+                     dev_config->network_connection[SEG_DATA0_CH].remote_ip[3],
+                     dev_config->network_connection[SEG_DATA0_CH].remote_port);
 
-            if (dev_config->network_connection.working_mode == UDP_MODE) {
-                if ((dev_config->network_connection.remote_ip[0] == 0) &&
-                        (dev_config->network_connection.remote_ip[1] == 0) &&
-                        (dev_config->network_connection.remote_ip[2] == 0) &&
-                        (dev_config->network_connection.remote_ip[3] == 0)) {
+            if (dev_config->network_connection[SEG_DATA0_CH].working_mode == UDP_MODE) {
+                if ((dev_config->network_connection[SEG_DATA0_CH].remote_ip[0] == 0) &&
+                        (dev_config->network_connection[SEG_DATA0_CH].remote_ip[1] == 0) &&
+                        (dev_config->network_connection[SEG_DATA0_CH].remote_ip[2] == 0) &&
+                        (dev_config->network_connection[SEG_DATA0_CH].remote_ip[3] == 0)) {
                     PRT_INFO(" ## UDP 1:N Mode\r\n");
                 } else {
                     PRT_INFO(" ## UDP 1:1 Mode\r\n");

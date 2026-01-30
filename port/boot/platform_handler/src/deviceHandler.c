@@ -389,15 +389,15 @@ void display_Dev_Info_main(void) {
     PRT_INFO(" - Device name: %s\r\n", dev_config->device_option.device_alias);
     PRT_INFO(" - Device group: %s\r\n", dev_config->device_option.device_group);
 
-    PRT_INFO(" - Device mode: %s\r\n", str_working[dev_config->network_connection.working_mode]);
+    PRT_INFO(" - Device mode: %s\r\n", str_working[dev_config->network_connection[SEG_DATA0_CH].working_mode]);
 
-    PRT_INFO(" - Data channel: [UART Port %d] %s mode\r\n", ((dev_config->serial_option.uart_interface == UART_IF_TTL) ||
-             (dev_config->serial_option.uart_interface == UART_IF_RS232)) ? 0 : 1,
-             uart_if_table[dev_config->serial_option.uart_interface]);
+    PRT_INFO(" - Data channel: [UART Port %d] %s mode\r\n", ((dev_config->serial_option[SEG_DATA0_CH].uart_interface == UART_IF_TTL) ||
+             (dev_config->serial_option[SEG_DATA0_CH].uart_interface == UART_IF_RS232)) ? 0 : 1,
+             uart_if_table[dev_config->serial_option[SEG_DATA0_CH].uart_interface]);
     PRT_INFO(" - Network settings: \r\n");
     PRT_INFO("\t- Obtaining IP settings: [%s]\r\n", (dev_config->network_option.dhcp_use == 1) ? "Automatic - DHCP" : "Static");
     PRT_INFO("\t- TCP/UDP ports\r\n");
-    PRT_INFO("\t   + S2E data port: [%d]\r\n", dev_config->network_connection.local_port);
+    PRT_INFO("\t   + S2E data port: [%d]\r\n", dev_config->network_connection[SEG_DATA0_CH].local_port);
     PRT_INFO("\t   + TCP/UDP setting port: [%d]\r\n", DEVICE_SEGCP_PORT);
     PRT_INFO("\t   + Firmware update port: [%d]\r\n", DEVICE_FWUP_PORT);
     PRT_INFO("\t- TCP Retransmission retry: [%d]\r\n", getRCR());
@@ -406,18 +406,18 @@ void display_Dev_Info_main(void) {
     PRT_INFO("\t- %s: [%s]\r\n", (dev_config->config_common.pw_search != 0) ? "Enabled" : "Disabled", (dev_config->config_common.pw_search != 0) ? dev_config->config_common.pw_search : "None");
 
     PRT_INFO(" - Ethernet connection password: \r\n");
-    PRT_INFO("\t- %s %s\r\n", (dev_config->tcp_option.pw_connect_en == 1) ? "Enabled" : "Disabled", "(TCP server / mixed mode only)");
+    PRT_INFO("\t- %s %s\r\n", (dev_config->tcp_option[SEG_DATA0_CH].pw_connect_en == 1) ? "Enabled" : "Disabled", "(TCP server / mixed mode only)");
 
     PRT_INFO(" - Connection timer settings: \r\n");
     PRT_INFO("\t- Inactivity timer: ");
-    if (dev_config->tcp_option.inactivity) {
-        PRT_INFO("[%d] (sec)\r\n", dev_config->tcp_option.inactivity);
+    if (dev_config->tcp_option[SEG_DATA0_CH].inactivity) {
+        PRT_INFO("[%d] (sec)\r\n", dev_config->tcp_option[SEG_DATA0_CH].inactivity);
     } else {
         PRT_INFO("%s\r\n", STR_DISABLED);
     }
     PRT_INFO("\t- Reconnect interval: ");
-    if (dev_config->tcp_option.reconnection) {
-        PRT_INFO("[%d] (msec)\r\n", dev_config->tcp_option.reconnection);
+    if (dev_config->tcp_option[SEG_DATA0_CH].reconnection) {
+        PRT_INFO("[%d] (msec)\r\n", dev_config->tcp_option[SEG_DATA0_CH].reconnection);
     } else {
         PRT_INFO("%s\r\n", STR_DISABLED);
     }
@@ -434,16 +434,16 @@ void display_Dev_Info_main(void) {
     }
 
     PRT_INFO("\t- Data %s port:\r\n", STR_UART);
-    PRT_INFO("\t   + UART IF: [%s]\r\n", uart_if_table[dev_config->serial_option.uart_interface]);
-    printf("\t   + %ld-", baud_table[dev_config->serial_option.baud_rate]);
-    printf("%d-", word_len_table[dev_config->serial_option.data_bits]);
-    printf("%s-", parity_table[dev_config->serial_option.parity]);
-    printf("%d / ", stop_bit_table[dev_config->serial_option.stop_bits]);
-    if ((dev_config->serial_option.uart_interface == UART_IF_TTL) || (dev_config->serial_option.uart_interface == UART_IF_RS232)) {
-        printf("Flow control: %s", flow_ctrl_table[dev_config->serial_option.flow_control]);
-    } else if ((dev_config->serial_option.uart_interface == UART_IF_RS422) || (dev_config->serial_option.uart_interface == UART_IF_RS485)) {
-        if ((dev_config->serial_option.flow_control == flow_rtsonly) || (dev_config->serial_option.flow_control == flow_reverserts)) {
-            printf("Flow control: %s", flow_ctrl_table[dev_config->serial_option.flow_control]);
+    PRT_INFO("\t   + UART IF: [%s]\r\n", uart_if_table[dev_config->serial_option[SEG_DATA0_CH].uart_interface]);
+    printf("\t   + %ld-", baud_table[dev_config->serial_option[SEG_DATA0_CH].baud_rate]);
+    printf("%d-", word_len_table[dev_config->serial_option[SEG_DATA0_CH].data_bits]);
+    printf("%s-", parity_table[dev_config->serial_option[SEG_DATA0_CH].parity]);
+    printf("%d / ", stop_bit_table[dev_config->serial_option[SEG_DATA0_CH].stop_bits]);
+    if ((dev_config->serial_option[SEG_DATA0_CH].uart_interface == UART_IF_TTL) || (dev_config->serial_option[SEG_DATA0_CH].uart_interface == UART_IF_RS232)) {
+        printf("Flow control: %s", flow_ctrl_table[dev_config->serial_option[SEG_DATA0_CH].flow_control]);
+    } else if ((dev_config->serial_option[SEG_DATA0_CH].uart_interface == UART_IF_RS422) || (dev_config->serial_option[SEG_DATA0_CH].uart_interface == UART_IF_RS485)) {
+        if ((dev_config->serial_option[SEG_DATA0_CH].flow_control == flow_rtsonly) || (dev_config->serial_option[SEG_DATA0_CH].flow_control == flow_reverserts)) {
+            printf("Flow control: %s", flow_ctrl_table[dev_config->serial_option[SEG_DATA0_CH].flow_control]);
         } else {
             printf("Flow control: %s", flow_ctrl_table[0]); // RS-422/485; flow control - NONE only
         }
@@ -455,20 +455,20 @@ void display_Dev_Info_main(void) {
 
     PRT_INFO(" - Serial data packing options:\r\n");
     PRT_INFO("\t- Time: ");
-    if (dev_config->serial_data_packing.packing_time) {
-        PRT_INFO("[%d] (msec)\r\n", dev_config->serial_data_packing.packing_time);
+    if (dev_config->serial_data_packing[SEG_DATA0_CH].packing_time) {
+        PRT_INFO("[%d] (msec)\r\n", dev_config->serial_data_packing[SEG_DATA0_CH].packing_time);
     } else {
         PRT_INFO("%s\r\n", STR_DISABLED);
     }
     PRT_INFO("\t- Size: ");
-    if (dev_config->serial_data_packing.packing_size) {
-        PRT_INFO("[%d] (bytes)\r\n", dev_config->serial_data_packing.packing_size);
+    if (dev_config->serial_data_packing[SEG_DATA0_CH].packing_size) {
+        PRT_INFO("[%d] (bytes)\r\n", dev_config->serial_data_packing[SEG_DATA0_CH].packing_size);
     } else {
         PRT_INFO("%s\r\n", STR_DISABLED);
     }
     PRT_INFO("\t- Char: ");
-    if (dev_config->serial_data_packing.packing_delimiter_length == 1) {
-        PRT_INFO("[%.2X] (hex only)\r\n", dev_config->serial_data_packing.packing_delimiter[0]);
+    if (dev_config->serial_data_packing[SEG_DATA0_CH].packing_delimiter_length == 1) {
+        PRT_INFO("[%.2X] (hex only)\r\n", dev_config->serial_data_packing[SEG_DATA0_CH].packing_delimiter[0]);
     } else {
         PRT_INFO("%s\r\n", STR_DISABLED);
     }

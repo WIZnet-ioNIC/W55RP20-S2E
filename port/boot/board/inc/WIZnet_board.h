@@ -42,7 +42,7 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define DEVICE_ID_DEFAULT                   "IP20"
 #endif
 #define DEVICE_CLOCK_SELECT                 CLOCK_SOURCE_EXTERNAL // or CLOCK_SOURCE_INTERNAL
-#define DEVICE_UART_CNT                     (1)
+#define DEVICE_UART_CNT                     (2)
 #define DEVICE_SETTING_PASSWORD_DEFAULT     "00000000"
 #define DEVICE_GROUP_DEFAULT                "WORKGROUP" // Device group
 #define DEVICE_TARGET_SYSTEM_CLOCK   PLL_SYS_KHZ

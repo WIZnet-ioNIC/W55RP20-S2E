@@ -1181,6 +1181,7 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
 void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
     struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option[channel]);
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
+    struct __network_option *network_option = (struct __network_option *) & (get_DevConfig_pointer()->network_option);
     struct __serial_common *serial_common = (struct __serial_common *)&get_DevConfig_pointer()->serial_common;
     struct __serial_command *serial_command = (struct __serial_command *)&get_DevConfig_pointer()->serial_command;
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *) & (get_DevConfig_pointer()->serial_data_packing[channel]);
@@ -1228,8 +1229,8 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
             reconnection_count++;
 
-            if (reconnection_count >= MAX_RECONNECTION_COUNT) {
-                PRT_SEG("reconnection_count >= MAX_RECONNECTION_COUNT\r\n");
+            if (reconnection_count >= network_option->tcp_rcr_val) {
+                PRT_SEG("reconnection_count >= network_option->tcp_rcr_val\r\n");
                 process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
                 reconnection_count = 0;
                 data_buffer_flush(channel);
