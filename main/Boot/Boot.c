@@ -129,6 +129,7 @@ int main(void) {
         return 0;
     }
 
+    PRT_INFO("dev_config->firmware_update.fwup_copy_flag = %d\r\n", dev_config->firmware_update.fwup_copy_flag);
     if (dev_config->firmware_update.fwup_copy_flag == 1) {
         if (device_bank_check(1) < 0) {
             printf("device_bank_check failed\r\n");

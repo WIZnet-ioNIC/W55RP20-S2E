@@ -15,17 +15,19 @@
 extern volatile uint8_t* pucASCIIBufferCur[DEVICE_UART_CNT];
 extern volatile uint16_t usASCIIBufferPos[DEVICE_UART_CNT];
 
-void mbTCPtoRTU(uint8_t sock, int channel) {
+int mbTCPtoRTU(uint8_t sock, int channel) {
     if (MBtcp2rtuFrame(sock, channel) == TRUE) {
         while (usRTUBufferPos[channel]) {
             UART_write((uint8_t*)pucRTUBufferCur[channel], 1, channel);
             pucRTUBufferCur[channel]++;
             usRTUBufferPos[channel]--;
         }
+        return TRUE;
     }
+    return FALSE;
 }
 
-void mbRTUtoTCP(uint8_t sock, int channel) {
+int mbRTUtoTCP(uint8_t sock, int channel) {
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
 
     if (MBrtu2tcpFrame(channel) == TRUE) {
@@ -34,15 +36,31 @@ void mbRTUtoTCP(uint8_t sock, int channel) {
             sendto(sock, (uint8_t*)pucTCPBufferCur[channel], usTCPBufferPos[channel], network_connection->remote_ip, network_connection->remote_port);
             break;
         case ST_CONNECT:
+#if 0
+            PRT_INFO("[%d] > MB RTU to TCP Send len: %d Data: ", channel, usTCPBufferPos[channel]);  //hoon
+            for (int i = 0; i < usTCPBufferPos[channel]; i++) {
+                printf("%02X ", pucTCPBufferCur[channel][i]);
+            }
+            printf("\r\n");
+            if (usTCPBufferPos[channel] != 29) {
+                PRT_INFO("usTCPBufferPos[%d] != 29 %d\r\n", channel, usTCPBufferPos[channel]);
+                //vTaskSuspendAll();
+                //while (1) {
+                //    vTaskDelay(100000);
+                //}
+            }
+#endif
             send(sock, (uint8_t*)pucTCPBufferCur[channel], usTCPBufferPos[channel]);
             break;
         default:
             break;
         }
+        return TRUE;
     }
+    return FALSE;
 }
 
-void mbTCPtoASCII(uint8_t sock, int channel) {
+int mbTCPtoASCII(uint8_t sock, int channel) {
     uint8_t ucByte;
 
     if (MBtcp2asciiFrame(sock, channel) != FALSE) {
@@ -63,10 +81,12 @@ void mbTCPtoASCII(uint8_t sock, int channel) {
         UART_write(&ucByte, 1, channel);
         ucByte = MB_ASCII_DEFAULT_LF;
         UART_write(&ucByte, 1, channel);
+        return TRUE;
     }
+    return FALSE;
 }
 
-void mbASCIItoTCP(uint8_t sock, int channel) {
+int mbASCIItoTCP(uint8_t sock, int channel) {
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
 
     if (MBascii2tcpFrame(channel) != FALSE) {
@@ -81,5 +101,7 @@ void mbASCIItoTCP(uint8_t sock, int channel) {
         default:
             break;
         }
+        return TRUE;
     }
+    return FALSE;
 }

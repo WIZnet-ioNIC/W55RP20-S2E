@@ -3,7 +3,7 @@
     description: Web_Page Constant header file
     author: Mason
     company: WIZnet
-    data: 2025-11-12
+    data: 2026-01-29
 */
 
 #ifndef __WEB_PAGE_H__

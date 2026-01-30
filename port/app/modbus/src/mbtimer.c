@@ -41,6 +41,7 @@ void xMBPortTimersInit(uint32_t usTim1Timerout50us, int channel) {
     if (mb_timeout[channel] < t35_time_us) {
         mb_timeout[channel] = 0xFFFFFFFFUL;
     }
+    mb_timeout[channel] = mb_timeout[channel] * 8;
     PRT_INFO("mb_timeout = %d us\r\n", mb_timeout[channel]);
 }
 

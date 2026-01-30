@@ -5,6 +5,7 @@
 #include "mbascii.h"
 #include "common.h"
 #include "ConfigData.h"
+#include "WIZ5XXSR-RP_Debug.h" //hoon
 
 #define MB_TCP_BUF_SIZE     ( 256 + 7 ) /* Must hold a complete Modbus TCP frame. */
 
@@ -63,6 +64,7 @@ static bool mbTCPGet(uint8_t sock, uint8_t ** ppucMBTCPFrame, uint16_t * usTCPLe
     if (len > 0) {
         if (network_connection->working_mode == UDP_MODE) {
             usTCPBufPos = recvfrom(sock, aucTCPBuf[channel], len, peerip, &peerport);
+
             if (usTCPBufPos < 0) {
                 usTCPBufPos = 0;
             }
@@ -76,6 +78,22 @@ static bool mbTCPGet(uint8_t sock, uint8_t ** ppucMBTCPFrame, uint16_t * usTCPLe
             }
         } else {
             usTCPBufPos = recv(sock, aucTCPBuf[channel], len);
+#if 0
+            PRT_INFO("[%d] > MB TCP Received len: %d Data: ", channel, usTCPBufPos);  //hoon
+            for (int i = 0; i < usTCPBufPos; i++) {
+                printf("%02X ", aucTCPBuf[channel][i]);
+            }
+            printf("\r\n");
+#if 0
+            if (usTCPBufPos != 12) {
+                PRT_INFO("usTCPBufPos[%d] != 12 %d\r\n", channel, usTCPBufPos);
+                //vTaskSuspendAll();
+                while (1) {
+                    vTaskDelay(100000);
+                }
+            }
+#endif
+#endif
             if (usTCPBufPos < 0) {
                 usTCPBufPos = 0;
             }

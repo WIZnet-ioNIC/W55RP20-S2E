@@ -1,3 +1,4 @@
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #include <stdio.h>
@@ -1061,6 +1062,7 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
     // Socket state
     uint8_t state = getSn_SR(sock);
     uint16_t reg_val;
+    uint8_t mb_finish_flag = FALSE;
 
     switch (state) {
     case SOCK_INIT:
@@ -1132,6 +1134,51 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
             }
             set_device_status(ST_CONNECT, channel);
         }
+
+        if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
+            // Serial to Ethernet process
+            if (get_data_buffer_usedsize(channel) || u2e_size[channel]) {
+                uart_to_ether(sock, channel);
+            }
+            // Ethernet to serial process
+            if (getSn_RX_RSR(sock) || e2u_size[channel]) {
+                ether_to_uart(sock, channel);
+            }
+        } else if (serial_mode == SEG_SERIAL_MODBUS_RTU) {
+            uint32_t tickStart = millis();
+            while (1) {
+                RTU_Uart_RX(channel);
+
+                if (mb_state_rtu_finish[channel] == TRUE) {
+                    mb_state_rtu_finish[channel] = FALSE;
+                    mb_finish_flag = mbRTUtoTCP(sock, channel);
+                    //PRT_INFO("MB RTU Process 1\r\n");
+                }
+                if (getSn_RX_RSR(sock)) {
+                    mbTCPtoRTU(sock, channel);
+                    //PRT_INFO("MB RTU Process 2\r\n");
+                    tickStart = millis();
+                }
+                if (mb_finish_flag == TRUE) {
+                    //PRT_INFO("Time for MB RTU: %ld ms\r\n", millis() - tickStart);
+                    break;
+                }
+                if ((millis() - tickStart) > 2000) {
+                    //PRT_INFO("MB RTU Process Timeout: %ld ms\r\n", millis() - tickStart);
+                    break;
+                }
+            }
+        } else if (serial_mode == SEG_SERIAL_MODBUS_ASCII) {
+            ASCII_Uart_RX(channel);
+
+            if (mb_state_ascii_finish[channel] == TRUE) {
+                mb_state_ascii_finish[channel] = FALSE;
+                mbASCIItoTCP(sock, channel);
+            }
+            if (getSn_RX_RSR(sock)) {
+                mbTCPtoASCII(sock, channel);
+            }
+        }
         break;
 
     case SOCK_CLOSE_WAIT:
@@ -1181,6 +1228,7 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
 void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
     struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option[channel]);
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
+    struct __network_option *network_option = (struct __network_option *) & (get_DevConfig_pointer()->network_option);
     struct __serial_common *serial_common = (struct __serial_common *)&get_DevConfig_pointer()->serial_common;
     struct __serial_command *serial_command = (struct __serial_command *)&get_DevConfig_pointer()->serial_command;
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *) & (get_DevConfig_pointer()->serial_data_packing[channel]);
@@ -1228,8 +1276,8 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
             reconnection_count++;
 
-            if (reconnection_count >= MAX_RECONNECTION_COUNT) {
-                PRT_SEG("reconnection_count >= MAX_RECONNECTION_COUNT\r\n");
+            if (reconnection_count >= network_option->tcp_rcr_val) {
+                PRT_SEG("reconnection_count >= network_option->tcp_rcr_val\r\n");
                 process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
                 reconnection_count = 0;
                 data_buffer_flush(channel);
@@ -2238,8 +2286,10 @@ void seg_task(void *argument)  {
             xSemaphoreTake(net_seg_sem[SEG_DATA0_CH], portMAX_DELAY);
         }
         do_seg(SEG_DATA0_SOCK, SEG_DATA0_CH);
+        vTaskDelay(20);
         do_seg(SEG_DATA1_SOCK, SEG_DATA1_CH);
-        xSemaphoreTake(seg_sem[SEG_DATA0_CH], pdMS_TO_TICKS(10));
+        xSemaphoreTake(seg_sem[SEG_DATA0_CH], pdMS_TO_TICKS(20));
+        //taskYIELD();
     }
 }
 
@@ -2358,6 +2408,104 @@ void seg1_u2e_task(void *argument)  {
     }
 }
 
+void seg_recv_task(void *argument)  {
+    uint8_t serial_mode_0 = get_serial_communation_protocol(SEG_DATA0_CH);
+    uint8_t serial_mode_1 = get_serial_communation_protocol(SEG_DATA1_CH);
+    uint8_t mb_finish_flag;
+
+    while (1) {
+        // SEG DATA0 channel
+        switch (serial_mode_0) {
+        case SEG_SERIAL_PROTOCOL_NONE :
+            ether_to_uart(SEG_DATA0_SOCK, SEG_DATA0_CH);
+            break;
+
+        case SEG_SERIAL_MODBUS_RTU :
+            uint32_t tickStart = millis();
+            while (1) {
+                RTU_Uart_RX(SEG_DATA0_CH);
+
+                if (mb_state_rtu_finish[SEG_DATA0_CH] == TRUE) {
+                    mb_state_rtu_finish[SEG_DATA0_CH] = FALSE;
+                    mb_finish_flag = mbRTUtoTCP(SEG_DATA0_SOCK, SEG_DATA0_CH);
+                }
+                if (getSn_RX_RSR(SEG_DATA0_SOCK)) {
+                    mbTCPtoRTU(SEG_DATA0_SOCK, SEG_DATA0_CH);
+                }
+                if (mb_finish_flag == TRUE) {
+                    mb_finish_flag = FALSE;
+                    break;
+                }
+            }
+            break;
+
+        case SEG_SERIAL_MODBUS_ASCII :
+            if (mbTCPtoASCII(SEG_DATA0_SOCK, SEG_DATA0_CH)) {
+                uint32_t tickStart = millis();
+                while (1) {
+                    ASCII_Uart_RX(SEG_DATA0_CH);
+                    if (mb_state_ascii_finish[SEG_DATA0_CH] == TRUE) {
+                        mb_state_ascii_finish[SEG_DATA0_CH] = FALSE;
+                        mbASCIItoTCP(SEG_DATA0_SOCK, SEG_DATA0_CH);
+                        break;
+                    }
+                    if ((millis() - tickStart) >= 3000) {
+                        break;  // 3 second timeout
+                    }
+                }
+            }
+            break;
+        }
+
+        // SEG DATA1 channel
+        switch (serial_mode_1) {
+        case SEG_SERIAL_PROTOCOL_NONE :
+            ether_to_uart(SEG_DATA1_SOCK, SEG_DATA1_CH);
+            break;
+
+        case SEG_SERIAL_MODBUS_RTU :
+            uint32_t tickStart = millis();
+            while (1) {
+                RTU_Uart_RX(SEG_DATA1_CH);
+
+                if (mb_state_rtu_finish[SEG_DATA1_CH] == TRUE) {
+                    mb_state_rtu_finish[SEG_DATA1_CH] = FALSE;
+                    mb_finish_flag = mbRTUtoTCP(SEG_DATA1_SOCK, SEG_DATA1_CH);
+                }
+                if (getSn_RX_RSR(SEG_DATA1_SOCK)) {
+                    mbTCPtoRTU(SEG_DATA1_SOCK, SEG_DATA1_CH);
+                }
+                if (mb_finish_flag == TRUE) {
+                    mb_finish_flag = FALSE;
+                    break;
+                }
+            }
+            break;
+
+        case SEG_SERIAL_MODBUS_ASCII :
+            if (mbTCPtoASCII(SEG_DATA1_SOCK, SEG_DATA1_CH)) {
+                uint32_t tickStart = millis();
+                while (1) {
+                    ASCII_Uart_RX(SEG_DATA1_CH);
+                    if (mb_state_ascii_finish[SEG_DATA1_CH] == TRUE) {
+                        mb_state_ascii_finish[SEG_DATA1_CH] = FALSE;
+                        mbASCIItoTCP(SEG_DATA1_SOCK, SEG_DATA1_CH);
+                        break;
+                    }
+                    if ((millis() - tickStart) >= 3000) {
+                        break;  // 3 second timeout
+                    }
+                }
+            }
+            break;
+        }
+        vTaskDelay(1);
+        //#ifdef __USE_WATCHDOG__
+        //        device_wdt_reset();
+        //#endif
+    }
+}
+
 void seg0_recv_task(void *argument)  {
     uint8_t serial_mode = get_serial_communation_protocol(SEG_DATA0_CH);
 
@@ -2422,7 +2570,7 @@ void timers_stop(uint8_t channel) {
 
 void keepalive_timer_callback(TimerHandle_t xTimer) {
     int timer_id = (int)pvTimerGetTimerID(xTimer);
-    PRT_INFO("Timer ID: %d\r\n", timer_id);
+
     if (timer_id == SEG_DATA0_CH) {
         flag_send_keepalive[SEG_DATA0_CH] = SEG_ENABLE;
     } else if (timer_id == SEG_DATA1_CH) {

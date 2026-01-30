@@ -26,7 +26,6 @@ void eMBRTUInit(uint32_t ulBaudRate, int channel) {
     /* Modbus RTU uses 8 databits. */
 
     /*  If baud rate > 19200, use fixed timer value: t35 = 1750us.
-        Otherwise, t35 must be 3.5 times the character time.
     */
     if (baud_table[ulBaudRate] > 19200) {
         t35_time_us = 1750; // Fixed value: 1750µs
@@ -166,9 +165,9 @@ void RTU_Uart_RX(int channel) {
             //IWDG_ReloadCounter();
             break;
         }
-        if (mb_state_rtu_finish[channel] == TRUE) {
-            return;
-        }
+        //if (mb_state_rtu_finish[channel] == TRUE) {
+        //    return;
+        //}
     }
 }
 
