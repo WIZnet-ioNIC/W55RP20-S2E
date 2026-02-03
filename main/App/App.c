@@ -84,6 +84,9 @@
 #define START_TASK_STACK_SIZE 512
 #define START_TASK_PRIORITY 65
 
+#define SEG_MQTT_YIELD_STACK_SIZE 512
+#define SEG_MQTT_YIELD_PRIORITY 10
+
 /**
     ----------------------------------------------------------------------------------------------------
     Variables
@@ -111,6 +114,8 @@ TimerHandle_t seg_keepalive_timer = NULL;
 TimerHandle_t seg_auth_timer = NULL;
 TimerHandle_t spi_reset_timer = NULL;
 TimerHandle_t reset_timer = NULL;
+
+TaskHandle_t seg_mqtt_yield_task_handle = NULL;
 
 /**
     ----------------------------------------------------------------------------------------------------
@@ -278,6 +283,11 @@ void start_task(void *argument) {
     xTaskCreate(seg_u2e_task, "SEG_U2E_Task", SEG_U2E_TASK_STACK_SIZE, NULL, SEG_U2E_TASK_PRIORITY, NULL);
     xTaskCreate(seg_recv_task, "SEG_Recv_Task", SEG_RECV_TASK_STACK_SIZE, NULL, SEG_RECV_TASK_PRIORITY, NULL);
     xTaskCreate(seg_timer_task, "SEG_Timer_task", SEG_TIMER_TASK_STACK_SIZE, NULL, SEG_TIMER_TASK_PRIORITY, NULL);
+
+    if (dev_config->network_connection.working_mode == MQTT_CLIENT_MODE ||
+            dev_config->network_connection.working_mode == MQTTS_CLIENT_MODE) {
+        xTaskCreate(seg_mqtt_yield_task, "SEG_MQTT_YIELD_Task", SEG_MQTT_YIELD_STACK_SIZE, NULL, SEG_MQTT_YIELD_PRIORITY, &seg_mqtt_yield_task_handle);
+    }
 
     if (dev_config->config_common.pw_search[0] == 0) {
         xTaskCreate(http_webserver_task, "http_webserver_task", HTTP_WEBSERVER_TASK_STACK_SIZE, NULL, HTTP_WEBSERVER_TASK_PRIORITY, NULL);

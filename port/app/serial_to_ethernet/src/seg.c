@@ -30,6 +30,7 @@ wiz_tls_context s2e_tlsContext;
 #include "mqtt_transport_interface.h"
 
 #include "netHandler.h"
+#include "seg.h"
 
 //Modbus supprot
 #include "mb.h"
@@ -90,6 +91,8 @@ extern TimerHandle_t seg_inactivity_timer;
 extern TimerHandle_t seg_keepalive_timer;
 extern TimerHandle_t seg_auth_timer;
 extern TimerHandle_t spi_reset_timer;
+
+extern TaskHandle_t seg_mqtt_yield_task_handle;
 
 int u2e_size = 0;
 int e2u_size = 0;
@@ -759,7 +762,7 @@ void proc_SEG_mqtt_client(uint8_t sock) {
             first_established = 0;
             set_device_status(ST_CONNECT);
         }
-        mqtt_transport_yield(&g_mqtt_config);
+        //mqtt_transport_yield(&g_mqtt_config);
         break;
 
     case SOCK_CLOSE_WAIT:
@@ -2331,5 +2334,15 @@ void seg_timer_task(void *argument)  {
                 process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, TRUE);
             }
         }
+    }
+}
+
+void seg_mqtt_yield_task(void *argument)  {
+    struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection);
+    while (1) {
+        if (network_connection->working_state == ST_CONNECT) {
+            mqtt_transport_yield(&g_mqtt_config);
+        }
+        vTaskDelay(1);
     }
 }
