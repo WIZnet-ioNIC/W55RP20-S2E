@@ -22,6 +22,9 @@
 #include "core_mqtt_state.h"
 #include "WIZnet_board.h"
 
+#include "ConfigData.h"
+#include "seg.h"
+
 /**
     ----------------------------------------------------------------------------------------------------
     Macros
@@ -53,9 +56,13 @@ void mqtt_event_callback(MQTTContext_t *pContext, MQTTPacketInfo_t *pPacketInfo,
     if ((pPacketInfo->type & 0xF0U) == MQTT_PACKET_TYPE_PUBLISH) {
         /* Handle incoming publish. */
         if (pDeserializedInfo->pPublishInfo->payloadLength) {
-            printf("%.*s,%d,%.*s\n", pDeserializedInfo->pPublishInfo->topicNameLength, pDeserializedInfo->pPublishInfo->pTopicName,
-                   pDeserializedInfo->pPublishInfo->payloadLength,
-                   pDeserializedInfo->pPublishInfo->payloadLength, pDeserializedInfo->pPublishInfo->pPayload);
+            struct __serial_common *serial_common = (struct __serial_common *)&get_DevConfig_pointer()->serial_common;
+
+            if ((serial_common->serial_debug_en == SEG_DEBUG_S2E) || (serial_common->serial_debug_en == SEG_DEBUG_ALL)) {
+                printf("%.*s,%d,%.*s\n", pDeserializedInfo->pPublishInfo->topicNameLength, pDeserializedInfo->pPublishInfo->pTopicName,
+                       pDeserializedInfo->pPublishInfo->payloadLength,
+                       pDeserializedInfo->pPublishInfo->payloadLength, pDeserializedInfo->pPublishInfo->pPayload);
+            }
             user_sub_callback(pDeserializedInfo->pPublishInfo->pPayload, pDeserializedInfo->pPublishInfo->payloadLength);
         }
     } else {

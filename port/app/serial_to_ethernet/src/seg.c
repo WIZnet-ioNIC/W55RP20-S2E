@@ -68,6 +68,7 @@ uint8_t flag_auth_time = SEG_DISABLE; // TCP_SERVER_MODE only
 uint8_t flag_send_keepalive = SEG_DISABLE;
 uint8_t flag_first_keepalive = SEG_DISABLE;
 uint8_t flag_inactivity = SEG_DISABLE;
+uint8_t flag_data_time = SEG_DISABLE;
 
 // User's buffer / size idx
 extern uint8_t g_send_buf[DATA_BUF_SIZE];
@@ -90,6 +91,7 @@ extern xSemaphoreHandle seg_critical_sem;
 extern TimerHandle_t seg_inactivity_timer;
 extern TimerHandle_t seg_keepalive_timer;
 extern TimerHandle_t seg_auth_timer;
+extern TimerHandle_t seg_data_timer;
 extern TimerHandle_t spi_reset_timer;
 
 extern TaskHandle_t seg_mqtt_yield_task_handle;
@@ -2298,6 +2300,11 @@ void auth_timer_callback(TimerHandle_t xTimer) {
     xSemaphoreGive(seg_timer_sem);
 }
 
+void seg_data_timer_callback(TimerHandle_t xTimer) {
+    flag_data_time = SEG_ENABLE;
+    xSemaphoreGive(seg_timer_sem);
+}
+
 void seg_timer_task(void *argument)  {
     struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option);
 
@@ -2333,6 +2340,11 @@ void seg_timer_task(void *argument)  {
 #endif
                 process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, TRUE);
             }
+        }
+        if (flag_data_time == SEG_ENABLE) {
+            platform_uart_puts("a", 1);
+            flag_data_time = SEG_DISABLE;
+            xTimerStart(seg_data_timer, 0);
         }
     }
 }

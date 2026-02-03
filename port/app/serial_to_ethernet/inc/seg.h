@@ -132,6 +132,7 @@ void timers_stop(void);
 void keepalive_timer_callback(TimerHandle_t xTimer);
 void inactivity_timer_callback(TimerHandle_t xTimer);
 void auth_timer_callback(TimerHandle_t xTimer);
+void seg_data_timer_callback(TimerHandle_t xTimer);
 void seg_timer_task(void *argument);
 
 void ether_to_spi(uint8_t sock);

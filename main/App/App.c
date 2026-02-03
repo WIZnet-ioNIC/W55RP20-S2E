@@ -112,6 +112,7 @@ xSemaphoreHandle flash_critical_sem = NULL;
 TimerHandle_t seg_inactivity_timer = NULL;
 TimerHandle_t seg_keepalive_timer = NULL;
 TimerHandle_t seg_auth_timer = NULL;
+TimerHandle_t seg_data_timer = NULL;
 TimerHandle_t spi_reset_timer = NULL;
 TimerHandle_t reset_timer = NULL;
 
@@ -297,6 +298,9 @@ void start_task(void *argument) {
     mbedtls_platform_set_calloc_free(pvPortCalloc, vPortFree);
 #endif
     reset_timer = xTimerCreate("reset_timer", pdMS_TO_TICKS(5000), pdFALSE, 0, reset_timer_callback);
+    seg_data_timer = xTimerCreate("seg_data_timer", pdMS_TO_TICKS(180 * 1000), pdFALSE, 0, seg_data_timer_callback);
+    xTimerStart(seg_data_timer, 0);
+
 #ifdef __USE_WATCHDOG__
     watchdog_enable(8388, 0);
 #endif
