@@ -171,7 +171,7 @@ uint8_t set_devinfo(uint8_t * uri) {
             baudrate_idx = baud_115200;
         }
 #else
-        if (baudrate_idx > baud_921600) {
+        if (baudrate_idx > baud_max) {
             baudrate_idx = baud_115200;
         }
 #endif

@@ -59,7 +59,12 @@ enum baud {
     baud_115200 = 12,
     baud_230400 = 13,
     baud_460800 = 14,
-    baud_921600 = 15
+    baud_921600 = 15,
+    baud_1M = 16,
+    baud_2M = 17,
+    baud_4M = 18,
+    baud_8M = 19,
+    baud_max = 20
 };
 
 enum word_len {
