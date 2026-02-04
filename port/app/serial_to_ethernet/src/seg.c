@@ -2423,7 +2423,7 @@ void timers_stop(uint8_t channel) {
 
 void keepalive_timer_callback(TimerHandle_t xTimer) {
     int timer_id = (int)pvTimerGetTimerID(xTimer);
-    PRT_INFO("Timer ID: %d\r\n", timer_id);
+
     if (timer_id == SEG_DATA0_CH) {
         flag_send_keepalive[SEG_DATA0_CH] = SEG_ENABLE;
     } else if (timer_id == SEG_DATA1_CH) {
@@ -2449,7 +2449,7 @@ void inactivity_timer_callback(TimerHandle_t xTimer) {
 
 void auth_timer_callback(TimerHandle_t xTimer) {
     int timer_id = (int)pvTimerGetTimerID(xTimer);
-    PRT_INFO("Timer ID: %d\r\n", timer_id);
+
     if (timer_id == SEG_DATA0_CH) {
         flag_auth_time[SEG_DATA0_CH] = SEG_ENABLE;
     } else if (timer_id == SEG_DATA1_CH) {

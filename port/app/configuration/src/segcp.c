@@ -1009,7 +1009,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     }
 #else
-                    if (param_len > 2 || tmp_int > baud_921600) {
+                    if (param_len > 2 || tmp_int >= baud_max) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     }
 #endif
@@ -1024,7 +1024,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     }
 #else
-                    if (param_len > 2 || tmp_int > baud_921600) {
+                    if (param_len > 2 || tmp_int >= baud_max) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     }
 #endif

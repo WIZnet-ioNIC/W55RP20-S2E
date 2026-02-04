@@ -26,7 +26,7 @@
 #if (DEVICE_BOARD_NAME == W232N)
 uint32_t baud_table[] = {300, 600, 1200, 1800, 2400, 4800, 9600, 14400, 19200, 28800, 38400, 57600, 115200, 230400};
 #else
-uint32_t baud_table[] = {300, 600, 1200, 1800, 2400, 4800, 9600, 14400, 19200, 28800, 38400, 57600, 115200, 230400, 460800, 921600};
+uint32_t baud_table[] = {300, 600, 1200, 1800, 2400, 4800, 9600, 14400, 19200, 28800, 38400, 57600, 115200, 230400, 460800, 921600, 1000000, 2000000, 4000000, 8000000};
 #endif
 uint8_t word_len_table[] = {7, 8, 9};
 uint8_t * parity_table[] = {(uint8_t *)"N", (uint8_t *)"ODD", (uint8_t *)"EVEN"};
@@ -163,12 +163,12 @@ void DATA_UART_Configuration(void) {
 
         /* Set Baud Rate */
         if (serial_option->baud_rate < (sizeof(baud_table) / sizeof(baud_table[0]))) {
-            uart_set_baudrate(uart_id[i], baud_table[serial_option->baud_rate]);
+            PRT_INFO("Real baudrate = %d\r\n", uart_set_baudrate(uart_id[i], baud_table[serial_option->baud_rate]));
             valid_arg = 1;
         }
 
         if (!valid_arg) {
-            uart_set_baudrate(uart_id[i], baud_table[baud_115200]);
+            PRT_INFO("Real baudrate = %d\r\n", uart_set_baudrate(uart_id[i], baud_table[baud_115200]));
         }
 
         /* Set Data Bits */
