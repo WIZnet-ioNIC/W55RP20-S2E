@@ -97,9 +97,9 @@ uint8_t set_devinfo(uint8_t * uri) {
     memset(temp_buf, 0x00, 256);
 
     if ((param = get_http_param_value((char *)uri, "devname", temp_buf))) {
-        memset(dev_config->device_common.device_name, 0x00, 15);
-        if ((str_size = strlen((char *)param)) > 14) {
-            str_size = 14;    // exception handling
+        memset(dev_config->device_common.device_name, 0x00, DEVICE_NAME_SIZE);
+        if ((str_size = strlen((char *)param)) > (DEVICE_NAME_SIZE - 1)) {
+            str_size = DEVICE_NAME_SIZE - 1;    // exception handling
         }
         memcpy(dev_config->device_common.device_name, param, str_size);
         ret = 1;
