@@ -65,6 +65,12 @@ static bool mbRTUPackage(uint8_t * pucRcvAddress, uint8_t ** pucFrame, uint16_t 
     /*  Save the address field. All frames are passed to the upper layed
         and the decision if a frame is used is done there.
     */
+#if 1
+    if (usMBCRC16(ucRTUBuf[channel], usRcvBufferPos[channel]) != 0) {
+        PRT_INFO("CRC FAIL [%d]: len=%d\r\n", channel, usRcvBufferPos[channel]);
+        return FALSE;  // CRC 실패 → 이 프레임 버림
+    }
+#endif
     *pucRcvAddress = ucRTUBuf[channel][MB_SER_PDU_ADDR_OFF];
 
     /*  Total length of Modbus-PDU is Modbus-Serial-Line-PDU minus

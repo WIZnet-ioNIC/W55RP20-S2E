@@ -1146,6 +1146,7 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
             }
         } else if (serial_mode == SEG_SERIAL_MODBUS_RTU) {
             uint32_t tickStart = millis();
+            uint8_t retry_count = 0;
             while (1) {
                 RTU_Uart_RX(channel);
 
@@ -1153,6 +1154,15 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
                     mb_state_rtu_finish[channel] = FALSE;
                     mb_finish_flag = mbRTUtoTCP(sock, channel);
                     //PRT_INFO("MB RTU Process 1\r\n");
+                    // CRC 실패 → 재전송
+                    if (mb_finish_flag == FALSE && retry_count < 3) {
+                        retry_count++;
+                        PRT_INFO("RTU Retry [%d]: %d\r\n", channel, retry_count);
+                        mbRTURetransmit(channel);  // 마지막 RTU 요청 재전송
+                        tickStart = millis();
+                        continue;
+                    }
+
                 }
                 if (getSn_RX_RSR(sock)) {
                     mbTCPtoRTU(sock, channel);
@@ -2286,9 +2296,9 @@ void seg_task(void *argument)  {
             xSemaphoreTake(net_seg_sem[SEG_DATA0_CH], portMAX_DELAY);
         }
         do_seg(SEG_DATA0_SOCK, SEG_DATA0_CH);
-        vTaskDelay(20);
+        xSemaphoreTake(seg_sem[SEG_DATA0_CH], pdMS_TO_TICKS(5));
         do_seg(SEG_DATA1_SOCK, SEG_DATA1_CH);
-        xSemaphoreTake(seg_sem[SEG_DATA0_CH], pdMS_TO_TICKS(20));
+        xSemaphoreTake(seg_sem[SEG_DATA1_CH], pdMS_TO_TICKS(5));
         //taskYIELD();
     }
 }

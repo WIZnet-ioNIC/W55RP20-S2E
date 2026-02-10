@@ -12,12 +12,12 @@ extern xSemaphoreHandle seg_u2e_sem[];
 
 bool vMBPortTimersCallbackCh0(struct repeating_timer *t) {
     xMBRTUTimerT35Expired(SEG_DATA0_CH);
-    return true; // Indicate that the timer callback was successful
+    return false; // Indicate that the timer callback was successful
 }
 
 bool vMBPortTimersCallbackCh1(struct repeating_timer *t) {
     xMBRTUTimerT35Expired(SEG_DATA1_CH);
-    return true; // Indicate that the timer callback was successful
+    return false; // Indicate that the timer callback was successful
 }
 
 void vMBPortTimersCallback(struct repeating_timer *t) {

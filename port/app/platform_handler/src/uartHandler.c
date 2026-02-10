@@ -69,7 +69,18 @@ void data0_uart_rx(void) {
     signed portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 
     while (uart_is_readable(DATA0_UART_ID)) {
+
+#if 0
         ch = uart_getc(DATA0_UART_ID);
+#else
+        uint32_t dr = uart_get_hw(DATA0_UART_ID)->dr;
+        if (dr & 0x0F00) {
+            PRT_SEGCP("UART ERR: 0x%03X\r\n", dr & 0x0F00);
+        }
+
+        ch = (uint8_t)(dr & 0xFF);
+#endif
+
 
         if (!(check_modeswitch_trigger(ch))) { // ret: [0] data / [!0] trigger code
             if (is_data_buffer_full(SEG_DATA0_CH) == TRUE) {

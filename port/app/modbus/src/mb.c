@@ -15,8 +15,16 @@
 extern volatile uint8_t* pucASCIIBufferCur[DEVICE_UART_CNT];
 extern volatile uint16_t usASCIIBufferPos[DEVICE_UART_CNT];
 
+static uint8_t *pucRTULastFrame[DEVICE_UART_CNT];
+static uint16_t usRTULastFrameLen[DEVICE_UART_CNT];
+
+
 int mbTCPtoRTU(uint8_t sock, int channel) {
     if (MBtcp2rtuFrame(sock, channel) == TRUE) {
+
+        pucRTULastFrame[channel] = pucRTUBufferCur[channel];
+        usRTULastFrameLen[channel] = usRTUBufferPos[channel];
+
         while (usRTUBufferPos[channel]) {
             UART_write((uint8_t*)pucRTUBufferCur[channel], 1, channel);
             pucRTUBufferCur[channel]++;
@@ -25,6 +33,18 @@ int mbTCPtoRTU(uint8_t sock, int channel) {
         return TRUE;
     }
     return FALSE;
+}
+
+void mbRTURetransmit(int channel) {
+    uint8_t *ptr = pucRTULastFrame[channel];
+    uint16_t len = usRTULastFrameLen[channel];
+
+
+
+    while (len--) {
+        UART_write((uint8_t*)ptr, 1, channel);
+        ptr++;
+    }
 }
 
 int mbRTUtoTCP(uint8_t sock, int channel) {
