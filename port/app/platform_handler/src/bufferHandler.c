@@ -119,7 +119,7 @@ int32_t data_buffer_getc_nonblk(int channel) {
 
 int32_t data_buffer_gets(uint8_t* buf, uint16_t bytes, int channel) {
     uint16_t lentot = 0, len1st = 0;
-
+    taskENTER_CRITICAL();
     if (channel == SEG_DATA0_CH) {
         lentot = bytes = MIN(BUFFER_USED_SIZE(data0_buffer_rx), bytes);
         if (IS_BUFFER_OUT_SEPARATED(data0_buffer_rx) && (len1st = BUFFER_OUT_1ST_SIZE(data0_buffer_rx)) < bytes) {
@@ -139,6 +139,8 @@ int32_t data_buffer_gets(uint8_t* buf, uint16_t bytes, int channel) {
         memcpy(buf + len1st, &BUFFER_OUT(data1_buffer_rx), bytes);
         BUFFER_OUT_MOVE(data1_buffer_rx, bytes);
     }
+
+    taskEXIT_CRITICAL();
     return lentot;
 }
 
