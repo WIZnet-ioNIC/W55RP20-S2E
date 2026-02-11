@@ -49,6 +49,7 @@ void mbRTURetransmit(int channel) {
 
 int mbRTUtoTCP(uint8_t sock, int channel) {
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
+    // PRT_INFO("[%d] > MB RTU to TCP start \r\n:", channel);  //hoon
 
     if (MBrtu2tcpFrame(channel) == TRUE) {
         switch (get_device_status(channel)) {

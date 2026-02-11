@@ -86,9 +86,14 @@ void data0_uart_rx(void) {
             if (is_data_buffer_full(SEG_DATA0_CH) == TRUE) {
                 data_buffer_flush(SEG_DATA0_CH);
             }
+            if ((is_data_buffer_full(SEG_DATA1_CH) == TRUE)) {
+                data_buffer_flush(SEG_DATA1_CH);
+            }
 
-            if (check_serial_store_permitted(ch, SEG_DATA0_CH)) { // ret: [0] not permitted / [1] permitted
+            if (check_serial_store_permitted(ch, SEG_DATA0_CH) || check_serial_store_permitted(ch, SEG_DATA1_CH)) { // ret: [0] not permitted / [1] permitted
                 put_byte_to_data_buffer(ch, SEG_DATA0_CH);
+                put_byte_to_data_buffer(ch, SEG_DATA1_CH);
+
                 input_flag = 1;
             }
         }
@@ -96,6 +101,7 @@ void data0_uart_rx(void) {
 
     if (input_flag) {
         init_time_delimiter_timer(SEG_DATA0_CH);
+        init_time_delimiter_timer(SEG_DATA1_CH);
 #if 0
         if (opmode == DEVICE_GW_MODE) {
             xSemaphoreGiveFromISR(seg_u2e_sem[SEG_DATA0_CH], &xHigherPriorityTaskWoken);
