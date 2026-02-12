@@ -1149,6 +1149,7 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
             uint8_t retry_count = 0;
             uint8_t rtu_request_sent = FALSE;
             while (1) {
+                device_wdt_reset();  //WILL BE VERIFY
                 RTU_Uart_RX(channel);
 
                 if (mb_state_rtu_finish[channel] == TRUE) {
@@ -1178,7 +1179,7 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
                     break;
                 }
                 taskYIELD();
-                if ((millis() - tickStart) > 2000) {
+                if ((millis() - tickStart) > 200) { //WILL BE VERIFY
                     //PRT_INFO("MB RTU Process Timeout: %ld ms\r\n", millis() - tickStart);
                     break;
                 }

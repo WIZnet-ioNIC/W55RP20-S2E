@@ -34,14 +34,15 @@ void xMBPortTimersInit(uint32_t usTim1Timerout50us, int channel) {
     if (usTim1Timerout50us > (0xFFFFFFFFUL / 50)) {
         mb_timeout[channel] = 0xFFFFFFFFUL;    // Prevent overflow
     } else {
-        mb_timeout[channel] = t35_time_us + 50000;    // T3.5 + 50ms
+        mb_timeout[channel] = t35_time_us ;    // T3.5 + 50ms // by Lihan
+        // mb_timeout[channel] = t35_time_us + 50000;    // T3.5 + 50ms
     }
 
     /* Check for overflow */
     if (mb_timeout[channel] < t35_time_us) {
         mb_timeout[channel] = 0xFFFFFFFFUL;
     }
-    mb_timeout[channel] = mb_timeout[channel] * 8;
+    // mb_timeout[channel] = mb_timeout[channel] * 8; // by Lihan
     PRT_INFO("mb_timeout = %d us\r\n", mb_timeout[channel]);
 }
 
