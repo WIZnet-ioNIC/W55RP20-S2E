@@ -293,6 +293,7 @@ void DATA_UART_Deinit(void) {
 void DATA_UART_Interrupt_Enable(void) {
     uint8_t uart_irq[DEVICE_UART_CNT] = {UART1_IRQ, UART0_IRQ};
     uart_inst_t *uart_id[DEVICE_UART_CNT] = {DATA0_UART_ID, DATA1_UART_ID};
+    data_buffer_init_lock();
 
     // Set up a RX interrupt
     irq_set_exclusive_handler(uart_irq[SEG_DATA0_CH], data0_uart_rx);

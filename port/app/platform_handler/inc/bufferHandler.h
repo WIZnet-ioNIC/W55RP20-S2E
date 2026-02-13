@@ -55,5 +55,5 @@ int8_t is_data_buffer_full(int channel);
 int32_t data_buffer_getc(int channel);
 int32_t data_buffer_getc_nonblk(int channel);
 int32_t data_buffer_gets(uint8_t* buf, uint16_t bytes, int channel);
-
+void data_buffer_init_lock(void) ;
 #endif /* BUFFERHANDLER_H_ */

@@ -1161,7 +1161,7 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
                         retry_count++;
                         PRT_INFO("RTU Retry [%d]: %d\r\n", channel, retry_count);
                         mbRTURetransmit(channel);  // 마지막 RTU 요청 재전송
-                        tickStart = millis();
+                        // tickStart = millis();
                         continue;
                     }
 
@@ -1171,7 +1171,8 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
                     //PRT_INFO("MB RTU Process 2\r\n");
                     tickStart = millis();
                     rtu_request_sent = TRUE;
-                } else  if (!rtu_request_sent) {
+                }
+                if (!rtu_request_sent) {
                     break;
                 }
                 if (mb_finish_flag == TRUE) {
