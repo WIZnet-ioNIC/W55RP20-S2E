@@ -77,7 +77,32 @@ static bool mbTCPGet(uint8_t sock, uint8_t ** ppucMBTCPFrame, uint16_t * usTCPLe
                 network_connection->remote_port = peerport;
             }
         } else {
+#if 0
             usTCPBufPos = recv(sock, aucTCPBuf[channel], len);
+            if (usTCPBufPos < 0) {
+                usTCPBufPos = 0;
+            }
+#else
+            if (len < 6) {
+                return FALSE;
+            }
+
+            usTCPBufPos = recv(sock, aucTCPBuf[channel], 6);
+            if (usTCPBufPos != 6) {
+                return FALSE;
+            }
+
+            // Parse MBAP Length field (bytes 4-5)
+            uint16_t mbap_length = (aucTCPBuf[channel][4] << 8) | aucTCPBuf[channel][5];
+
+            // Read remaining bytes based on Length field
+            int remaining = recv(sock, aucTCPBuf[channel] + 6, mbap_length);
+            if (remaining < 0) {
+                return FALSE;
+            }
+
+            usTCPBufPos = 6 + remaining;  // ← 추가
+#endif
 #if 0
             PRT_INFO("[%d] > MB TCP Received len: %d Data: ", channel, usTCPBufPos);  //hoon
             for (int i = 0; i < usTCPBufPos; i++) {
@@ -94,9 +119,7 @@ static bool mbTCPGet(uint8_t sock, uint8_t ** ppucMBTCPFrame, uint16_t * usTCPLe
             }
 #endif
 #endif
-            if (usTCPBufPos < 0) {
-                usTCPBufPos = 0;
-            }
+
         }
         *ppucMBTCPFrame = aucTCPBuf[channel];
         *usTCPLength = usTCPBufPos;
