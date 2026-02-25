@@ -70,9 +70,9 @@ void data0_uart_rx(void) {
 
     while (uart_is_readable(DATA0_UART_ID)) {
 
-#if 0
+#if 1
         ch = uart_getc(DATA0_UART_ID);
-#else
+#else //for error check
         uint32_t dr = uart_get_hw(DATA0_UART_ID)->dr;
         if (dr & 0x0F00) {
             PRT_SEGCP("UART ERR: 0x%03X\r\n", dr & 0x0F00);

@@ -1166,7 +1166,7 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
                     }
 
                 }
-                if (getSn_RX_RSR(sock)) {
+                if (getSn_RX_RSR(sock) && (!rtu_request_sent)) {
                     mbTCPtoRTU(sock, channel);
                     //PRT_INFO("MB RTU Process 2\r\n");
                     tickStart = millis();
