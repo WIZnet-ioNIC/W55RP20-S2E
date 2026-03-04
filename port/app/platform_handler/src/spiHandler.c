@@ -38,8 +38,8 @@ extern uint8_t g_send_buf[];
 extern uint8_t g_recv_buf[];
 extern uint8_t gSEGCPREQ[];
 extern uint8_t gSEGCPREP[];
-extern uint16_t e2u_size;
-extern uint16_t u2e_size;
+extern int e2u_size;
+extern int u2e_size;
 
 void on_spi_rx(void) {
     //uartRxByte: // 1-byte character variable for UART Interrupt request handler

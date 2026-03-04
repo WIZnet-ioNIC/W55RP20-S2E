@@ -77,6 +77,25 @@ endif()
 message(STATUS "BOARD_NAME = ${BOARD_NAME}")
 message(STATUS "WIZNET_CHIP = ${WIZNET_CHIP}")
 
+# SEG Operation mode
+# Valid: TCP_CLIENT_MODE, TCP_SERVER_MODE, TCP_MIXED_MODE, UDP_MODE,
+#        SSL_TCP_CLIENT_MODE, MQTT_CLIENT_MODE, MQTTS_CLIENT_MODE
+if(NOT DEFINED OPMODE)
+    set(OPMODE TCP_CLIENT_MODE)
+    message(STATUS "OPMODE not set, defaulting to TCP_CLIENT_MODE")
+endif()
+add_definitions(-DOPMODE=${OPMODE})
+message(STATUS "OPMODE = ${OPMODE}")
+
+# SERIAL_MODE: compile-time serial protocol selection
+# Valid: SEG_SERIAL_PROTOCOL_NONE, SEG_SERIAL_MODBUS_RTU, SEG_SERIAL_MODBUS_ASCII
+if(NOT DEFINED SERIAL_MODE)
+    set(SERIAL_MODE SEG_SERIAL_PROTOCOL_NONE)
+    message(STATUS "SERIAL_MODE not set, defaulting to SEG_SERIAL_PROTOCOL_NONE")
+endif()
+add_definitions(-DSERIAL_MODE=${SERIAL_MODE})
+message(STATUS "SERIAL_MODE = ${SERIAL_MODE}")
+
 # Set the project root directory if it's not already defined, as may happen if
 # the tests folder is included directly by a parent project, without including
 # the top level CMakeLists.txt.

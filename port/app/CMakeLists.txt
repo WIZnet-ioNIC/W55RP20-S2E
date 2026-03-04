@@ -163,6 +163,9 @@ add_library(APP_S2E_FILES STATIC)
 
 target_sources(APP_S2E_FILES PUBLIC
         ${APP_PORT_DIR}/serial_to_ethernet/src/seg.c
+        ${APP_PORT_DIR}/serial_to_ethernet/src/seg_proc.c
+        ${APP_PORT_DIR}/serial_to_ethernet/src/seg_data.c
+        ${APP_PORT_DIR}/serial_to_ethernet/src/seg_util.c
         )
 
 target_include_directories(APP_S2E_FILES PUBLIC

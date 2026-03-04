@@ -42,10 +42,56 @@
 #define SEG_KILOBYTE                   (1024)
 #define SEG_MEGABYTE                   (SEG_KILOBYTE * 1024)
 
+/* Globals defined in seg.c */
 extern uint8_t opmode;
 extern uint8_t flag_process_dhcp_success;
 extern uint8_t flag_process_dns_success;
 extern char * str_working[];
+
+extern int u2e_size;
+extern int e2u_size;
+extern uint8_t peerip[4];
+extern uint8_t peerip_tmp[4];
+extern uint16_t peerport;
+extern uint8_t isXON;
+extern uint8_t sw_modeswitch_at_mode_on;
+extern uint8_t enable_modeswitch_timer;
+extern volatile uint16_t modeswitch_time;
+extern volatile uint16_t modeswitch_gap_time;
+extern uint8_t mixed_state;
+extern uint16_t client_any_port;
+extern uint8_t enable_serial_input_timer;
+extern volatile uint16_t serial_input_time;
+extern uint8_t flag_serial_input_time_elapse;
+extern uint8_t flag_connect_pw_auth;
+extern uint8_t flag_auth_time;
+extern uint8_t flag_send_keepalive;
+extern uint8_t flag_first_keepalive;
+extern uint8_t flag_inactivity;
+extern uint8_t triggercode_idx;
+extern uint8_t ch_tmp[3];
+
+extern uint8_t g_send_buf[DATA_BUF_SIZE];
+extern uint8_t g_recv_buf[DATA_BUF_SIZE];
+extern uint8_t g_recv_mqtt_buf[DATA_BUF_SIZE];
+extern NetworkContext_t g_network_context;
+extern TransportInterface_t g_transport_interface;
+extern mqtt_config_t g_mqtt_config;
+
+/* FreeRTOS handles */
+extern xSemaphoreHandle seg_e2u_sem;
+extern xSemaphoreHandle seg_u2e_sem;
+extern xSemaphoreHandle seg_spi_pending_sem;
+extern xSemaphoreHandle seg_sem;
+extern xSemaphoreHandle net_seg_sem;
+extern xSemaphoreHandle seg_timer_sem;
+extern xSemaphoreHandle segcp_uart_sem;
+extern xSemaphoreHandle seg_critical_sem;
+extern TimerHandle_t seg_inactivity_timer;
+extern TimerHandle_t seg_keepalive_timer;
+extern TimerHandle_t seg_auth_timer;
+extern TimerHandle_t spi_reset_timer;
+extern TaskHandle_t seg_mqtt_yield_task_handle;
 
 typedef enum {SEG_UART_RX, SEG_UART_TX, SEG_ETHER_RX, SEG_ETHER_TX, SEG_ALL} teDATADIR;
 typedef enum {
@@ -56,11 +102,9 @@ typedef enum {
     SEG_DEBUG_ALL      = 4
 } teDEBUGTYPE;
 
-enum {
-    SEG_SERIAL_PROTOCOL_NONE = 0,
-    SEG_SERIAL_MODBUS_RTU    = 1,
-    SEG_SERIAL_MODBUS_ASCII  = 2
-};
+#define SEG_SERIAL_PROTOCOL_NONE 0
+#define SEG_SERIAL_MODBUS_RTU    1
+#define SEG_SERIAL_MODBUS_ASCII  2
 
 /* Remote monitor option */
 enum {
@@ -89,6 +133,18 @@ enum {
     SEG_LINK_MSG_DEVGROUP   = 6,
 };
 
+
+typedef void (*seg_proc_fn_t)(uint8_t sock);
+
+/* Internal function prototypes shared across seg*.c files */
+void uart_to_ether(uint8_t sock);
+void ether_to_uart(uint8_t sock);
+uint16_t get_serial_data(void);
+void restore_serial_data(uint8_t idx);
+uint8_t check_connect_pw_auth(uint8_t * buf, uint16_t len);
+uint8_t check_tcp_connect_exception(void);
+void reset_SEG_timeflags(void);
+uint16_t get_tcp_any_port(void);
 
 // Serial to Ethernet function handler; call by main loop
 void do_seg(uint8_t sock);
