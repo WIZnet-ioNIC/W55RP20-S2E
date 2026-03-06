@@ -1,8 +1,30 @@
 
 # W55RP20-S2E README
 
-> The W55RP20 is a System-in-Package (SiP) developed by WIZnet, integrating Raspberry Pi's RP2040 microcontroller, WIZnet's W5500 Ethernet controller, and 2MB of Flash memory into a single chip. 
+> The W55RP20 is a System-in-Package (SiP) developed by WIZnet, integrating Raspberry Pi's RP2040 microcontroller, WIZnet's W5500 Ethernet controller, and 2MB of Flash memory into a single chip.
  This repository contains firmware that implements Serial to Ethernet using the W55RP20.
+
+> [!WARNING]
+> **This branch is currently under active development and debugging.**
+> Features and build options are subject to change. Use with caution in production environments.
+
+## Overview of Changes from the Original Firmware
+
+The original firmware was built as a single monolithic image.
+All operational settings (network mode, serial protocol, etc.) were configured at **runtime** through the WIZnet Config Tool, and the firmware loaded and applied those settings on boot.
+
+This repository introduces a **build-time feature selection system** as an alternative approach.
+Rather than relying solely on runtime configuration, developers can now select only the features and operation modes they need at compile time via [`ProjectOptions.cmake`](ProjectOptions.cmake).
+
+**Motivation:**
+
+- Reduce firmware footprint by excluding unused subsystems
+- Simplify deployment for fixed-function devices that do not require the full Config Tool interface
+- Provide a clear and maintainable customization point for future feature additions
+- Enable response to specific or specialized customer requirements without modifying the core codebase
+
+> The runtime Config Tool interface (`ENABLE_SEGCP`) remains available and can be re-enabled at any time.
+> Both approaches — runtime configuration and build-time selection — can coexist.
 
 These sections will provide how to configure development environment to develop and modify W55RP20-S2E.
 
@@ -17,8 +39,7 @@ These sections will provide how to configure development environment to develop 
     - [Feature Flags](#feature-flags)
     - [Serial Protocol](#serial-protocol)
   - [Features & Architecture](#features--architecture)
-- [Hardware requirements](#hardware-requirements)
-- [W232N](#w232n)
+- [Hardware & Product Information](#hardware--product-information)
 
 
 
@@ -199,67 +220,24 @@ Both images are merged into a single `_merged.uf2` file for flashing.
 
 - **W5500 TCP retransmission**: configured via `tcp_rcr_val` (default 8 retries, 200 ms interval = 1.6 s total timeout).
 
-<a name="hardware_requirements"></a>
+<a name="hardware--product-information"></a>
 
-# Hardware requirements
+# Hardware & Product Information
 
-| Image                                                        | Name                                                      | Etc                                                          |
-| ------------------------------------------------------------ | --------------------------------------------------------- | ------------------------------------------------------------ |
-| <image src= "https://docs.wiznet.io/assets/images/w55rp20-evb-pico-docs-8e041fe8924bed1c8d567c1c8b87628d.png" width="200px" height="150px"> | [**W55RP20-EVB-PICO**](https://docs.wiznet.io/Product/ioNIC/W55RP20/w55rp20-evb-pico)           | [W55RP20 Document](https://docs.wiznet.io/Product/ioNIC/W55RP20/documents_md) |
+For detailed hardware specifications, pin diagrams, product datasheets, and Config Tool usage guides, please refer to the **`main` branch**:
 
-> ### Pin Diagram
+> [!NOTE]
+> **[→ See the `main` branch README for full hardware and product documentation](https://github.com/Wiznet/W55RP20-S2E/blob/main/README.md)**
 
-The W55RP20 has internal connections between the RP2040 and W5500 via GPIO pins. The connection table is as follows:
-
-| I/O  | Pin Name | Description                                    |
-| :--- | -------- | ---------------------------------------------- |
-| O    | GPIO20   | Connected to **CSn** on W5500                  |
-| O    | GPIO21   | Connected to **SCLK** on W5500                 |
-| I    | GPIO22   | Connected to **MISO** on W5500                 |
-| O    | GPIO23   | Connected to **MOSI** on W5500                 |
-| I    | GPIO24   | Connected to **INTn** on W5500                 |
-| O    | GPIO25   | Connected to **RSTn** on W5500                 |
-<BR>
-
-The function pins are as follows :
-| Function               | Type | Pin Num | GPIO Num | Description                                           |
-|------------------------|------|---------|----------|-------------------------------------------------------|
-| Debug_UART_Tx           | O    | 65      | 0        | Output Debug Messages                                  |
-| Debug_UART_Rx           | I    | 66      | 1        |                                                       |
-| DATA_UART_TX_PIN        | O    | 9       | 4        | TX pin for Data UART transmission                      |
-| DATA_UART_RX_PIN        | I    | 10      | 5        | RX pin for Data UART reception                         |
-| DATA_UART_CTS_PIN       | I    | 11      | 6        | CTS pin for Data UART flow control                     |
-| DATA_UART_RTS_PIN       | O    | 12      | 7        | RTS pin for Data UART flow control <br> When 485/422 selected by UART_IF_SEL pin, this pin act as 485/422 select pin. <br> NC : 485 <br> Low : 422                     |
-| DATA_DTR_PIN            | O    | 14      | 8        | DTR pin for Data UART control                          |
-| DATA_DSR_PIN            | I    | 15      | 9        | DSR pin for Data UART control                          |
-| STATUS_PHYLINK_PIN      | O    | 16      | 10       | Output High when the PHY link is established           |
-| STATUS_TCPCONNECT_PIN   | O    | 17      | 11       | Output High when TCP connection is active              |
-| UART_IF_SEL_PIN         | I    | 18      | 12       | UART Interface select Input High : RS485/422, Low or Floating : RS232 |
-| HW_TRIG_PIN             | I    | 20      | 14       | When this pin is Low during a device reset, it enters AT Command Mode |
-| BOOT_MODE_PIN           | I    | 21      | 15       | When this pin is Low during a device reset, it enters Boot Mode        |
-| FAC_RSTn_PIN            | I    | 40      | 18       | Holding Low for more than 5 seconds triggers a factory reset           |  
-
-<BR>
-<a name="W232N"></a>
-
-# W232N  
-
-The **W232N** is an industrial module from WIZnet that applies the W55RP20-S2E firmware. For more detailed information, please refer to the documentation for this product.
-
-| Image                                                        | Name                                                      | Etc                                                          |
-| ------------------------------------------------------------ | --------------------------------------------------------- | ------------------------------------------------------------ |
-| <image src= "https://docs.wiznet.io/img/products/w232n/W232_Rail_mount.png" width="200px" height="150px"> | [**W232N**](https://docs.wiznet.io/Product/S2E-Module/Industrial/W232N-datasheet-kr)           | [W232N Document](https://docs.wiznet.io/Product/S2E-Module/Industrial/Config-tool-Guide-kr) |
+This includes:
+- Hardware requirements and supported board list
+- W55RP20 internal GPIO connections (RP2040 ↔ W5500)
+- Function pin diagram
+- W232N industrial module documentation
+- WIZnet Config Tool usage guide
 
 <!--
 Link
 -->
 
 [link-getting_started_with_raspberry_pi_pico]: https://datasheets.raspberrypi.org/pico/getting-started-with-pico.pdf
-[link-rp2040]: https://www.raspberrypi.org/products/rp2040/
-[link-w5100s]: https://docs.wiznet.io/Product/iEthernet/W5100S/overview
-[link-wiz500sr-rp]: https://docs.wiznet.io/Product/S2E-Module/WIZ5xxSR-RP-Series/WIZ500SR-RP/overview
-[link-wiz505sr-rp]: https://docs.wiznet.io/Product/S2E-Module/WIZ5xxSR-RP-Series/WIZ505SR-RP/overview
-[link-wiz510sr-rp]: https://docs.wiznet.io/Product/S2E-Module/WIZ5xxSR-RP-Series/WIZ510SR-RP/overview
-[link-wiz500sr-rp_main]: https://github.com/Wiznet/W5XXSR-RP-C/blob/main/static/images/getting_started/wiz500sr-rp_main.png
-[link-wiz505sr-rp_main]: https://github.com/Wiznet/W5XXSR-RP-C/blob/main/static/images/getting_started/wiz505sr-rp_main.png
-[link-wiz510sr-rp_main]: https://github.com/Wiznet/W5XXSR-RP-C/blob/main/static/images/getting_started/wiz510sr-rp_main.png
