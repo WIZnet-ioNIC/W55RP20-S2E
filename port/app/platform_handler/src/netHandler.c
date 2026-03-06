@@ -20,8 +20,10 @@
 
 #include "gpioHandler.h"
 
+#ifdef ENABLE_SEGCP
 extern xSemaphoreHandle net_segcp_udp_sem;
 extern xSemaphoreHandle net_segcp_tcp_sem;
+#endif
 extern xSemaphoreHandle net_http_webserver_sem;
 extern xSemaphoreHandle net_seg_sem;
 
@@ -60,7 +62,9 @@ void net_status_task(void *argument) {
             break;
 
         case NET_LINK_CONNECTED:
+#ifdef ENABLE_SEGCP
             xSemaphoreGive(net_segcp_udp_sem);
+#endif
             if (dev_config->network_option.dhcp_use) {
                 set_stop_dhcp_flag(0);
                 //PRT_INFO("DHCP waiting 3 seconds...\r\n");
@@ -94,7 +98,9 @@ void net_status_task(void *argument) {
             }
             g_net_status = NET_IP_UP;
             xSemaphoreGive(net_seg_sem);
+#ifdef ENABLE_SEGCP
             xSemaphoreGive(net_segcp_tcp_sem);
+#endif
             xSemaphoreGive(net_http_webserver_sem);
             break;
 

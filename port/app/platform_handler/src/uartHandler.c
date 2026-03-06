@@ -48,7 +48,9 @@ static uint8_t rts_status = UART_RTS_LOW;
 static uint8_t uart_if_mode = UART_IF_RS422;
 
 extern xSemaphoreHandle seg_u2e_sem;
+#ifdef ENABLE_SEGCP
 extern xSemaphoreHandle segcp_uart_sem;
+#endif
 
 
 /* Public functions ----------------------------------------------------------*/
@@ -87,9 +89,12 @@ void on_uart_rx(void) {
         init_time_delimiter_timer();
         if (opmode == DEVICE_GW_MODE) {
             xSemaphoreGiveFromISR(seg_u2e_sem, &xHigherPriorityTaskWoken);
-        } else if (opmode == DEVICE_AT_MODE) {
+        }
+#ifdef ENABLE_SEGCP
+        else if (opmode == DEVICE_AT_MODE) {
             xSemaphoreGiveFromISR(segcp_uart_sem, &xHigherPriorityTaskWoken);
         }
+#endif
         portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
     }
 }

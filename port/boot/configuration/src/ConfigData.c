@@ -364,8 +364,10 @@ void check_mac_address(void) {
     uint8_t buf[12], vt, temp;
     uint32_t vi, vj;
     uint8_t temp_buf[] = "INPUT MAC ? ";
-
-    if (dev_config->network_common.mac[0] != 0x00 || dev_config->network_common.mac[1] != 0x08 || dev_config->network_common.mac[2] != 0xDC) {
+    // #define MAC_OUI0  0xEC
+    // #define MAC_OUI1  0x74
+    // #define MAC_OUI2  0xCD
+    if (dev_config->network_common.mac[0] != 0xEC || dev_config->network_common.mac[1] != 0x74 || dev_config->network_common.mac[2] != 0xCD) {
         PRT_INFO("%s\r\n", temp_buf);
         //platform_uart_puts(temp_buf, strlen(temp_buf));
         uart_puts(UART_ID, temp_buf);

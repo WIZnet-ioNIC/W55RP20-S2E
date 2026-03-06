@@ -27,9 +27,12 @@
 #define MAC_OUI1  0x74
 #define MAC_OUI2  0xCD
 #else
-#define MAC_OUI0  0x00
-#define MAC_OUI1  0x08
-#define MAC_OUI2  0xDC
+#define MAC_OUI0  0xEC
+#define MAC_OUI1  0x74
+#define MAC_OUI2  0xCD
+// #define MAC_OUI0  0x00
+// #define MAC_OUI1  0x08
+// #define MAC_OUI2  0xDC
 #endif
 
 enum bank_num {

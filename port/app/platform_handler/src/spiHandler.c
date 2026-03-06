@@ -15,7 +15,9 @@
 
 extern xSemaphoreHandle seg_u2e_sem;
 extern xSemaphoreHandle seg_spi_pending_sem;
+#ifdef ENABLE_SEGCP
 extern xSemaphoreHandle segcp_uart_sem;
+#endif
 
 extern TimerHandle_t spi_reset_timer;
 
@@ -310,7 +312,9 @@ void spi_data_transfer_task(void *argument) {
                 memcpy(gSEGCPREQ, atcmd_bytes, 4);
             }
             current_state = STATE_COMMAND;
+#ifdef ENABLE_SEGCP
             xSemaphoreGive(segcp_uart_sem);
+#endif
             break;
 
         case STATE_NACK:

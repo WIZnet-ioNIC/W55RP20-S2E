@@ -328,8 +328,10 @@ void seg_timer_msec(void) {
         // result of command mode trigger code comparison
         if (triggercode_idx == 3) {
             sw_modeswitch_at_mode_on = SEG_ENABLE;  // success}
+#ifdef ENABLE_SEGCP
             xSemaphoreGiveFromISR(segcp_uart_sem, &xHigherPriorityTaskWoken);
             portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
+#endif
         } else {
             restore_serial_data(triggercode_idx);    // failed
         }

@@ -31,78 +31,16 @@ endif()
 # Initialize the SDK
 pico_sdk_init()
 
-# Set ethernet chip
-#set(BOARD_NAME WIZ5XXSR_RP)
-set(BOARD_NAME W55RP20_S2E)
-#set(BOARD_NAME W232N)
-#set(BOARD_NAME IP20)
-#set(BOARD_NAME PLATYPUS_S2E)
+# All user-configurable options (board, opmode, features)
+include(ProjectOptions.cmake)
 
-if(${BOARD_NAME} STREQUAL WIZ5XXSR_RP)
-    set(WIZCHIP W5100S)
-    add_definitions(-D_WIZCHIP_=W5100S)
-    add_definitions(-DDEVICE_BOARD_NAME=WIZ5XXSR_RP)
-elseif(${BOARD_NAME} STREQUAL W55RP20_S2E)
-    set(WIZNET_CHIP W5500)
-    add_definitions(-D_WIZCHIP_=W5500)
-    add_definitions(-DDEVICE_BOARD_NAME=W55RP20_S2E)
-elseif(${BOARD_NAME} STREQUAL W232N)
-    set(WIZNET_CHIP W5500)
-    add_definitions(-D_WIZCHIP_=W5500)
-    add_definitions(-DDEVICE_BOARD_NAME=W232N)
-elseif(${BOARD_NAME} STREQUAL IP20)
-    set(WIZNET_CHIP W5500)
-    add_definitions(-D_WIZCHIP_=W5500)
-    add_definitions(-DDEVICE_BOARD_NAME=IP20)
-elseif(${BOARD_NAME} STREQUAL PLATYPUS_S2E)
-    set(WIZNET_CHIP W5500)
-    add_definitions(-D_WIZCHIP_=W5500)
-    add_definitions(-DDEVICE_BOARD_NAME=PLATYPUS_S2E)
-else() 
-    message(FATAL_ERROR "BOARD_NAME is wrong = ${BOARD_NAME}")
-endif()
-
-
-#if(${WIZNET_CHIP} STREQUAL W5100S)
-#    add_definitions(-D_WIZCHIP_=W5100S)
-#elseif(${WIZNET_CHIP} STREQUAL W5500)
-#    add_definitions(-D_WIZCHIP_=W5500)
-#elseif(${WIZNET_CHIP} STREQUAL W55RP20)
-#    add_definitions(-D_WIZCHIP_=W5500)
-#    add_definitions(-D_CHIP_=W55RP20)
-#else()
-#    message(FATAL_ERROR "WIZNET_CHIP is wrong = ${WIZNET_CHIP}")
-#endif()
-
-message(STATUS "BOARD_NAME = ${BOARD_NAME}")
-message(STATUS "WIZNET_CHIP = ${WIZNET_CHIP}")
-
-# SEG Operation mode
-# Valid: TCP_CLIENT_MODE, TCP_SERVER_MODE, TCP_MIXED_MODE, UDP_MODE,
-#        SSL_TCP_CLIENT_MODE, MQTT_CLIENT_MODE, MQTTS_CLIENT_MODE
-if(NOT DEFINED OPMODE)
-    set(OPMODE TCP_CLIENT_MODE)
-    message(STATUS "OPMODE not set, defaulting to TCP_CLIENT_MODE")
-endif()
-add_definitions(-DOPMODE=${OPMODE})
-message(STATUS "OPMODE = ${OPMODE}")
-
-# SERIAL_MODE: compile-time serial protocol selection
-# Valid: SEG_SERIAL_PROTOCOL_NONE, SEG_SERIAL_MODBUS_RTU, SEG_SERIAL_MODBUS_ASCII
-if(NOT DEFINED SERIAL_MODE)
-    set(SERIAL_MODE SEG_SERIAL_PROTOCOL_NONE)
-    message(STATUS "SERIAL_MODE not set, defaulting to SEG_SERIAL_PROTOCOL_NONE")
-endif()
-add_definitions(-DSERIAL_MODE=${SERIAL_MODE})
-message(STATUS "SERIAL_MODE = ${SERIAL_MODE}")
-
-# Set the project root directory if it's not already defined, as may happen if
-# the tests folder is included directly by a parent project, without including
-# the top level CMakeLists.txt.
-#if(NOT DEFINED FREERTOS_DIR)
-#    set(FREERTOS_DIR ${CMAKE_SOURCE_DIR}/libraries/FreeRTOS-Kernel)
-#    message(STATUS "FREERTOS_DIR = ${FREERTOS_DIR}")
-#endif()
+message(STATUS "========== ProjectOptions summary ==========")
+message(STATUS "  BOARD_NAME   = ${BOARD_NAME}")
+message(STATUS "  WIZNET_CHIP  = ${WIZNET_CHIP}")
+message(STATUS "  OPMODE       = ${OPMODE}")
+message(STATUS "  ENABLE_SEGCP = ${ENABLE_SEGCP}")
+message(STATUS "  SERIAL_MODE  = ${SERIAL_MODE}")
+message(STATUS "============================================")
 
 if(NOT DEFINED WIZNET_DIR)
     set(WIZNET_DIR ${CMAKE_SOURCE_DIR}/libraries/ioLibrary_Driver)
@@ -129,7 +67,7 @@ if(NOT DEFINED APP_PORT_DIR)
     message(STATUS "APP_PORT_DIR = ${APP_PORT_DIR}")
 endif()
 
-# Turn off mbedtls test mode 
+# Turn off mbedtls test mode
 set(ENABLE_PROGRAMS OFF CACHE BOOL "Build mbedtls programs")
 set(ENABLE_TESTING OFF CACHE BOOL "Build mbedtls testing")
 add_definitions(-DMBEDTLS_CONFIG_FILE="${APP_PORT_DIR}/mbedtls/inc/SSLConfig.h")
@@ -137,8 +75,8 @@ add_definitions(-DSET_TRUSTED_CERT_IN_SAMPLES)
 add_definitions(-DPICO_USE_FASTEST_SUPPORTED_CLOCK=1)
 add_definitions(-DPICO_FLASH_SPI_CLKDIV=4)
 
-# UART PIO Debug option - comment out to disable
-#set(UART_PIO_DEBUG ON)  # Set to OFF or comment out this line to disable
+# UART PIO Debug option - uncomment to enable
+#set(UART_PIO_DEBUG ON)
 if(UART_PIO_DEBUG)
     add_definitions(-DUART_PIO_DEBUG)
 endif()
@@ -150,6 +88,8 @@ else()
 endif()
 
 # Set compile options
+add_compile_options(-ffunction-sections -fdata-sections)
+add_link_options(-Wl,--gc-sections)
 #add_compile_options(
 #        -Wall
 #        -Wno-format          # int != int32_t as far as the compiler is concerned because gcc has int32_t as long int

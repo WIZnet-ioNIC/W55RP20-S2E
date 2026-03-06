@@ -92,14 +92,16 @@
     Variables
     ----------------------------------------------------------------------------------------------------
 */
+#ifdef ENABLE_SEGCP
 xSemaphoreHandle net_segcp_udp_sem = NULL;
 xSemaphoreHandle net_segcp_tcp_sem = NULL;
-xSemaphoreHandle net_http_webserver_sem = NULL;
-xSemaphoreHandle net_seg_sem = NULL;
-xSemaphoreHandle eth_interrupt_sem = NULL;
 xSemaphoreHandle segcp_udp_sem = NULL;
 xSemaphoreHandle segcp_tcp_sem = NULL;
 xSemaphoreHandle segcp_uart_sem = NULL;
+#endif
+xSemaphoreHandle net_http_webserver_sem = NULL;
+xSemaphoreHandle net_seg_sem = NULL;
+xSemaphoreHandle eth_interrupt_sem = NULL;
 xSemaphoreHandle seg_u2e_sem = NULL;
 xSemaphoreHandle seg_e2u_sem = NULL;
 xSemaphoreHandle seg_spi_pending_sem = NULL;
@@ -115,7 +117,9 @@ TimerHandle_t seg_auth_timer = NULL;
 TimerHandle_t spi_reset_timer = NULL;
 TimerHandle_t reset_timer = NULL;
 
+#if OPMODE == MQTT_CLIENT_MODE || OPMODE == MQTTS_CLIENT_MODE
 TaskHandle_t seg_mqtt_yield_task_handle = NULL;
+#endif
 
 /**
     ----------------------------------------------------------------------------------------------------
@@ -125,6 +129,10 @@ TaskHandle_t seg_mqtt_yield_task_handle = NULL;
 static void RP2040_Init(void);
 static void RP2040_W5X00_Init(void);
 static void set_W5X00_NetTimeout(void);
+static void serial_interface_init(void);
+static void gpio_irq_init(void);
+static void semaphore_init(void);
+static void task_create(void);
 void start_task(void *argument);
 void eth_interrupt_task(void *argument);
 
@@ -187,18 +195,39 @@ static void set_W5X00_NetTimeout(void) {
     PRT_INFO(" - Network Timeout Settings - RCR: %d, RTR: %d\r\n", net_timeout.retry_cnt, net_timeout.time_100us);
 }
 
+/*  semaphore_init
+    태스크 간 동기화에 사용되는 모든 카운팅 세마포어를 생성한다.
+    반드시 xTaskCreate() 호출 이전에 실행되어야 한다.
+    (세마포어가 NULL인 상태에서 다른 태스크가 Give/Take하면 크래시 발생)
+*/
+static void semaphore_init(void) {
+#ifdef ENABLE_SEGCP
+    net_segcp_udp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    net_segcp_tcp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    segcp_udp_sem     = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    segcp_tcp_sem     = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    segcp_uart_sem    = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+#endif
+    net_http_webserver_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    net_seg_sem            = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    eth_interrupt_sem      = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    seg_e2u_sem            = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    seg_u2e_sem            = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    if (get_uart_spi_if()) {
+        seg_spi_pending_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    }
+    seg_sem          = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    seg_timer_sem    = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    seg_critical_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)1);
+}
 
-void start_task(void *argument) {
+/*  serial_interface_init
+    UART/SPI 인터페이스 선택 핀을 읽어 시리얼 모드를 결정하고 초기화한다.
+    - SPI 슬레이브 모드: UART를 해제하고 SPI 핀/클럭을 설정한다.
+    - UART 모드: UART 인터럽트를 활성화하고, HW 트리거 핀 상태에 따라 AT 모드로 전환한다.
+*/
+static void serial_interface_init(void) {
     DevConfig *dev_config = get_DevConfig_pointer();
-    uint8_t serial_mode;
-
-    RP2040_Init();
-    RP2040_W5X00_Init();
-
-    load_DevConfig_from_storage();
-    RP2040_Board_Init();
-    DATA0_UART_Configuration();
-    check_mac_address();
 
     init_uart_spi_if_sel_pin();
     if (get_uart_spi_if()) {
@@ -215,14 +244,17 @@ void start_task(void *argument) {
             init_trigger_modeswitch(DEVICE_AT_MODE);
         }
     }
+}
 
-    Net_Conf();
-    display_Dev_Info_main();
-    display_Net_Info();
+/*  gpio_irq_init
+    연결 상태 LED/IO 초기화, Modbus RTU 초기화(해당 시),
+    동작 모드에 따라 WIZchip 소켓 수신 인터럽트를 활성화하고
+    WIZchip IRQ 핀(WIZCHIP_PIN_IRQ)을 하강 엣지 인터럽트로 설정 및 콜백을 등록한다.
+*/
+static void gpio_irq_init(void) {
+    DevConfig *dev_config = get_DevConfig_pointer();
+    uint8_t serial_mode;
 
-    set_W5X00_NetTimeout();
-
-    Timer_Configuration();
     init_connection_status_io();
 
     serial_mode = get_serial_communation_protocol();
@@ -247,30 +279,23 @@ void start_task(void *argument) {
     GPIO_Configuration(WIZCHIP_PIN_IRQ, IO_INPUT, IO_PULLUP); //Set interrupt Pin
     GPIO_Configuration_IRQ(WIZCHIP_PIN_IRQ, IO_IRQ_FALL);
     GPIO_Configuration_Callback();
+}
 
-    net_segcp_udp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    net_segcp_tcp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    net_http_webserver_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    net_seg_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    eth_interrupt_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    segcp_udp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    segcp_tcp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    segcp_uart_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    seg_e2u_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    seg_u2e_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    if (get_uart_spi_if()) {
-        seg_spi_pending_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    }
-    seg_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    seg_timer_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    seg_critical_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)1);
-
+/*  task_create
+    애플리케이션에서 사용하는 모든 FreeRTOS 태스크를 생성한다.
+    semaphore_init() 이후에 호출되어야 하며,
+    ENABLE_SEGCP / OPMODE 컴파일 옵션에 따라 생성되는 태스크가 달라진다.
+*/
+static void task_create(void) {
     //TaskHandle_t task_handle;
 
     xTaskCreate(net_status_task, "Net_Status_Task", NET_TASK_STACK_SIZE, NULL, NET_TASK_PRIORITY, NULL);
+
+#ifdef ENABLE_SEGCP
     xTaskCreate(segcp_udp_task, "SEGCP_udp_Task", SEGCP_UDP_TASK_STACK_SIZE, NULL, SEGCP_UDP_TASK_PRIORITY, NULL);
     xTaskCreate(segcp_serial_task, "SEGCP_serial_Task", SEGCP_SERIAL_TASK_STACK_SIZE, NULL, SEGCP_SERIAL_TASK_PRIORITY, NULL);
     xTaskCreate(segcp_tcp_task, "SEGCP_tcp_Task", SEGCP_TCP_TASK_STACK_SIZE, NULL, SEGCP_TCP_TASK_PRIORITY, NULL);
+#endif
 
     xTaskCreate(eth_interrupt_task, "ETH_INTERRUPT_Task", ETH_INTERRUPT_TASK_STACK_SIZE, NULL, ETH_INTERRUPT_TASK_PRIORITY, NULL);
     xTaskCreate(seg_task, "SEG_Task", SEG_TASK_STACK_SIZE, NULL, SEG_TASK_PRIORITY, NULL);
@@ -284,18 +309,51 @@ void start_task(void *argument) {
     xTaskCreate(seg_recv_task, "SEG_Recv_Task", SEG_RECV_TASK_STACK_SIZE, NULL, SEG_RECV_TASK_PRIORITY, NULL);
     xTaskCreate(seg_timer_task, "SEG_Timer_task", SEG_TIMER_TASK_STACK_SIZE, NULL, SEG_TIMER_TASK_PRIORITY, NULL);
 
-    if (dev_config->network_connection.working_mode == MQTT_CLIENT_MODE ||
-            dev_config->network_connection.working_mode == MQTTS_CLIENT_MODE) {
-        xTaskCreate(seg_mqtt_yield_task, "SEG_MQTT_YIELD_Task", SEG_MQTT_YIELD_STACK_SIZE, NULL, SEG_MQTT_YIELD_PRIORITY, &seg_mqtt_yield_task_handle);
-    }
+#if OPMODE == MQTT_CLIENT_MODE || OPMODE == MQTTS_CLIENT_MODE
+    xTaskCreate(seg_mqtt_yield_task, "SEG_MQTT_YIELD_Task", SEG_MQTT_YIELD_STACK_SIZE, NULL, SEG_MQTT_YIELD_PRIORITY, &seg_mqtt_yield_task_handle);
+#endif
+}
 
-    if (dev_config->config_common.pw_search[0] == 0) {
-        xTaskCreate(http_webserver_task, "http_webserver_task", HTTP_WEBSERVER_TASK_STACK_SIZE, NULL, HTTP_WEBSERVER_TASK_PRIORITY, NULL);
-    }
+void start_task(void *argument) {
+    // RP2040 및 WIZchip SPI/이더넷 칩 하드웨어 초기화
+    RP2040_Init();
+    RP2040_W5X00_Init();
+
+    // Flash에서 장치 설정(DevConfig) 로드 및 보드·UART 초기화, MAC 주소 검증
+    load_DevConfig_from_storage();
+    RP2040_Board_Init();
+    DATA0_UART_Configuration();
+    check_mac_address();
+
+    // 시리얼 인터페이스(UART or SPI 슬레이브) 선택 및 초기화
+    serial_interface_init();
+
+    // 네트워크 설정 적용 및 디바이스/네트워크 정보 출력
+    Net_Conf();
+    display_Dev_Info_main();
+    display_Net_Info();
+
+    // WIZchip TCP 재전송 타임아웃 설정
+    set_W5X00_NetTimeout();
+
+    // 소프트웨어 타이머, GPIO/IRQ, Modbus 초기화
+    Timer_Configuration();
+    gpio_irq_init();
+
+    // Semaphore init by Lihan
+    semaphore_init();
+
+    // FreeRTOS 태스크 생성
+    task_create();
+
+    // if (dev_config->config_common.pw_search[0] == 0) {
+    //     xTaskCreate(http_webserver_task, "http_webserver_task", HTTP_WEBSERVER_TASK_STACK_SIZE, NULL, HTTP_WEBSERVER_TASK_PRIORITY, NULL);
+    // }
 
 #if defined(MBEDTLS_PLATFORM_C) && defined(MBEDTLS_PLATFORM_MEMORY)
     mbedtls_platform_set_calloc_free(pvPortCalloc, vPortFree);
 #endif
+
     reset_timer = xTimerCreate("reset_timer", pdMS_TO_TICKS(5000), pdFALSE, 0, reset_timer_callback);
 #ifdef __USE_WATCHDOG__
     watchdog_enable(8388, 0);
