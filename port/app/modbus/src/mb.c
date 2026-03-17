@@ -15,8 +15,16 @@
 extern volatile uint8_t* pucASCIIBufferCur;
 extern volatile uint16_t usASCIIBufferPos;
 
+static uint8_t *pucRTULastFrame;
+static uint16_t usRTULastFrameLen;
+
+
 void mbTCPtoRTU(uint8_t sock) {
     if (MBtcp2rtuFrame(sock) != FALSE) {
+
+        pucRTULastFrame = pucRTUBufferCur;
+        usRTULastFrameLen = usRTUBufferPos;
+
         while (usRTUBufferPos) {
             UART_write((uint8_t*)pucRTUBufferCur, 1);
             pucRTUBufferCur++;
@@ -25,7 +33,17 @@ void mbTCPtoRTU(uint8_t sock) {
     }
 }
 
-void mbRTUtoTCP(uint8_t sock) {
+void mbRTURetransmit(void) {
+    uint8_t *ptr = pucRTULastFrame;
+    uint16_t len = usRTULastFrameLen;
+
+    while (len--) {
+        UART_write((uint8_t*)ptr, 1);
+        ptr++;
+    }
+}
+
+int mbRTUtoTCP(uint8_t sock) {
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection);
 
     if (MBrtu2tcpFrame() != FALSE) {
@@ -39,7 +57,9 @@ void mbRTUtoTCP(uint8_t sock) {
         default:
             break;
         }
+        return TRUE;
     }
+    return FALSE;
 }
 
 void mbTCPtoASCII(uint8_t sock) {
@@ -66,7 +86,7 @@ void mbTCPtoASCII(uint8_t sock) {
     }
 }
 
-void mbASCIItoTCP(uint8_t sock) {
+int mbASCIItoTCP(uint8_t sock) {
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection);
 
     if (MBascii2tcpFrame() != FALSE) {
@@ -81,5 +101,7 @@ void mbASCIItoTCP(uint8_t sock) {
         default:
             break;
         }
+        return TRUE;
     }
+    return FALSE;
 }

@@ -2226,10 +2226,24 @@ void seg_u2e_task(void *argument)  {
             break;
 
         case SEG_SERIAL_MODBUS_RTU :
-            RTU_Uart_RX();
-            if (mb_state_rtu_finish == TRUE) {
-                mb_state_rtu_finish = FALSE;
-                mbRTUtoTCP(SEG_DATA0_SOCK);
+            uint8_t mb_finish_flag = 0;
+            uint8_t mb_retry_count = 0;
+
+            while (1) {
+                RTU_Uart_RX();
+                if (mb_state_rtu_finish == TRUE) {
+                    mb_state_rtu_finish = FALSE;
+                    mb_finish_flag = mbRTUtoTCP(SEG_DATA0_SOCK);
+
+                    if (mb_finish_flag == FALSE && mb_retry_count < MB_RETRY_MAX) {
+                        mb_retry_count++;
+                        PRT_INFO("RTU Retry: %d\r\n", mb_retry_count);
+                        mbRTURetransmit();
+                    } else {
+                        mb_retry_count = 0;
+                    }
+                }
+                break;
             }
             break;
 
