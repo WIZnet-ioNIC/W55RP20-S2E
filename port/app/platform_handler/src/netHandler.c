@@ -24,6 +24,7 @@ extern xSemaphoreHandle net_segcp_udp_sem;
 extern xSemaphoreHandle net_segcp_tcp_sem;
 extern xSemaphoreHandle net_http_webserver_sem;
 extern xSemaphoreHandle net_seg_sem;
+extern xSemaphoreHandle net_seg_u2e_sem;
 
 extern uint8_t g_send_buf[DATA_BUF_SIZE];
 extern uint8_t g_recv_mqtt_buf[DATA_BUF_SIZE];
@@ -96,6 +97,7 @@ void net_status_task(void *argument) {
             xSemaphoreGive(net_seg_sem);
             xSemaphoreGive(net_segcp_tcp_sem);
             xSemaphoreGive(net_http_webserver_sem);
+            xSemaphoreGive(net_seg_u2e_sem);
             break;
 
         case NET_IP_UP:
@@ -118,8 +120,7 @@ void net_status_task(void *argument) {
                     if (get_device_status() != ST_ATMODE) {
                         set_device_status(ST_OPEN);
                     }
-                    PRT_INFO("NET_IP_UP PHY_LINK_OFF\r\n");
-                    process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, TRUE);
+                    //process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, TRUE);
 #else   //device reset
                     device_raw_reboot();
 #endif

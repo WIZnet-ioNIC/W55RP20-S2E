@@ -83,6 +83,7 @@ extern xSemaphoreHandle seg_u2e_sem;
 extern xSemaphoreHandle seg_spi_pending_sem;
 extern xSemaphoreHandle seg_sem;
 extern xSemaphoreHandle net_seg_sem;
+extern xSemaphoreHandle net_seg_u2e_sem;
 extern xSemaphoreHandle seg_timer_sem;
 extern xSemaphoreHandle segcp_uart_sem;
 extern xSemaphoreHandle seg_critical_sem;
@@ -2201,6 +2202,11 @@ void seg_u2e_task(void *argument)  {
 
     PRT_SEG("Running Task\r\n");
     while (1) {
+        if (get_net_status() == NET_LINK_DISCONNECTED) {
+            PRT_SEGCP("get_net_status() != NET_LINK_DISCONNECTED\r\n");
+            xSemaphoreTake(net_seg_u2e_sem, portMAX_DELAY);
+        }
+
         xSemaphoreTake(seg_u2e_sem, portMAX_DELAY);
         //PRT_SEG("xSemaphoreTake(seg_u2e_sem, portMAX_DELAY)\r\n");
 

@@ -96,6 +96,7 @@ xSemaphoreHandle net_segcp_udp_sem = NULL;
 xSemaphoreHandle net_segcp_tcp_sem = NULL;
 xSemaphoreHandle net_http_webserver_sem = NULL;
 xSemaphoreHandle net_seg_sem = NULL;
+xSemaphoreHandle net_seg_u2e_sem = NULL;
 xSemaphoreHandle eth_interrupt_sem = NULL;
 xSemaphoreHandle segcp_udp_sem = NULL;
 xSemaphoreHandle segcp_tcp_sem = NULL;
@@ -252,6 +253,7 @@ void start_task(void *argument) {
     net_segcp_tcp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     net_http_webserver_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     net_seg_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    net_seg_u2e_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     eth_interrupt_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     segcp_udp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     segcp_tcp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
