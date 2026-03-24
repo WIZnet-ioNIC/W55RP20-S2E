@@ -39,8 +39,6 @@ void mbRTURetransmit(int channel) {
     uint8_t *ptr = pucRTULastFrame[channel];
     uint16_t len = usRTULastFrameLen[channel];
 
-
-
     while (len--) {
         UART_write((uint8_t*)ptr, 1, channel);
         ptr++;

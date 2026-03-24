@@ -1148,8 +1148,8 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
             uint32_t tickStart = millis();
             uint8_t retry_count = 0;
             uint8_t rtu_request_sent = FALSE;
+
             while (1) {
-                device_wdt_reset();  //WILL BE VERIFY
                 RTU_Uart_RX(channel);
 
                 if (mb_state_rtu_finish[channel] == TRUE) {
@@ -1175,12 +1175,12 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
                 if (!rtu_request_sent) {
                     break;
                 }
+
                 if (mb_finish_flag == TRUE) {
                     //PRT_INFO("Time for MB RTU: %ld ms\r\n", millis() - tickStart);
                     break;
                 }
-                taskYIELD();
-                if ((millis() - tickStart) > 200) { //WILL BE VERIFY
+                if ((millis() - tickStart) > 200) {
                     //PRT_INFO("MB RTU Process Timeout: %ld ms\r\n", millis() - tickStart);
                     break;
                 }
@@ -2305,7 +2305,7 @@ void seg_task(void *argument)  {
         do_seg(SEG_DATA0_SOCK, SEG_DATA0_CH);
         vTaskDelay(20);
         do_seg(SEG_DATA1_SOCK, SEG_DATA1_CH);
-        xSemaphoreTake(seg_sem[SEG_DATA1_CH], pdMS_TO_TICKS(5));
+        xSemaphoreTake(seg_sem[SEG_DATA0_CH], pdMS_TO_TICKS(5));
         //taskYIELD();
     }
 }

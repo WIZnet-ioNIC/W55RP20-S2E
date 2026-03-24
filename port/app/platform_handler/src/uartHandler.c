@@ -69,25 +69,14 @@ void data0_uart_rx(void) {
     signed portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 
     while (uart_is_readable(DATA0_UART_ID)) {
-
-#if 1
         ch = uart_getc(DATA0_UART_ID);
-#else //for error check
-        uint32_t dr = uart_get_hw(DATA0_UART_ID)->dr;
-        if (dr & 0x0F00) {
-            PRT_SEGCP("UART ERR: 0x%03X\r\n", dr & 0x0F00);
-        }
-
-        ch = (uint8_t)(dr & 0xFF);
-#endif
-
 
         if (!(check_modeswitch_trigger(ch))) { // ret: [0] data / [!0] trigger code
-            if ((is_data_buffer_full(SEG_DATA0_CH) == TRUE) || (is_data_buffer_full(SEG_DATA1_CH) == TRUE)) {
+            if (is_data_buffer_full(SEG_DATA0_CH) == TRUE) {
                 data_buffer_flush(SEG_DATA0_CH);
             }
 
-            if (check_serial_store_permitted(ch, SEG_DATA0_CH) || check_serial_store_permitted(ch, SEG_DATA1_CH)) {
+            if (check_serial_store_permitted(ch, SEG_DATA0_CH)) { // ret: [0] not permitted / [1] permitted
                 put_byte_to_data_buffer(ch, SEG_DATA0_CH);
                 input_flag = 1;
             }
@@ -96,7 +85,6 @@ void data0_uart_rx(void) {
 
     if (input_flag) {
         init_time_delimiter_timer(SEG_DATA0_CH);
-        // init_time_delimiter_timer(SEG_DATA1_CH);
 #if 0
         if (opmode == DEVICE_GW_MODE) {
             xSemaphoreGiveFromISR(seg_u2e_sem[SEG_DATA0_CH], &xHigherPriorityTaskWoken);
@@ -293,7 +281,6 @@ void DATA_UART_Deinit(void) {
 void DATA_UART_Interrupt_Enable(void) {
     uint8_t uart_irq[DEVICE_UART_CNT] = {UART1_IRQ, UART0_IRQ};
     uart_inst_t *uart_id[DEVICE_UART_CNT] = {DATA0_UART_ID, DATA1_UART_ID};
-    data_buffer_init_lock();
 
     // Set up a RX interrupt
     irq_set_exclusive_handler(uart_irq[SEG_DATA0_CH], data0_uart_rx);
