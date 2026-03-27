@@ -167,9 +167,9 @@ void RTU_Uart_RX(void) {
             //IWDG_ReloadCounter();
             break;
         }
-        if (mb_state_rtu_finish == TRUE) {
-            return;
-        }
+        // if (mb_state_rtu_finish == TRUE) {
+        //     return;
+        // }
     }
 }
 
