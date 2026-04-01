@@ -11,6 +11,8 @@
 
 #include "mbedtls/x509_crt.h"
 #include "mbedtls/error.h"
+#include "mbedtls/debug.h"
+#include "psa/crypto.h"
 #include "port_common.h"
 
 #include "SSLInterface.h"
@@ -110,12 +112,18 @@ int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd) {
 #endif
 
 #if defined (MBEDTLS_DEBUG_C)
-    debug_set_threshold(DEBUG_LEVEL);
+    mbedtls_debug_set_threshold(DEBUG_LEVEL);
 #endif
 
     /*
         Initialize session data
     */
+    /* PSA Crypto must be initialized before TLS 1.3 handshake */
+    psa_status_t psa_status = psa_crypto_init();
+    if (psa_status != PSA_SUCCESS) {
+        PRT_SSL(" failed\r\n  ! psa_crypto_init returned %d\r\n", (int)psa_status);
+        return -1;
+    }
 #if defined (MBEDTLS_ENTROPY_C)
     tlsContext->entropy = pvPortMalloc(sizeof(mbedtls_entropy_context));
 #endif
@@ -214,6 +222,11 @@ int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd) {
         PRT_SSL(" failed mbedtls_ssl_config_defaults returned %d\r\n", ret);
         return -1;
     }
+
+#if defined(MBEDTLS_SSL_PROTO_TLS1_3)
+    mbedtls_ssl_conf_tls13_key_exchange_modes(tlsContext->conf,
+            MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL);
+#endif
 
     PRT_SSL("ssl_option->root_ca_option = %d\r\n", ssl_option->root_ca_option);
     PRT_SSL("socket_fd = %d\r\n", socket_fd);
