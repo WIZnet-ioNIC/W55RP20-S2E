@@ -1526,8 +1526,8 @@ uint16_t get_serial_data(int channel) {
 void ether_to_uart(uint8_t sock, int channel) {
     struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option[channel]);
     struct __serial_common *serial_common = (struct __serial_common *) & (get_DevConfig_pointer()->serial_common);
-    struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
-    struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option[channel]);
+    struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[sock]);
+    struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option[sock]);
 
     uint16_t len;
     uint16_t i;
@@ -2182,6 +2182,16 @@ void seg_timer_msec(void) {
         serial_data_packing = (struct __serial_data_packing *) & (get_DevConfig_pointer()->serial_data_packing[i]);
         network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[i]);
 
+
+        // Always give semaphore to allow u2e task to run
+        if (i == SEG_DATA0_CH) {
+            xSemaphoreGiveFromISR(seg_u2e_sem[SEG_DATA0_CH], &xHigherPriorityTaskWoken);
+        } else if (i == SEG_DATA1_CH) {
+            xSemaphoreGiveFromISR(seg_u2e_sem[SEG_DATA1_CH], &xHigherPriorityTaskWoken);
+        }
+        portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
+
+
         if (enable_serial_input_timer[i]) {
             if (serial_input_time[i] < serial_data_packing->packing_time) {
                 serial_input_time[i]++;
@@ -2189,24 +2199,6 @@ void seg_timer_msec(void) {
                 serial_input_time[i] = 0;
                 enable_serial_input_timer[i] = 0;
                 flag_serial_input_time_elapse[i] = SEG_ENABLE;
-
-                switch (network_connection->working_mode) {
-                case TCP_CLIENT_MODE:
-                case TCP_SERVER_MODE:
-                case TCP_MIXED_MODE:
-                case SSL_TCP_CLIENT_MODE:
-                case UDP_MODE:
-                case MQTT_CLIENT_MODE:
-                case MQTTS_CLIENT_MODE:
-                    if (i == SEG_DATA0_CH) {
-                        xSemaphoreGiveFromISR(seg_u2e_sem[SEG_DATA0_CH], &xHigherPriorityTaskWoken);
-                        portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
-                    } else if (i == SEG_DATA1_CH) {
-                        xSemaphoreGiveFromISR(seg_u2e_sem[SEG_DATA1_CH], &xHigherPriorityTaskWoken);
-                        portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
-                    }
-                    break;
-                }
 
             }
         }
