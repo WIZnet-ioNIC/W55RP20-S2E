@@ -26,6 +26,7 @@ extern xSemaphoreHandle net_segcp_udp_sem;
 extern xSemaphoreHandle net_segcp_tcp_sem;
 extern xSemaphoreHandle net_http_webserver_sem;
 extern xSemaphoreHandle net_seg_sem[DEVICE_UART_CNT];
+extern xSemaphoreHandle net_seg_u2e_sem[DEVICE_UART_CNT];
 
 extern uint8_t g_send_buf[DEVICE_UART_CNT][DATA_BUF_SIZE];
 extern uint8_t g_recv_mqtt_buf[DEVICE_UART_CNT][DATA_BUF_SIZE];
@@ -120,6 +121,8 @@ void net_status_task(void *argument) {
             xSemaphoreGive(net_seg_sem[SEG_DATA1_CH]);
             xSemaphoreGive(net_segcp_tcp_sem);
             xSemaphoreGive(net_http_webserver_sem);
+            xSemaphoreGive(net_seg_u2e_sem[SEG_DATA0_CH]);
+            xSemaphoreGive(net_seg_u2e_sem[SEG_DATA1_CH]);
             break;
 
         case NET_IP_UP:
@@ -144,8 +147,8 @@ void net_status_task(void *argument) {
                         set_device_status(ST_OPEN, SEG_DATA0_CH);
                         set_device_status(ST_OPEN, SEG_DATA1_CH);
                     }
-                    process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
-                    process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
+                    //process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
+                    //process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
 #else   //device reset
                     device_raw_reboot();
 #endif

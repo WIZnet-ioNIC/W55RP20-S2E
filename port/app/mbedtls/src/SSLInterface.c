@@ -11,6 +11,8 @@
 
 #include "mbedtls/x509_crt.h"
 #include "mbedtls/error.h"
+#include "mbedtls/debug.h"
+#include "psa/crypto.h"
 #include "port_common.h"
 
 #include "SSLInterface.h"
@@ -116,6 +118,12 @@ int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd, int channel) {
     /*
         Initialize session data
     */
+    /* PSA Crypto must be initialized before TLS 1.3 handshake */
+    psa_status_t psa_status = psa_crypto_init();
+    if (psa_status != PSA_SUCCESS) {
+        PRT_SSL(" failed\r\n  ! psa_crypto_init returned %d\r\n", (int)psa_status);
+        return -1;
+    }
 #if defined (MBEDTLS_ENTROPY_C)
     tlsContext->entropy = pvPortMalloc(sizeof(mbedtls_entropy_context));
 #endif
@@ -214,6 +222,11 @@ int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd, int channel) {
         PRT_SSL(" failed mbedtls_ssl_config_defaults returned %d\r\n", ret);
         return -1;
     }
+
+#if defined(MBEDTLS_SSL_PROTO_TLS1_3)
+    mbedtls_ssl_conf_tls13_key_exchange_modes(tlsContext->conf,
+            MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL);
+#endif
 
     PRT_SSL("ssl_option->root_ca_option = %d\r\n", ssl_option->root_ca_option);
     PRT_SSL("socket_fd = %d\r\n", socket_fd);
@@ -421,7 +434,7 @@ int check_ca(uint8_t *ca_data, uint32_t ca_len) {
     mbedtls_x509_crt_init(&ca_cert);
 
 
-    PRT_SSL("ca_len = %d\r\n", ca_len);
+    //PRT_SSL("ca_len = %d\r\n", ca_len);
     ret = mbedtls_x509_crt_parse(&ca_cert, (const char *)ca_data, ca_len + 1);
     if (ret < 0) {
         PRT_SSL(" failed\r\n  !  mbedtls_x509_crt_parse returned -0x%x while parsing root cert\r\n", -ret);
@@ -439,7 +452,7 @@ int check_pkey(wiz_tls_context* tlsContext, uint8_t *pkey_data, uint32_t pkey_le
     mbedtls_pk_context pk_cert;
     mbedtls_pk_init(&pk_cert);
 
-    PRT_SSL("pkey_len = %d\r\n", pkey_len);
+    //PRT_SSL("pkey_len = %d\r\n", pkey_len);
 
     ret = mbedtls_pk_parse_key(&pk_cert, (const char *)pkey_data, pkey_len + 1, NULL, 0, mbedtls_ctr_drbg_random, tlsContext->ctr_drbg);
     if (ret != 0) {

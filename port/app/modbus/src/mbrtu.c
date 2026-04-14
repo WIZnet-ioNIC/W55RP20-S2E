@@ -66,6 +66,11 @@ static bool mbRTUPackage(uint8_t * pucRcvAddress, uint8_t ** pucFrame, uint16_t 
     /*  Save the address field. All frames are passed to the upper layed
         and the decision if a frame is used is done there.
     */
+
+    if (usMBCRC16(ucRTUBuf[channel], usRcvBufferPos[channel]) != 0) {
+        return FALSE;
+    }
+
     *pucRcvAddress = ucRTUBuf[channel][MB_SER_PDU_ADDR_OFF];
 
     /*  Total length of Modbus-PDU is Modbus-Serial-Line-PDU minus
@@ -166,9 +171,9 @@ void RTU_Uart_RX(int channel) {
             //IWDG_ReloadCounter();
             break;
         }
-        if (mb_state_rtu_finish[channel] == TRUE) {
-            return;
-        }
+        //if (mb_state_rtu_finish[channel] == TRUE) {
+        //    return;
+        //}
     }
 }
 

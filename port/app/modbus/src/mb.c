@@ -15,8 +15,15 @@
 extern volatile uint8_t* pucASCIIBufferCur[DEVICE_UART_CNT];
 extern volatile uint16_t usASCIIBufferPos[DEVICE_UART_CNT];
 
+static uint8_t *pucRTULastFrame[DEVICE_UART_CNT];
+static uint16_t usRTULastFrameLen[DEVICE_UART_CNT];
+
 void mbTCPtoRTU(uint8_t sock, int channel) {
-    if (MBtcp2rtuFrame(sock, channel) == TRUE) {
+    if (MBtcp2rtuFrame(sock, channel) != FALSE) {
+
+        pucRTULastFrame[channel] = pucRTUBufferCur[channel];
+        usRTULastFrameLen[channel] = usRTUBufferPos[channel];
+
         while (usRTUBufferPos[channel]) {
             UART_write((uint8_t*)pucRTUBufferCur[channel], 1, channel);
             pucRTUBufferCur[channel]++;
@@ -25,10 +32,20 @@ void mbTCPtoRTU(uint8_t sock, int channel) {
     }
 }
 
-void mbRTUtoTCP(uint8_t sock, int channel) {
+void mbRTURetransmit(int channel) {
+    uint8_t *ptr = pucRTULastFrame[channel];
+    uint16_t len = usRTULastFrameLen[channel];
+
+    while (len--) {
+        UART_write((uint8_t*)ptr, 1, channel);
+        ptr++;
+    }
+}
+
+int mbRTUtoTCP(uint8_t sock, int channel) {
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
 
-    if (MBrtu2tcpFrame(channel) == TRUE) {
+    if (MBrtu2tcpFrame(channel) != FALSE) {
         switch (get_device_status(channel)) {
         case ST_UDP :
             sendto(sock, (uint8_t*)pucTCPBufferCur[channel], usTCPBufferPos[channel], network_connection->remote_ip, network_connection->remote_port);
@@ -39,7 +56,9 @@ void mbRTUtoTCP(uint8_t sock, int channel) {
         default:
             break;
         }
+        return TRUE;
     }
+    return FALSE;
 }
 
 void mbTCPtoASCII(uint8_t sock, int channel) {
@@ -66,7 +85,7 @@ void mbTCPtoASCII(uint8_t sock, int channel) {
     }
 }
 
-void mbASCIItoTCP(uint8_t sock, int channel) {
+int mbASCIItoTCP(uint8_t sock, int channel) {
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
 
     if (MBascii2tcpFrame(channel) != FALSE) {
@@ -81,5 +100,7 @@ void mbASCIItoTCP(uint8_t sock, int channel) {
         default:
             break;
         }
+        return TRUE;
     }
+    return FALSE;
 }

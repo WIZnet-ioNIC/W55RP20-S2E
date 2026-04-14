@@ -87,6 +87,7 @@ xSemaphoreHandle net_segcp_udp_sem = NULL;
 xSemaphoreHandle net_segcp_tcp_sem = NULL;
 xSemaphoreHandle net_http_webserver_sem = NULL;
 xSemaphoreHandle net_seg_sem[DEVICE_UART_CNT] = {NULL, };
+xSemaphoreHandle net_seg_u2e_sem[DEVICE_UART_CNT] = {NULL, };
 xSemaphoreHandle segcp_uart_sem = NULL;
 xSemaphoreHandle seg_u2e_sem[DEVICE_UART_CNT] = {NULL, };
 xSemaphoreHandle seg_e2s_sem = NULL;
@@ -220,6 +221,8 @@ void start_task(void *argument) {
     net_http_webserver_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     net_seg_sem[SEG_DATA0_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     net_seg_sem[SEG_DATA1_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    net_seg_u2e_sem[SEG_DATA0_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    net_seg_u2e_sem[SEG_DATA1_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     segcp_uart_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_e2s_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_u2e_sem[SEG_DATA0_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);

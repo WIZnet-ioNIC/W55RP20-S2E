@@ -80,6 +80,7 @@ extern xSemaphoreHandle seg_u2e_sem[DEVICE_UART_CNT];
 extern xSemaphoreHandle seg_spi_pending_sem;
 //extern xSemaphoreHandle conn_seg_sem;
 extern xSemaphoreHandle net_seg_sem[DEVICE_UART_CNT];
+extern xSemaphoreHandle net_seg_u2e_sem[DEVICE_UART_CNT];
 extern xSemaphoreHandle seg_timer_sem;
 extern xSemaphoreHandle segcp_uart_sem;
 extern xSemaphoreHandle seg_critical_sem[DEVICE_UART_CNT];
@@ -1565,7 +1566,8 @@ void ether_to_uart(uint8_t sock, int channel) {
                             PRT_SEG(" > UDP Peer IP/Port: %d.%d.%d.%d : %d\r\n", peerip[0], peerip[1], peerip[2], peerip[3], peerport);
                         }
                     }
-                } else if (network_connection->working_state == ST_CONNECT) {
+                //} else if (network_connection->working_state == ST_CONNECT) {
+                } else {
 #ifdef __USE_S2E_OVER_TLS__
                     if (network_connection->working_mode == SSL_TCP_CLIENT_MODE) {
                         e2u_size[channel] = wiz_tls_read(&s2e_tlsContext[channel], g_recv_buf[channel], len);
@@ -2277,6 +2279,11 @@ void seg0_u2e_task(void *argument)  {
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[SEG_DATA0_CH]);
 
     while (1) {
+        if (get_net_status() == NET_LINK_DISCONNECTED) {
+            PRT_SEGCP("get_net_status() != NET_LINK_DISCONNECTED\r\n");
+            xSemaphoreTake(net_seg_u2e_sem[SEG_DATA0_CH], portMAX_DELAY);
+        }
+
         xSemaphoreTake(seg_u2e_sem[SEG_DATA0_CH], portMAX_DELAY);
         switch (serial_mode) {
         case SEG_SERIAL_PROTOCOL_NONE :
@@ -2294,10 +2301,24 @@ void seg0_u2e_task(void *argument)  {
             break;
 
         case SEG_SERIAL_MODBUS_RTU :
-            RTU_Uart_RX(SEG_DATA0_CH);
-            if (mb_state_rtu_finish[SEG_DATA0_CH] == TRUE) {
-                mb_state_rtu_finish[SEG_DATA0_CH] = FALSE;
-                mbRTUtoTCP(SEG_DATA0_SOCK, SEG_DATA0_CH);
+            uint8_t mb_finish_flag = 0;
+            uint8_t mb_retry_count = 0;
+
+            while (1) {
+                RTU_Uart_RX(SEG_DATA0_CH);
+                if (mb_state_rtu_finish[SEG_DATA0_CH] == TRUE) {
+                    mb_state_rtu_finish[SEG_DATA0_CH] = FALSE;
+                    mb_finish_flag = mbRTUtoTCP(SEG_DATA0_SOCK, SEG_DATA0_CH);
+
+                    if (mb_finish_flag == FALSE && mb_retry_count < MB_RETRY_MAX) {
+                        mb_retry_count++;
+                        PRT_INFO("RTU Retry: %d\r\n", mb_retry_count);
+                        mbRTURetransmit(SEG_DATA0_CH);
+                    } else {
+                        mb_retry_count = 0;
+                    }
+                }
+                break;
             }
             break;
 
@@ -2320,6 +2341,11 @@ void seg1_u2e_task(void *argument)  {
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[SEG_DATA1_CH]);
 
     while (1) {
+        if (get_net_status() == NET_LINK_DISCONNECTED) {
+            PRT_SEGCP("get_net_status() != NET_LINK_DISCONNECTED\r\n");
+            xSemaphoreTake(net_seg_u2e_sem[SEG_DATA1_CH], portMAX_DELAY);
+        }
+
         xSemaphoreTake(seg_u2e_sem[SEG_DATA1_CH], portMAX_DELAY);
 
         switch (serial_mode) {
@@ -2338,10 +2364,24 @@ void seg1_u2e_task(void *argument)  {
             break;
 
         case SEG_SERIAL_MODBUS_RTU :
-            RTU_Uart_RX(SEG_DATA1_CH);
-            if (mb_state_rtu_finish[SEG_DATA1_CH] == TRUE) {
-                mb_state_rtu_finish[SEG_DATA1_CH] = FALSE;
-                mbRTUtoTCP(SEG_DATA1_SOCK, SEG_DATA1_CH);
+            uint8_t mb_finish_flag = 0;
+            uint8_t mb_retry_count = 0;
+
+            while (1) {
+                RTU_Uart_RX(SEG_DATA1_CH);
+                if (mb_state_rtu_finish[SEG_DATA1_CH] == TRUE) {
+                    mb_state_rtu_finish[SEG_DATA1_CH] = FALSE;
+                    mb_finish_flag = mbRTUtoTCP(SEG_DATA1_SOCK, SEG_DATA1_CH);
+
+                    if (mb_finish_flag == FALSE && mb_retry_count < MB_RETRY_MAX) {
+                        mb_retry_count++;
+                        PRT_INFO("RTU Retry: %d\r\n", mb_retry_count);
+                        mbRTURetransmit(SEG_DATA1_CH);
+                    } else {
+                        mb_retry_count = 0;
+                    }
+                }
+                break;
             }
             break;
 
