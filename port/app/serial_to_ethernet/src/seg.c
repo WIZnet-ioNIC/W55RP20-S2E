@@ -1516,7 +1516,7 @@ uint16_t get_serial_data(int channel) {
     }
 
     // Packing delimiter: time option
-    if ((serial_data_packing->packing_time != 0) && (u2e_size[channel] != 0) && (flag_serial_input_time_elapse)) {
+    if ((serial_data_packing->packing_time != 0) && (u2e_size[channel] != 0) && (flag_serial_input_time_elapse[channel] == SEG_ENABLE)) {
         if (get_data_buffer_usedsize(channel) == 0) {
             flag_serial_input_time_elapse[channel] = SEG_DISABLE;    // ##
         }
