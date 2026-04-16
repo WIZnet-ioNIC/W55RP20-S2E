@@ -445,8 +445,8 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
 #ifdef _SEG_DEBUG_
         PRT_SEG(" > TCP CLIENT: client_any_port = %d\r\n", client_any_port);
 #endif
+        int8_t s = socket(sock, Sn_MR_TCP, source_port, 0x00);
 
-        int8_t s = socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
         if (s == sock) {
             if ((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time) {
                 modeswitch_gap_time = serial_data_packing->packing_time;
@@ -797,8 +797,8 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
         }
 
         PRT_SEG(" > MQTT CLIENT: client_any_port = %d\r\n", client_any_port);
+        int8_t s = socket(sock, Sn_MR_TCP, source_port, 0x00);
 
-        int8_t s = socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
         if (s == sock) {
             // Replace the command mode switch code GAP time (default: 500ms)
             if ((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time) {
@@ -1152,7 +1152,8 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
         u2e_size[channel] = 0;
         e2u_size[channel] = 0;
 
-        int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
+        int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, 0x00);
+
         if (s == sock) {
             // Replace the command mode switch code GAP time (default: 500ms)
             if ((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time) {
@@ -1346,7 +1347,8 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
             u2e_size[channel] = 0;
             e2u_size[channel] = 0;
 
-            int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
+            int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, 0x00);
+
             if (s == sock) {
                 // Replace the command mode switch code GAP time (default: 500ms)
                 if ((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time) {
@@ -1377,7 +1379,8 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
 #ifdef _SEG_DEBUG_
             PRT_SEG(" > TCP CLIENT: any_port = %d\r\n", source_port);
 #endif
-            int8_t s = socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
+            int8_t s = socket(sock, Sn_MR_TCP, source_port, 0x00);
+
             if (s == sock) {
                 // Replace the command mode switch code GAP time (default: 500ms)
                 if ((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time) {
