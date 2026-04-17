@@ -24,6 +24,7 @@
 
 #include "ConfigData.h"
 #include "seg.h"
+#include "otaHandler.h"
 
 /**
     ----------------------------------------------------------------------------------------------------
@@ -50,6 +51,7 @@ MQTTPubAckInfo_t outgoingPubRelRecords[MQTT_OUTGOING_PUBREL_RECORD_MAX];
     ----------------------------------------------------------------------------------------------------
 */
 void mqtt_event_callback(MQTTContext_t *pContext, MQTTPacketInfo_t *pPacketInfo, MQTTDeserializedInfo_t *pDeserializedInfo) {
+    printf(" > MQTT:CB:type=0x%02X\r\n", pPacketInfo->type); /* DEBUG */
     /*  Handle incoming publish. The lower 4 bits of the publish packet
         type is used for the dup, QoS, and retain flags. Hence masking
         out the lower bits to check if the packet is publish. */
@@ -63,7 +65,17 @@ void mqtt_event_callback(MQTTContext_t *pContext, MQTTPacketInfo_t *pPacketInfo,
                        pDeserializedInfo->pPublishInfo->payloadLength,
                        pDeserializedInfo->pPublishInfo->payloadLength, pDeserializedInfo->pPublishInfo->pPayload);
             }
-            user_sub_callback(pDeserializedInfo->pPublishInfo->pPayload, pDeserializedInfo->pPublishInfo->payloadLength);
+
+            /* Route OTA topics to OTA handler, all others to normal S2E callback */
+            if (ota_is_ota_topic(pDeserializedInfo->pPublishInfo->pTopicName,
+                                 pDeserializedInfo->pPublishInfo->topicNameLength)) {
+                ota_mqtt_handle(pDeserializedInfo->pPublishInfo->pTopicName,
+                                pDeserializedInfo->pPublishInfo->topicNameLength,
+                                pDeserializedInfo->pPublishInfo->pPayload,
+                                pDeserializedInfo->pPublishInfo->payloadLength);
+            } else {
+                user_sub_callback(pDeserializedInfo->pPublishInfo->pPayload, pDeserializedInfo->pPublishInfo->payloadLength);
+            }
         }
     } else {
         /* Handle other packets. */
@@ -217,7 +229,7 @@ int mqtt_transport_subscribe(mqtt_config_t *mqtt_config, uint8_t qos, char *subs
     packet_id = MQTT_GetPacketId(&mqtt_config->mqtt_context);
     uint32_t ret;
 
-    if (mqtt_config->subscribe_count > MQTT_SUBSCRIPTION_MAX_NUM) {
+    if (mqtt_config->subscribe_count >= MQTT_SUBSCRIPTION_MAX_NUM) {
         printf("MQTT subscription count error : %d\n", mqtt_config->subscribe_count);
         return -1;
     }
@@ -348,6 +360,10 @@ int32_t mqtts_read(NetworkContext_t *pNetworkContext, void *pBuffer, size_t byte
 
     if (getSn_SR(pNetworkContext->socketDescriptor) == SOCK_ESTABLISHED) {
         size = wiz_tls_read(&s2e_tlsContext, pBuffer, bytesToRecv);
+        if (size < 0) {
+            /* mbedTLS WANT_READ / no data yet — not a fatal error, treat as 0 */
+            size = 0;
+        }
     }
 
     return size;

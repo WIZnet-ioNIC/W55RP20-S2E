@@ -19,7 +19,7 @@
     ----------------------------------------------------------------------------------------------------
 */
 /* Buffer */
-#define MQTT_BUF_MAX_SIZE (1024 * 2)
+#define MQTT_BUF_MAX_SIZE (1024 * 4)
 #define MQTT_DOMAIN_MAX_SIZE 128
 
 /* Timeout */
@@ -27,7 +27,7 @@
 #define MQTT_KEEP_ALIVE (10 * 6)    // 60 seconds
 
 /* Subscription number */
-#define MQTT_SUBSCRIPTION_MAX_NUM 3
+#define MQTT_SUBSCRIPTION_MAX_NUM 6
 #define AWS_MQTT_DEBUG 0
 
 

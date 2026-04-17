@@ -31,11 +31,11 @@
 #define SOCK_NETBIOS            3
 #define SOCK_NTP                3
 
-#define MAX_HTTPSOCK	4
+#define MAX_HTTPSOCK	3
 #define SOCK_HTTPSERVER_1       4
 #define SOCK_HTTPSERVER_2       5
 #define SOCK_HTTPSERVER_3       6
-#define SOCK_HTTPSERVER_4       7
+#define SOCK_HTTPSERVER_4       7  /* reserved for OTA (not used by HTTP server) */
 
 #define SEG_DATA0_SOCK          SOCK_DATA
 #define SEGCP_UDP_SOCK          SOCK_CONFIG_UDP
@@ -47,7 +47,7 @@
 /* Buffer size */
 #define DATA_BUF_SIZE           2048
 #define CONFIG_BUF_SIZE         2048 //512
-#define MQTT_BUF_SIZE           2048
+#define MQTT_BUF_SIZE           4096
 
 #define ROOTCA_BUF_SIZE         2048
 #define CLICA_BUF_SIZE          2048

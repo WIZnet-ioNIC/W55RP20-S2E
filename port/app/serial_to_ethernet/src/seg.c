@@ -9,6 +9,7 @@
 
 #include "mqtt_transport_interface.h"
 #include "seg.h"
+#include "otaHandler.h"
 #include "deviceHandler.h"
 #include "timerHandler.h"
 #include "bufferHandler.h"
@@ -725,6 +726,10 @@ void proc_SEG_mqtt_client(uint8_t sock) {
             }
         }
         PRT_SEG(" > SEG:MQTT_CLIENT_MODE:MQTTSubscribed\r\n");
+
+        /* Subscribe to OTA notification topic */
+        ota_init(&g_mqtt_config);
+
         first_established = 1;
         break;
 
@@ -908,6 +913,10 @@ void proc_SEG_mqtts_client(uint8_t sock) {
             }
         }
         PRT_SEG(" > SEG:MQTTS_CLIENT_MODE:MQTTSubscribed\r\n");
+
+        /* Subscribe to OTA notification topic */
+        ota_init(&g_mqtt_config);
+
         first_established = 1;
         break;
 

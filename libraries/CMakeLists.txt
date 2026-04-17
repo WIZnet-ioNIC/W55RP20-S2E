@@ -181,10 +181,12 @@ target_sources(AWS_SDK_FILES PUBLIC
         ${HTTP_SOURCES}
         ${MQTT_SOURCES}
         ${MQTT_SERIALIZER_SOURCES}
+        ${AWS_SDK_DIR}/libraries/standard/coreJSON/source/core_json.c
         )
 
 target_include_directories(AWS_SDK_FILES PUBLIC
         ${HTTP_INCLUDE_PUBLIC_DIRS}
         ${MQTT_INCLUDE_PUBLIC_DIRS}
+        ${AWS_SDK_DIR}/libraries/standard/coreJSON/source/include
         )
         

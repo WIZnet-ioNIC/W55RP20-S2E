@@ -189,6 +189,9 @@ static void set_W5X00_NetTimeout(void) {
 
 
 void start_task(void *argument) {
+
+    PRT_INFO(" > Lihan`s New OTA Ver\r\n");
+
     DevConfig *dev_config = get_DevConfig_pointer();
     uint8_t serial_mode;
 
