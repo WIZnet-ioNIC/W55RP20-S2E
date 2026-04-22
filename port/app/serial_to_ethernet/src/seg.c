@@ -2215,8 +2215,8 @@ void seg_u2e_task(void *argument)  {
             xSemaphoreTake(seg_critical_sem, portMAX_DELAY);
             if (get_data_buffer_usedsize() || u2e_size) {
                 if ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state == MIXED_SERVER) && (ST_OPEN == get_device_status())) {
-                    process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, FALSE);
                     mixed_state = MIXED_CLIENT;
+                    process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, FALSE);
                     xSemaphoreGive(seg_sem);
                 } else if ((ST_CONNECT == get_device_status()) || network_connection->working_mode == UDP_MODE) {
                     uart_to_ether(SEG_DATA0_SOCK);
