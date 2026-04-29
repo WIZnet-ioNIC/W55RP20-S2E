@@ -116,6 +116,7 @@ uint8_t device_bank_update(void) {
     uint32_t f_addr;
     uint32_t remain_len = 0, buf_len = 0;
     uint8_t *temp_buf;
+    uint8_t *recv_temp_buf;
 
     if ((fwupdate->fwup_size == 0) || (fwupdate->fwup_size > FLASH_APP_BANK_SIZE)) {
         if (serial_common->serial_debug_en)
@@ -139,28 +140,32 @@ uint8_t device_bank_update(void) {
     temp_buf = pvPortMalloc(FLASH_SECTOR_SIZE);
     memset(temp_buf, 0x00, FLASH_SECTOR_SIZE);
 
+    recv_temp_buf = pvPortMalloc(FLASH_SECTOR_SIZE);
+    memset(recv_temp_buf, 0x00, FLASH_SECTOR_SIZE);
+
+
     do {
 
 #ifdef __USE_WATCHDOG__
         device_wdt_reset();
 #endif
-        recv_len = get_firmware_from_network(SOCK_FWUPDATE, g_recv_buf);
+        recv_len = get_firmware_from_network(SOCK_FWUPDATE, recv_temp_buf);
         if (recv_len > 0) {
             xTimerReset(reset_timer, 0);
             if (buf_len + recv_len < FLASH_SECTOR_SIZE) {
-                memcpy(temp_buf + buf_len, g_recv_buf, recv_len);
+                memcpy(temp_buf + buf_len, recv_temp_buf, recv_len);
                 buf_len += recv_len;
             } else {
                 //printf("f_addr = 0x%x\r\n", f_addr);
                 remain_len = (buf_len + recv_len) - FLASH_SECTOR_SIZE;
-                memcpy(temp_buf + buf_len, g_recv_buf, recv_len - remain_len);
+                memcpy(temp_buf + buf_len, recv_temp_buf, recv_len - remain_len);
 
                 PRT_INFO("Write_addr = 0x%08X\r\n", f_addr);
                 write_flash(f_addr, (uint8_t *)temp_buf, FLASH_SECTOR_SIZE);
                 f_addr += FLASH_SECTOR_SIZE;
 
                 memset(temp_buf, 0xFF, FLASH_SECTOR_SIZE);
-                memcpy(temp_buf, g_recv_buf + (recv_len - remain_len), remain_len);
+                memcpy(temp_buf, recv_temp_buf + (recv_len - remain_len), remain_len);
                 buf_len = remain_len;
             }
             write_fw_len += recv_len;
@@ -182,6 +187,7 @@ uint8_t device_bank_update(void) {
         ret = DEVICE_FWUP_RET_SUCCESS;
     }
     vPortFree(temp_buf);
+    vPortFree(recv_temp_buf);
     xTimerStop(reset_timer, 0);
     return ret;
 }
