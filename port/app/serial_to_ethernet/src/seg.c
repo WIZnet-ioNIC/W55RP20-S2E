@@ -2293,8 +2293,8 @@ void seg0_u2e_task(void *argument)  {
             xSemaphoreTake(seg_critical_sem[SEG_DATA0_CH], portMAX_DELAY);
             if (get_data_buffer_usedsize(SEG_DATA0_CH) || u2e_size[SEG_DATA0_CH]) {
                 if ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state[SEG_DATA0_CH] == MIXED_SERVER) && (ST_OPEN == get_device_status(SEG_DATA0_CH))) {
-                    process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, FALSE);
                     mixed_state[SEG_DATA0_CH] = MIXED_CLIENT;
+                    process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, FALSE);
                     xSemaphoreGive(seg_sem[SEG_DATA0_CH]);
                 } else if ((ST_CONNECT == get_device_status(SEG_DATA0_CH)) || network_connection->working_mode == UDP_MODE) {
                     uart_to_ether(SEG_DATA0_SOCK, SEG_DATA0_CH);
@@ -2356,8 +2356,8 @@ void seg1_u2e_task(void *argument)  {
             xSemaphoreTake(seg_critical_sem[SEG_DATA1_CH], portMAX_DELAY);
             if (get_data_buffer_usedsize(SEG_DATA1_CH) || u2e_size[SEG_DATA1_CH]) {
                 if ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state[SEG_DATA1_CH] == MIXED_SERVER) && (ST_OPEN == get_device_status(SEG_DATA1_CH))) {
-                    process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, FALSE);
                     mixed_state[SEG_DATA1_CH] = MIXED_CLIENT;
+                    process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, FALSE);
                     xSemaphoreGive(seg_sem[SEG_DATA1_CH]);
                 } else if ((ST_CONNECT == get_device_status(SEG_DATA1_CH)) || network_connection->working_mode == UDP_MODE) {
                     uart_to_ether(SEG_DATA1_SOCK, SEG_DATA1_CH);
