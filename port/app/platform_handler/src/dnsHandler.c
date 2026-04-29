@@ -18,6 +18,7 @@
 #include "port_common.h"
 #include "timerHandler.h"
 #include "seg.h"
+#include "deviceHandler.h"
 
 /* Header for all domain messages */
 struct dhdr_handler {
@@ -171,6 +172,8 @@ int8_t process_dns(void) {
         if (dev_config->network_option.dhcp_use) {
             DHCP_run();
         }
+
+        device_wdt_reset();
     } while (ret != TRUE);
 
     if (get_device_status() != ST_ATMODE) {
