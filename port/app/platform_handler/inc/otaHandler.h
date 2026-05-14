@@ -13,6 +13,7 @@
 /* MQTT topic prefix - Thing Name appended at runtime */
 #define OTA_NOTIFY_TOPIC_FMT     "$aws/things/%s/jobs/notify-next"
 #define OTA_JOB_UPDATE_TOPIC_FMT "$aws/things/%s/jobs/%s/update"
+#define OTA_SHADOW_UPDATE_TOPIC_FMT "$aws/things/%s/shadow/update"
 #define OTA_PING_PUB_TOPIC_FMT   "$aws/things/%s/jobs/get"
 #define OTA_PING_ACC_TOPIC_FMT   "$aws/things/%s/jobs/get/accepted"
 #define OTA_PING_REJ_TOPIC_FMT   "$aws/things/%s/jobs/get/rejected"

@@ -50,6 +50,7 @@ static char s_job_id[OTA_JOB_ID_MAX_LEN + 1];
 static char s_fw_url[OTA_URL_MAX_LEN + 1];
 static uint32_t s_fw_size;
 static char s_fw_sha256[OTA_SHA256_HEX_LEN + 1];
+static uint8_t s_download_sha256[32]; /* SHA256 computed during download */
 
 /* Runtime topic buffers (built from client_id at ota_init time) */
 static char s_notify_topic[OTA_TOPIC_BUF_SIZE];
@@ -358,7 +359,10 @@ static void ota_report_status(const char *status, const char *reason) {
              OTA_JOB_UPDATE_TOPIC_FMT,
              s_thing_name, s_job_id);
 
-    if (reason != NULL) {
+    if (strcmp(status, "SUCCEEDED") == 0) {
+        snprintf(body, sizeof(body),
+                 "{\"status\":\"SUCCEEDED\",\"statusDetails\":{\"version\":\"2.2.2\"}}");
+    } else if (reason != NULL) {
         snprintf(body, sizeof(body),
                  "{\"status\":\"%s\",\"statusDetails\":{\"reason\":\"%s\"}}",
                  status, reason);
@@ -372,6 +376,28 @@ static void ota_report_status(const char *status, const char *reason) {
                            (uint8_t *)body,
                            strlen(body),
                            1 /* QoS1 */);
+
+    /* Always update Device Shadow with OTA status */
+    {
+        char shadow_topic[OTA_TOPIC_BUF_SIZE];
+        char shadow_body[128];
+        snprintf(shadow_topic, sizeof(shadow_topic),
+                 OTA_SHADOW_UPDATE_TOPIC_FMT, s_thing_name);
+        if (strcmp(status, "SUCCEEDED") == 0) {
+            snprintf(shadow_body, sizeof(shadow_body),
+                     "{\"state\":{\"reported\":{\"FW Version\":\"2.2.2\",\"Status\":\"idle\"}}}");
+        } else {
+            snprintf(shadow_body, sizeof(shadow_body),
+                     "{\"state\":{\"reported\":{\"Status\":\"%s\"}}}",
+                     status);
+        }
+        printf(" > OTA:SHADOW:%s\r\n", shadow_body);
+        mqtt_transport_publish(s_mqtt_config,
+                               (uint8_t *)shadow_topic,
+                               (uint8_t *)shadow_body,
+                               strlen(shadow_body),
+                               1 /* QoS1 */);
+    }
 }
 
 /*
@@ -557,6 +583,10 @@ static int ota_download_and_flash(void) {
     uint32_t buf_fill   = 0;
     int download_ok     = 1;
 
+    mbedtls_sha256_context sha_ctx;
+    mbedtls_sha256_init(&sha_ctx);
+    mbedtls_sha256_starts(&sha_ctx, 0);
+
     while (total_recv < s_fw_size) {
 #ifdef __USE_WATCHDOG__
         device_wdt_reset();
@@ -573,6 +603,8 @@ static int ota_download_and_flash(void) {
             download_ok = 0;
             break;
         }
+
+        mbedtls_sha256_update(&sha_ctx, http_buf, n);
 
         /* Fill sector buffer, flush to flash when full */
         uint32_t offset = 0;
@@ -602,6 +634,9 @@ static int ota_download_and_flash(void) {
         write_flash(f_addr, sector_buf, OTA_FLASH_SECTOR_SIZE);
     }
 
+    mbedtls_sha256_finish(&sha_ctx, s_download_sha256);
+    mbedtls_sha256_free(&sha_ctx);
+
     vPortFree(sector_buf);
     vPortFree(http_buf);
     wiz_tls_deinit(&s_ota_tls_ctx);
@@ -622,35 +657,20 @@ static int ota_download_and_flash(void) {
  */
 static int ota_verify_sha256(uint32_t fw_size, const char *expected_sha256_hex) {
     uint8_t expected[32];
-    uint8_t computed[32];
+    (void)fw_size;
 
     if (sha256_hex_to_bytes(expected_sha256_hex, expected, sizeof(expected)) != 0) {
         printf(" > OTA:SHA256:Invalid hex string\r\n");
         return OTA_RET_FAILED;
     }
 
-    /* Compute SHA256 of firmware in Bank1 flash */
-    mbedtls_sha256_context ctx;
-    mbedtls_sha256_init(&ctx);
-    mbedtls_sha256_starts(&ctx, 0); /* 0 = SHA-256 */
-
-    uint8_t *ptr = (uint8_t *)(XIP_BASE + FLASH_START_ADDR_BANK1_OFFSET);
-    uint32_t remaining = fw_size;
-    uint32_t chunk = 256;
-
-    while (remaining > 0) {
-        if (chunk > remaining) chunk = remaining;
-        mbedtls_sha256_update(&ctx, ptr, chunk);
-        ptr += chunk;
-        remaining -= chunk;
-    }
-
-    mbedtls_sha256_finish(&ctx, computed);
-    mbedtls_sha256_free(&ctx);
-
-    if (memcmp(computed, expected, 32) != 0) {
+    /* Use SHA256 computed during download (streaming), not flash readback */
+    if (memcmp(s_download_sha256, expected, 32) != 0) {
         printf(" > OTA:SHA256:MISMATCH\r\n");
         printf(" > OTA:SHA256:Expected=%s\r\n", expected_sha256_hex);
+        printf(" > OTA:SHA256:Computed=");
+        for (int i = 0; i < 32; i++) printf("%02x", s_download_sha256[i]);
+        printf("\r\n");
         return OTA_RET_FAILED;
     }
 
@@ -712,6 +732,16 @@ static void ota_task(void *pvParameters) {
         }
 
         printf(" > OTA:TASK:SHA256 OK - applying firmware\r\n");
+
+        /* Verify the first word of Bank1 is a valid firmware marker */
+        uint32_t bank1_word0 = *(volatile uint32_t *)(FLASH_START_ADDR_BANK1);
+        printf(" > OTA:BANK1[0]=0x%08lX\r\n", (unsigned long)bank1_word0);
+        if (bank1_word0 == 0x00000000 || bank1_word0 == 0xFFFFFFFF) {
+            printf(" > OTA:TASK:Bank1 invalid - aborting\r\n");
+            set_device_status(ST_OPEN);
+            ota_report_status("FAILED", "INVALID_FLASH");
+            continue;
+        }
 
         /* Set firmware update flag → bootloader will copy Bank1 to Bank0 */
         struct __firmware_update *fwupdate =

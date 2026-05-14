@@ -87,6 +87,9 @@
 #define SEG_MQTT_YIELD_STACK_SIZE 512
 #define SEG_MQTT_YIELD_PRIORITY 10
 
+#define HEAP_MONITOR_TASK_STACK_SIZE 512
+#define HEAP_MONITOR_TASK_PRIORITY 9
+
 /**
     ----------------------------------------------------------------------------------------------------
     Variables
@@ -125,6 +128,7 @@ TaskHandle_t seg_mqtt_yield_task_handle = NULL;
 static void RP2040_Init(void);
 static void RP2040_W5X00_Init(void);
 static void set_W5X00_NetTimeout(void);
+void heap_monitor_task(void *argument);
 void start_task(void *argument);
 void eth_interrupt_task(void *argument);
 
@@ -185,6 +189,16 @@ static void set_W5X00_NetTimeout(void) {
 
     wizchip_gettimeout(&net_timeout); // TCP timeout settings
     PRT_INFO(" - Network Timeout Settings - RCR: %d, RTR: %d\r\n", net_timeout.retry_cnt, net_timeout.time_100us);
+}
+
+void heap_monitor_task(void *argument) {
+    (void) argument;
+
+    while (1) {
+        printf("Free heap: %d\n", xPortGetFreeHeapSize());
+        printf("Min free heap: %d\n", xPortGetMinimumEverFreeHeapSize());
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
 }
 
 
@@ -286,6 +300,7 @@ void start_task(void *argument) {
     xTaskCreate(seg_u2e_task, "SEG_U2E_Task", SEG_U2E_TASK_STACK_SIZE, NULL, SEG_U2E_TASK_PRIORITY, NULL);
     xTaskCreate(seg_recv_task, "SEG_Recv_Task", SEG_RECV_TASK_STACK_SIZE, NULL, SEG_RECV_TASK_PRIORITY, NULL);
     xTaskCreate(seg_timer_task, "SEG_Timer_task", SEG_TIMER_TASK_STACK_SIZE, NULL, SEG_TIMER_TASK_PRIORITY, NULL);
+    xTaskCreate(heap_monitor_task, "Heap_Monitor_Task", HEAP_MONITOR_TASK_STACK_SIZE, NULL, HEAP_MONITOR_TASK_PRIORITY, NULL);
 
     if (dev_config->network_connection.working_mode == MQTT_CLIENT_MODE ||
             dev_config->network_connection.working_mode == MQTTS_CLIENT_MODE) {
