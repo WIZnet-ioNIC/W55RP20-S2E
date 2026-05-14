@@ -287,8 +287,8 @@ void wiz_tls_deinit(wiz_tls_context* tlsContext) {
 int wiz_tls_socket(wiz_tls_context* tlsContext, uint8_t sock, unsigned int port) {
     /*socket open*/
     tlsContext->socket_fd = sock;
-    //return socket((uint8_t)(tlsContext->socket_fd), Sn_MR_TCP, (uint16_t)port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
-    return socket((uint8_t)(tlsContext->socket_fd), Sn_MR_TCP, (uint16_t)port, 0x00);
+    return socket((uint8_t)(tlsContext->socket_fd), Sn_MR_TCP, (uint16_t)port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
+    //return socket((uint8_t)(tlsContext->socket_fd), Sn_MR_TCP, (uint16_t)port, 0x00);
 }
 
 int wiz_tls_connect(wiz_tls_context* tlsContext, char * addr, unsigned int port) {
@@ -336,7 +336,7 @@ int wiz_tls_socket_connect(wiz_tls_context* tlsContext, char * addr, unsigned in
     char error_buf[1024];
 #endif
     /*socket open*/
-    ret = socket(sock, Sn_MR_TCP, 0, 0x00);
+    ret = socket(sock, Sn_MR_TCP, 0, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
     if (ret != sock) {
         return ret;
     }
