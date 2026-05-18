@@ -33,10 +33,10 @@ pico_sdk_init()
 
 # Set ethernet chip
 #set(BOARD_NAME WIZ5XXSR_RP)
-set(BOARD_NAME W55RP20_S2E)
+# set(BOARD_NAME W55RP20_S2E)
 #set(BOARD_NAME W232N)
 #set(BOARD_NAME IP20)
-#set(BOARD_NAME PLATYPUS_S2E)
+set(BOARD_NAME PLATYPUS_S2E)
 
 if(${BOARD_NAME} STREQUAL WIZ5XXSR_RP)
     set(WIZCHIP W5100S)
@@ -149,7 +149,7 @@ add_subdirectory(${APP_PORT_DIR})
 ## Automatically run html_to_c_header.py before build
 add_custom_target(
     html_to_c_header
-    COMMAND python ${CMAKE_SOURCE_DIR}/tools/html_to_c_header.py
+    COMMAND py ${CMAKE_SOURCE_DIR}/tools/html_to_c_header.py
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Run html_to_c_header.py before build"
 )
@@ -161,7 +161,7 @@ add_dependencies(App_linker html_to_c_header)
 ## Automatically run merge_hex.py after build
 add_custom_target(
     merge_hex ALL
-    COMMAND python ${CMAKE_SOURCE_DIR}/tools/merge_hex.py
+    COMMAND py ${CMAKE_SOURCE_DIR}/tools/merge_hex.py
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Run merge_hex.py after build"
 )
@@ -169,21 +169,21 @@ add_custom_target(
 # Ensure merge_hex runs after Boot and App_linker are built
 add_dependencies(merge_hex Boot App_linker)
 
-## Automatically run style/restyle.py after build
-add_custom_target(
-    restyle ALL
-    COMMAND python ${CMAKE_SOURCE_DIR}/style/restyle.py
-    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-    COMMENT "Run style/restyle.py after build"
-)
+# ## Automatically run style/restyle.py after build
+# add_custom_target(
+#     restyle ALL
+#     COMMAND py ${CMAKE_SOURCE_DIR}/style/restyle.py
+#     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+#     COMMENT "Run style/restyle.py after build"
+# )
 
-# Ensure restyle runs after Boot and App_linker are built
-add_dependencies(restyle Boot App_linker)
+# # Ensure restyle runs after Boot and App_linker are built
+# add_dependencies(restyle Boot App_linker)
 
 ## Automatically run hex_to_uf2_converter.py after merge_hex
 add_custom_target(
     hex_to_uf2_converter ALL
-    COMMAND python ${CMAKE_SOURCE_DIR}/tools/hex_to_uf2_converter.py
+    COMMAND py ${CMAKE_SOURCE_DIR}/tools/hex_to_uf2_converter.py
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
     COMMENT "Run hex_to_uf2_converter.py to create merged UF2 file"
 )

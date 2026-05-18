@@ -36,6 +36,7 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #elif (DEVICE_BOARD_NAME == W55RP20_S2E || DEVICE_BOARD_NAME == PLATYPUS_S2E)
 #define __USE_UART_IF_SELECTOR__            // Use Serial interface port selector pin
 #define DEVICE_ID_DEFAULT                   "W55RP20-S2E-2CH"//"S2E_SSL-MB" // Device name
+// #define DEVICE_ID_DEFAULT                   "WOOSIN--S2E-2CH"//"S2E_SSL-MB" // Device name
 #elif (DEVICE_BOARD_NAME == W232N)
 #define DEVICE_ID_DEFAULT                   "W232N"//"S2E_SSL-MB" // Device name
 #elif (DEVICE_BOARD_NAME == IP20)

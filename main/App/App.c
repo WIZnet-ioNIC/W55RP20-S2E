@@ -196,6 +196,11 @@ void start_task(void *argument) {
 
     Timer_Configuration();
     init_connection_status_io();
+    
+    PRT_SEGCP("=========================================\r\n");
+    PRT_SEGCP("WS_FW_INIT_finished\r\n");
+    PRT_SEGCP("=========================================\r\n");
+
 
     serial_mode = get_serial_communation_protocol(SEG_DATA0_CH);
     if (serial_mode == SEG_SERIAL_MODBUS_RTU) {
@@ -215,6 +220,7 @@ void start_task(void *argument) {
         eMBAsciiInit(SEG_DATA1_CH);
     }
 
+    
     net_segcp_udp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     net_segcp_tcp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     net_http_webserver_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
@@ -244,6 +250,9 @@ void start_task(void *argument) {
     xTaskCreate(seg0_recv_task, "SEG0_Recv_Task", SEG_RECV_TASK_STACK_SIZE, NULL, SEG_RECV_TASK_PRIORITY, NULL);
     xTaskCreate(seg1_recv_task, "SEG1_Recv_Task", SEG_RECV_TASK_STACK_SIZE, NULL, SEG_RECV_TASK_PRIORITY + 1, NULL);
     xTaskCreate(seg_timer_task, "SEG_Timer_task", SEG_TIMER_TASK_STACK_SIZE, NULL, SEG_TIMER_TASK_PRIORITY, NULL);
+    
+
+    
     if (dev_config->config_common.pw_search[0] == 0) {
         xTaskCreate(http_webserver_task, "http_webserver_task", HTTP_WEBSERVER_TASK_STACK_SIZE, NULL, HTTP_WEBSERVER_TASK_PRIORITY, NULL);
     }

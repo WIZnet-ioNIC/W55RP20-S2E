@@ -84,14 +84,14 @@ void data0_uart_rx(void) {
             }
 
             // if (check_serial_store_permitted(ch, SEG_DATA0_CH)) { // ret: [0] not permitted / [1] permitted
-            if (check_serial_store_permitted(ch, SEG_DATA0_CH)) {
-                put_byte_to_data_buffer(ch, SEG_DATA0_CH);
-                input_flag = 1;
-            }
-            
-            if  (check_serial_store_permitted(ch, SEG_DATA1_CH)) {
+            if (check_serial_store_permitted(ch, SEG_DATA1_CH)) {
                 put_byte_to_data_buffer(ch, SEG_DATA1_CH);
                 input_flag = 1;
+            }else{            
+                if(check_serial_store_permitted(ch, SEG_DATA0_CH)) {
+                    put_byte_to_data_buffer(ch, SEG_DATA0_CH);
+                    input_flag = 1;
+                }
             }
         }
     }
@@ -370,6 +370,7 @@ int32_t platform_uart_puts_dma(uint8_t* buf, uint16_t bytes, int channel) {
                           true);
 
     while (dma_channel_is_busy(dma_uart_tx[SEG_DATA0_CH]));
+    uart_tx_wait_blocking(DATA0_UART_ID);
 
     xSemaphoreGive(uart_dma_sem);
     return RET_OK;
