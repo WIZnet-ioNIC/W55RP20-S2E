@@ -18,6 +18,7 @@
 #include "port_common.h"
 #include "timerHandler.h"
 #include "seg.h"
+#include "deviceHandler.h"
 
 /* Header for all domain messages */
 struct dhdr_handler {
@@ -148,9 +149,9 @@ int8_t process_dns(void) {
 #ifdef _MAIN_DEBUG_
     printf(" - DNS Client running\r\n");
 #endif
-    if (get_device_status() != ST_ATMODE) {
-        set_device_status(ST_UPGRADE);
-    }
+    //    if (get_device_status() != ST_ATMODE) {
+    //        set_device_status(ST_UPGRADE);
+    //    }
 
     do {
         ret = get_ipaddr_from_dns((uint8_t *)dev_config->network_connection.dns_domain_name,
@@ -171,11 +172,13 @@ int8_t process_dns(void) {
         if (dev_config->network_option.dhcp_use) {
             DHCP_run();
         }
+
+        device_wdt_reset();
     } while (ret != TRUE);
 
-    if (get_device_status() != ST_ATMODE) {
-        set_device_status(ST_OPEN);
-    }
+    //  if (get_device_status() != ST_ATMODE) {
+    //        set_device_status(ST_OPEN);
+    //    }
     return ret;
 }
 
