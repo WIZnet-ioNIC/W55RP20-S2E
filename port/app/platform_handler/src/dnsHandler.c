@@ -149,9 +149,9 @@ int8_t process_dns(int channel) {
 #ifdef _MAIN_DEBUG_
     printf(" - DNS Client running\r\n");
 #endif
-    if (get_device_status(channel) != ST_ATMODE) {
-        set_device_status(ST_UPGRADE, channel);
-    }
+    //    if (get_device_status(channel) != ST_ATMODE) {
+    //        set_device_status(ST_UPGRADE, channel);
+    //    }
 
     do {
         ret = get_ipaddr_from_dns((uint8_t *)dev_config->network_connection[channel].dns_domain_name,
@@ -176,9 +176,9 @@ int8_t process_dns(int channel) {
         device_wdt_reset();
     } while (ret != TRUE);
 
-    if (get_device_status(channel) != ST_ATMODE) {
-        set_device_status(ST_OPEN, channel);
-    }
+    //    if (get_device_status(channel) != ST_ATMODE) {
+    //        set_device_status(ST_OPEN, channel);
+    //    }
     return ret;
 }
 

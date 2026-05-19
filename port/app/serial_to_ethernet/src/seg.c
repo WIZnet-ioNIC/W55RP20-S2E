@@ -357,11 +357,7 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
         }
         // TCP connect
         ret = connect(sock, network_connection->remote_ip, network_connection->remote_port);
-        if (ret < 0) {
-            PRT_SEG(" > SEG:TCP_CLIENT_MODE:ConnectNetwork Err %d\r\n", ret);
-            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
-            break;
-        }
+        PRT_SEG(" > SEG:TCP_CLIENT_MODE:ConnectNetwork Err %d\r\n", ret);
 
 #ifdef _SEG_DEBUG_
         PRT_SEG(" > SEG:TCP_CLIENT_MODE:CLIENT_CONNECTION\r\n");
@@ -445,7 +441,7 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
 #ifdef _SEG_DEBUG_
         PRT_SEG(" > TCP CLIENT: client_any_port = %d\r\n", client_any_port);
 #endif
-        int8_t s = socket(sock, Sn_MR_TCP, source_port, 0x00);
+        int8_t s = socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
 
         if (s == sock) {
             if ((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time) {
@@ -473,6 +469,7 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
 void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
     struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option[channel]);
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
+    struct __network_option *network_option = (struct __network_option *) & (get_DevConfig_pointer()->network_option);
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *) & (get_DevConfig_pointer()->serial_data_packing[channel]);
     struct __serial_common *serial_common = (struct __serial_common *)&get_DevConfig_pointer()->serial_common;
     struct __serial_command *serial_command = (struct __serial_command *)&get_DevConfig_pointer()->serial_command;
@@ -505,8 +502,23 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
         ctlsocket(sock, CS_SET_INTMASK, (void *)&reg_val);
 
         ret = connect(sock, network_connection->remote_ip, network_connection->remote_port);
-        if (ret < 0) {
-            PRT_SEG(" > SEG:TCP_CLIENT_OVER_TLS_MODE:ConnectNetwork Err %d\r\n", ret);
+        PRT_SEG(" > SEG:TCP_CLIENT_OVER_TLS_MODE:ConnectNetwork Err %d\r\n", ret);
+
+        // Wait for TCP connection with timeout (1s * tcp_rcr_val)
+        uint32_t timeout_ticks = pdMS_TO_TICKS(1000 * network_option->tcp_rcr_val);
+        uint32_t elapsed_ticks = 0;
+        const uint32_t poll_ticks = pdMS_TO_TICKS(10);
+
+        while (elapsed_ticks < timeout_ticks) {
+            if (getSn_SR(sock) == SOCK_ESTABLISHED) {
+                break;
+            }
+            vTaskDelay(poll_ticks);
+            elapsed_ticks += poll_ticks;
+        }
+
+        if (getSn_SR(sock) != SOCK_ESTABLISHED) {
+            PRT_SEG(" > SEG:TCP_CLIENT_OVER_TLS_MODE: TCP CONNECT TIMEOUT\r\n");
             process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             break;
         }
@@ -656,6 +668,7 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
 void proc_SEG_mqtt_client(uint8_t sock, int channel) {
     struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option);
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
+    struct __network_option *network_option = (struct __network_option *) & (get_DevConfig_pointer()->network_option);
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *) & (get_DevConfig_pointer()->serial_data_packing[channel]);
     struct __serial_common *serial_common = (struct __serial_common *)&get_DevConfig_pointer()->serial_common;
     struct __serial_command *serial_command = (struct __serial_command *)&get_DevConfig_pointer()->serial_command;
@@ -687,8 +700,23 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
 
         // MQTT connect
         ret = connect(sock, network_connection->remote_ip, network_connection->remote_port);
-        if (ret < 0) {
-            PRT_SEG(" > SEG:MQTT_CLIENT_MODE:ConnectNetwork Err %d\r\n", ret);
+        PRT_SEG(" > SEG:MQTT_CLIENT_MODE:ConnectNetwork Err %d\r\n", ret);
+
+        // Wait for TCP connection with timeout (1s * tcp_rcr_val)
+        uint32_t timeout_ticks = pdMS_TO_TICKS(1000 * network_option->tcp_rcr_val);
+        uint32_t elapsed_ticks = 0;
+        const uint32_t poll_ticks = pdMS_TO_TICKS(10);
+
+        while (elapsed_ticks < timeout_ticks) {
+            if (getSn_SR(sock) == SOCK_ESTABLISHED) {
+                break;
+            }
+            vTaskDelay(poll_ticks);
+            elapsed_ticks += poll_ticks;
+        }
+
+        if (getSn_SR(sock) != SOCK_ESTABLISHED) {
+            PRT_SEG(" > SEG:TCP_CLIENT_OVER_TLS_MODE: TCP CONNECT TIMEOUT\r\n");
             process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             break;
         }
@@ -797,7 +825,7 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
         }
 
         PRT_SEG(" > MQTT CLIENT: client_any_port = %d\r\n", client_any_port);
-        int8_t s = socket(sock, Sn_MR_TCP, source_port, 0x00);
+        int8_t s = socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
 
         if (s == sock) {
             // Replace the command mode switch code GAP time (default: 500ms)
@@ -842,6 +870,7 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
 void proc_SEG_mqtts_client(uint8_t sock, int channel) {
     struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option[channel]);
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
+    struct __network_option *network_option = (struct __network_option *) & (get_DevConfig_pointer()->network_option);
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *) & (get_DevConfig_pointer()->serial_data_packing[channel]);
     struct __serial_common *serial_common = (struct __serial_common *)&get_DevConfig_pointer()->serial_common;
     struct __serial_command *serial_command = (struct __serial_command *)&get_DevConfig_pointer()->serial_command;
@@ -871,8 +900,23 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
         ctlsocket(sock, CS_SET_INTMASK, (void *)&reg_val);
 
         ret = connect(sock, network_connection->remote_ip, network_connection->remote_port);
-        if (ret < 0) {
-            PRT_SEG(" > SEG:TCP_CLIENT_OVER_TLS_MODE:ConnectNetwork Err %d\r\n", ret);
+        PRT_SEG(" > SEG:TCP_CLIENT_OVER_TLS_MODE:ConnectNetwork Err %d\r\n", ret);
+
+        // Wait for TCP connection with timeout (1s * tcp_rcr_val)
+        uint32_t timeout_ticks = pdMS_TO_TICKS(1000 * network_option->tcp_rcr_val);
+        uint32_t elapsed_ticks = 0;
+        const uint32_t poll_ticks = pdMS_TO_TICKS(10);
+
+        while (elapsed_ticks < timeout_ticks) {
+            if (getSn_SR(sock) == SOCK_ESTABLISHED) {
+                break;
+            }
+            vTaskDelay(poll_ticks);
+            elapsed_ticks += poll_ticks;
+        }
+
+        if (getSn_SR(sock) != SOCK_ESTABLISHED) {
+            PRT_SEG(" > SEG:TCP_CLIENT_OVER_TLS_MODE: TCP CONNECT TIMEOUT\r\n");
             process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             break;
         }
@@ -1223,10 +1267,7 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
 
             // TCP connect
             ret = connect(sock, network_connection->remote_ip, network_connection->remote_port);
-            if (ret < 0) {
-                PRT_SEG(" > SEG:TCP_MIXED_MODE:ConnectNetwork Err %d\r\n", ret);
-                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
-            }
+            PRT_SEG(" > SEG:TCP_MIXED_MODE:ConnectNetwork Err %d\r\n", ret);
 
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
             reconnection_count++;
@@ -1346,8 +1387,9 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
         if (mixed_state[channel] == MIXED_SERVER) { // MIXED_SERVER
             u2e_size[channel] = 0;
             e2u_size[channel] = 0;
+            data_buffer_flush(channel);
 
-            int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, 0x00);
+            int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
 
             if (s == sock) {
                 // Replace the command mode switch code GAP time (default: 500ms)
@@ -1379,7 +1421,7 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
 #ifdef _SEG_DEBUG_
             PRT_SEG(" > TCP CLIENT: any_port = %d\r\n", source_port);
 #endif
-            int8_t s = socket(sock, Sn_MR_TCP, source_port, 0x00);
+            int8_t s = socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
 
             if (s == sock) {
                 // Replace the command mode switch code GAP time (default: 500ms)
