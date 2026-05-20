@@ -56,6 +56,7 @@ static uint8_t s_download_sha256[32]; /* SHA256 computed during download */
 static char s_notify_topic[OTA_TOPIC_BUF_SIZE];
 static char s_ping_acc_topic[OTA_TOPIC_BUF_SIZE];
 static char s_ping_rej_topic[OTA_TOPIC_BUF_SIZE];
+static char s_next_get_acc_topic[OTA_TOPIC_BUF_SIZE];
 
 /* TLS context for HTTPS firmware download */
 static wiz_tls_context s_ota_tls_ctx;
@@ -109,13 +110,21 @@ int ota_init(void *mqtt_config) {
              OTA_PING_ACC_TOPIC_FMT, s_thing_name);
     snprintf(s_ping_rej_topic, sizeof(s_ping_rej_topic),
              OTA_PING_REJ_TOPIC_FMT, s_thing_name);
+    snprintf(s_next_get_acc_topic, sizeof(s_next_get_acc_topic),
+             OTA_NEXT_GET_ACC_TOPIC_FMT, s_thing_name);
 
     qos = get_DevConfig_pointer()->mqtt_option.qos;
+    /* Minimal subscribe set:
+     *  - notify-next: push delivery of new jobs
+     *  - $next/get/accepted: response to ota_get_next_job() active poll
+     * Skip jobs/get/{accepted,rejected} — we don't use the LIST API. */
     if (ota_subscribe_topic_if_needed(s_mqtt_config, s_notify_topic, qos) != OTA_RET_SUCCESS ||
-        ota_subscribe_topic_if_needed(s_mqtt_config, s_ping_acc_topic, qos) != OTA_RET_SUCCESS ||
-        ota_subscribe_topic_if_needed(s_mqtt_config, s_ping_rej_topic, qos) != OTA_RET_SUCCESS) {
+        ota_subscribe_topic_if_needed(s_mqtt_config, s_next_get_acc_topic, qos) != OTA_RET_SUCCESS) {
         return OTA_RET_FAILED;
     }
+    /* NOTE: get/rejected subscribe disabled — AWS returns a non-standard SUBACK
+     * reason byte for this filter under the current policy, causing coreMQTT
+     * to loop on MQTTBadResponse. Re-enable once policy/topic filter is fixed. */
 
     /* Create OTA task and semaphore (only once) */
     if (s_ota_job_sem == NULL) {
@@ -148,6 +157,47 @@ int ota_ping(void) {
                                   0 /* QoS0 */);
 }
 
+int ota_get_next_job(void) {
+    char topic[OTA_TOPIC_BUF_SIZE];
+    uint8_t payload[] = "{}";
+
+    if (s_mqtt_config == NULL) {
+        printf(" > OTA:NEXT_GET:Not initialized\r\n");
+        return OTA_RET_FAILED;
+    }
+
+    snprintf(topic, sizeof(topic),
+             OTA_NEXT_GET_PUB_TOPIC_FMT, s_thing_name);
+
+    printf(" > OTA:NEXT_GET:Requesting %s\r\n", topic);
+    return mqtt_transport_publish(s_mqtt_config,
+                                  (uint8_t *)topic,
+                                  payload,
+                                  sizeof(payload) - 1,
+                                  0 /* QoS0 */);
+}
+
+int ota_clear_shadow_status(void) {
+    char topic[OTA_TOPIC_BUF_SIZE];
+    const char body[] =
+        "{\"state\":{\"reported\":{\"Status\":\"idle\"}}}";
+
+    if (s_mqtt_config == NULL) {
+        printf(" > OTA:SHADOW_CLEAR:Not initialized\r\n");
+        return OTA_RET_FAILED;
+    }
+
+    snprintf(topic, sizeof(topic),
+             OTA_SHADOW_UPDATE_TOPIC_FMT, s_thing_name);
+
+    printf(" > OTA:SHADOW_CLEAR:%s\r\n", body);
+    return mqtt_transport_publish(s_mqtt_config,
+                                  (uint8_t *)topic,
+                                  (uint8_t *)body,
+                                  sizeof(body) - 1,
+                                  1 /* QoS1 */);
+}
+
 int ota_is_ota_topic(const char *topic, uint16_t topicLen) {
     /* Any topic starting with "$aws/things/" is treated as an OTA topic */
     const char prefix[] = "$aws/things/";
@@ -166,6 +216,7 @@ void ota_mqtt_handle(const char *topic, uint16_t topicLen,
     /* ping accepted: cloud is reachable */
     if (strncmp(topic, s_ping_acc_topic, topicLen) == 0) {
         printf(" > OTA:PING:OK - Cloud connected\r\n");
+        printf(" > OTA:PING:Payload=%.*s\r\n", (int)payloadLen, payload);
         return;
     }
 
@@ -173,6 +224,14 @@ void ota_mqtt_handle(const char *topic, uint16_t topicLen,
     if (strncmp(topic, s_ping_rej_topic, topicLen) == 0) {
         printf(" > OTA:PING:REJECTED - %.*s\r\n", (int)payloadLen, payload);
         return;
+    }
+
+    /* $next/get/accepted: response to ota_get_next_job().
+     * Payload shape mirrors notify-next: { "execution": { "jobId":..., "jobDocument":{...} } }
+     * If no job is queued, "execution" is absent — parser will fail gracefully. */
+    if (strncmp(topic, s_next_get_acc_topic, topicLen) == 0) {
+        printf(" > OTA:NEXT_GET:Payload=%.*s\r\n", (int)payloadLen, payload);
+        /* fall through to job-document parsing below */
     }
 
     /* Parse the job document */
@@ -385,7 +444,7 @@ static void ota_report_status(const char *status, const char *reason) {
                  OTA_SHADOW_UPDATE_TOPIC_FMT, s_thing_name);
         if (strcmp(status, "SUCCEEDED") == 0) {
             snprintf(shadow_body, sizeof(shadow_body),
-                     "{\"state\":{\"reported\":{\"FW Version\":\"2.2.2\",\"Status\":\"idle\"}}}");
+                     "{\"state\":{\"reported\":{\"fw_version\":\"2.2.2\",\"Status\":\"idle\"}}}");
         } else {
             snprintf(shadow_body, sizeof(shadow_body),
                      "{\"state\":{\"reported\":{\"Status\":\"%s\"}}}",

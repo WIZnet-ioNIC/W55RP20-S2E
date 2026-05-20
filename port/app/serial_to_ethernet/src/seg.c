@@ -730,6 +730,13 @@ void proc_SEG_mqtt_client(uint8_t sock) {
         /* Subscribe to OTA notification topic */
         ota_init(&g_mqtt_config);
 
+        /* Force-clear the IN_PROGRESS state in Device Shadow on every connect. */
+        ota_clear_shadow_status();
+
+        /* Actively pull the next queued job. Recovers jobs whose notify-next
+         * push was missed (e.g., device was offline when AWS sent it). */
+        ota_get_next_job();
+
         first_established = 1;
         break;
 
@@ -916,6 +923,13 @@ void proc_SEG_mqtts_client(uint8_t sock) {
 
         /* Subscribe to OTA notification topic */
         ota_init(&g_mqtt_config);
+
+        /* Force-clear the IN_PROGRESS state in Device Shadow on every connect. */
+        ota_clear_shadow_status();
+
+        /* Actively pull the next queued job. Recovers jobs whose notify-next
+         * push was missed (e.g., device was offline when AWS sent it). */
+        ota_get_next_job();
 
         first_established = 1;
         break;

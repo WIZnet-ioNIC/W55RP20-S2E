@@ -85,6 +85,7 @@ OTA 본체 구현. 주요 구성 요소:
 - TLS context `s_ota_tls_ctx`
 - FreeRTOS 동기화: `s_ota_job_sem` (binary semaphore), `s_ota_task_handle`
 - **추가**: `static uint8_t s_download_sha256[32];` — 다운로드 중 계산된 SHA256
+- **추가**: `static uint32_t s_actual_written;` — 실제 flash 에 기록된 바이트 수 (Boot 가 사용할 `fwup_size` 값과 동일)
 
 #### (b) `ota_init()`
 - `client_id`에서 Thing Name 복사.
@@ -162,7 +163,9 @@ execution.jobDocument.firmware.sha256
    }
    ```
    → 잘못된 Bank1로 부트로더가 진입해 벽돌이 되는 상황을 방지.
-5. `firmware_update.fwup_size` 설정, `fwup_copy_flag = 1`, `save_DevConfig_to_storage()`
+5. `firmware_update.fwup_size = s_actual_written` (실제 다운로드/기록한 바이트 수), `fwup_copy_flag = 1`, `save_DevConfig_to_storage()`
+   - **주의**: Config tool (`update_module_firmware()`) 와 동일한 의미. Job document 의 `size` 값이 아니라 **실제 flash 에 쓴 길이**. Boot 의 `device_bank_copy()` 가 이 값을 기준으로 Bank1→Bank0 sector 복사 범위를 결정.
+   - Job document 의 size 와 실제 다운로드 크기가 다르면 `ota_download_and_flash()` 가 그 시점에 이미 `OTA_RET_FAILED` 반환하므로 여기엔 도달하지 않음.
 6. `SUCCEEDED` 보고 후 500ms 대기 → `device_reboot()`
 
 #### (h) 유틸리티

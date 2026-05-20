@@ -18,6 +18,11 @@
 #define OTA_PING_ACC_TOPIC_FMT   "$aws/things/%s/jobs/get/accepted"
 #define OTA_PING_REJ_TOPIC_FMT   "$aws/things/%s/jobs/get/rejected"
 
+/* $next/get returns the next pending job execution INCLUDING the job document.
+ * Used for active polling when notify-next push was missed. */
+#define OTA_NEXT_GET_PUB_TOPIC_FMT "$aws/things/%s/jobs/$next/get"
+#define OTA_NEXT_GET_ACC_TOPIC_FMT "$aws/things/%s/jobs/$next/get/accepted"
+
 /* Socket number used for HTTPS firmware download (dedicated, not used by HTTP server) */
 #define SOCK_OTA_HTTP           7
 
@@ -44,6 +49,30 @@ int ota_init(void *mqtt_config);
  * @return 0 on publish success, -1 on failure
  */
 int ota_ping(void);
+
+/**
+ * @brief Publish {"state":{"reported":{"Status":"idle"}}} to the device
+ *        shadow update topic. Called on every MQTT connect to clear any
+ *        stale IN_PROGRESS state left from a previous run.
+ *
+ * @return 0 on publish success, -1 on failure
+ */
+int ota_clear_shadow_status(void);
+
+/**
+ * @brief Actively request the next pending job execution from AWS IoT Jobs.
+ *        Publishes {} to $aws/things/{thingName}/jobs/$next/get .
+ *        Response arrives via mqtt_event_callback on
+ *        $aws/things/{thingName}/jobs/$next/get/accepted with the full
+ *        job document (if a job is queued).
+ *
+ *        Use this on every MQTT connect to recover queued jobs whose
+ *        notify-next push was missed (e.g., device was offline when AWS
+ *        published the notification).
+ *
+ * @return 0 on publish success, -1 on failure
+ */
+int ota_get_next_job(void);
 
 /**
  * @brief Check if a received MQTT topic is an OTA topic.

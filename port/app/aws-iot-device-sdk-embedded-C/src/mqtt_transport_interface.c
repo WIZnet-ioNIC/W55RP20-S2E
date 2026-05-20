@@ -133,7 +133,11 @@ int mqtt_transport_yield(mqtt_config_t *mqtt_config) {
     int ret;
 
     ret = MQTT_ProcessLoop(&mqtt_config->mqtt_context);
-    if (ret != 0) {
+    /* Suppress benign "transient" returns:
+     *   7  = MQTTNoDataAvailable  (waiting between packets)
+     *   11 = MQTTNeedMoreBytes    (partial packet, waiting for more)
+     * These fire on every yield iteration when idle and only spam the log. */
+    if (ret != 0 && ret != 7 && ret != 11) {
         printf("MQTT process loop error : %d\n", ret);
     }
     return ret;
@@ -357,12 +361,20 @@ int32_t mqtts_write(NetworkContext_t *pNetworkContext, const void *pBuffer, size
 
 int32_t mqtts_read(NetworkContext_t *pNetworkContext, void *pBuffer, size_t bytesToRecv) {
     int32_t size = 0;
+    int32_t raw;
 
     if (getSn_SR(pNetworkContext->socketDescriptor) == SOCK_ESTABLISHED) {
-        size = wiz_tls_read(&s2e_tlsContext, pBuffer, bytesToRecv);
+        raw = wiz_tls_read(&s2e_tlsContext, pBuffer, bytesToRecv);
+        size = raw;
         if (size < 0) {
             /* mbedTLS WANT_READ / no data yet — not a fatal error, treat as 0 */
             size = 0;
+        }
+        /* Diagnostic: only print when there's actual activity to avoid spam */
+        if (raw > 0) {
+            printf(" > TLS:READ asked=%u got=%d\r\n", (unsigned)bytesToRecv, (int)raw);
+        } else if (raw < 0 && raw != -0x6900 /* WANT_READ */) {
+            printf(" > TLS:READ asked=%u err=%d\r\n", (unsigned)bytesToRecv, (int)raw);
         }
     }
 

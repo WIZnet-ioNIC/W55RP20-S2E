@@ -84,7 +84,7 @@
 #define START_TASK_STACK_SIZE 512
 #define START_TASK_PRIORITY 65
 
-#define SEG_MQTT_YIELD_STACK_SIZE 512
+#define SEG_MQTT_YIELD_STACK_SIZE 1024
 #define SEG_MQTT_YIELD_PRIORITY 10
 
 #define HEAP_MONITOR_TASK_STACK_SIZE 512
@@ -197,14 +197,13 @@ void heap_monitor_task(void *argument) {
     while (1) {
         printf("Free heap: %d\n", xPortGetFreeHeapSize());
         printf("Min free heap: %d\n", xPortGetMinimumEverFreeHeapSize());
-        vTaskDelay(pdMS_TO_TICKS(100));
+        vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }
 
 
 void start_task(void *argument) {
 
-    PRT_INFO(" > Lihan`s New OTA Ver\r\n");
 
     DevConfig *dev_config = get_DevConfig_pointer();
     uint8_t serial_mode;
@@ -216,6 +215,27 @@ void start_task(void *argument) {
     RP2040_Board_Init();
     DATA0_UART_Configuration();
     check_mac_address();
+
+    #if 0
+    PRT_INFO(" > Lihan`s New OTA Ver\r\n");
+    PRT_INFO(" > \r\n");
+    PRT_INFO(" > =====================================\r\n");
+    PRT_INFO(" > =====================================\r\n");
+    PRT_INFO(" >  This firmware was received from AWS!\n");
+    PRT_INFO(" >  Firmware update via OTA successful!\r\n");
+    PRT_INFO(" > =====================================\r\n");
+    PRT_INFO(" > =====================================\r\n");
+    PRT_INFO(" > \r\n");
+    #else
+    PRT_INFO(" > Lihan`s New OTA Ver\r\n");
+    PRT_INFO(" > \r\n");
+    PRT_INFO(" > =====================================\r\n");
+    PRT_INFO(" > =====================================\r\n");
+    PRT_INFO(" >  This firmware was updatedfrom Local!\n");
+    PRT_INFO(" > =====================================\r\n");
+    PRT_INFO(" > =====================================\r\n");
+    PRT_INFO(" > \r\n");
+    #endif 
 
     init_uart_spi_if_sel_pin();
     if (get_uart_spi_if()) {
@@ -307,9 +327,10 @@ void start_task(void *argument) {
         xTaskCreate(seg_mqtt_yield_task, "SEG_MQTT_YIELD_Task", SEG_MQTT_YIELD_STACK_SIZE, NULL, SEG_MQTT_YIELD_PRIORITY, &seg_mqtt_yield_task_handle);
     }
 
-    if (dev_config->config_common.pw_search[0] == 0) {
-        xTaskCreate(http_webserver_task, "http_webserver_task", HTTP_WEBSERVER_TASK_STACK_SIZE, NULL, HTTP_WEBSERVER_TASK_PRIORITY, NULL);
-    }
+    /* OTA test: HTTP web server task disabled to free heap */
+    // if (dev_config->config_common.pw_search[0] == 0) {
+    //     xTaskCreate(http_webserver_task, "http_webserver_task", HTTP_WEBSERVER_TASK_STACK_SIZE, NULL, HTTP_WEBSERVER_TASK_PRIORITY, NULL);
+    // }
 
 #if defined(MBEDTLS_PLATFORM_C) && defined(MBEDTLS_PLATFORM_MEMORY)
     mbedtls_platform_set_calloc_free(pvPortCalloc, vPortFree);
