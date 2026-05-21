@@ -33,6 +33,7 @@
 #include "gpioHandler.h"
 #include "spiHandler.h"
 #include "storageHandler.h"
+#include "otaService.h"
 #include "wizchip_conf.h"
 #include "netHandler.h"
 #include "socket.h"
@@ -86,6 +87,9 @@
 
 #define SEG_MQTT_YIELD_STACK_SIZE 1024
 #define SEG_MQTT_YIELD_PRIORITY 10
+
+#define OTA_SERVICE_TASK_STACK_SIZE 2048
+#define OTA_SERVICE_TASK_PRIORITY 10
 
 #define HEAP_MONITOR_TASK_STACK_SIZE 512
 #define HEAP_MONITOR_TASK_PRIORITY 9
@@ -326,6 +330,9 @@ void start_task(void *argument) {
             dev_config->network_connection.working_mode == MQTTS_CLIENT_MODE) {
         xTaskCreate(seg_mqtt_yield_task, "SEG_MQTT_YIELD_Task", SEG_MQTT_YIELD_STACK_SIZE, NULL, SEG_MQTT_YIELD_PRIORITY, &seg_mqtt_yield_task_handle);
     }
+
+    /* Standalone OTA background service — runs regardless of working_mode. */
+    xTaskCreate(ota_service_task, "OTA_Service_Task", OTA_SERVICE_TASK_STACK_SIZE, NULL, OTA_SERVICE_TASK_PRIORITY, NULL);
 
     /* OTA test: HTTP web server task disabled to free heap */
     // if (dev_config->config_common.pw_search[0] == 0) {

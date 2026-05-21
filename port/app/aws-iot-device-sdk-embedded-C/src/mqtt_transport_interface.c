@@ -24,7 +24,6 @@
 
 #include "ConfigData.h"
 #include "seg.h"
-#include "otaHandler.h"
 
 /**
     ----------------------------------------------------------------------------------------------------
@@ -66,16 +65,9 @@ void mqtt_event_callback(MQTTContext_t *pContext, MQTTPacketInfo_t *pPacketInfo,
                        pDeserializedInfo->pPublishInfo->payloadLength, pDeserializedInfo->pPublishInfo->pPayload);
             }
 
-            /* Route OTA topics to OTA handler, all others to normal S2E callback */
-            if (ota_is_ota_topic(pDeserializedInfo->pPublishInfo->pTopicName,
-                                 pDeserializedInfo->pPublishInfo->topicNameLength)) {
-                ota_mqtt_handle(pDeserializedInfo->pPublishInfo->pTopicName,
-                                pDeserializedInfo->pPublishInfo->topicNameLength,
-                                pDeserializedInfo->pPublishInfo->pPayload,
-                                pDeserializedInfo->pPublishInfo->payloadLength);
-            } else {
-                user_sub_callback(pDeserializedInfo->pPublishInfo->pPayload, pDeserializedInfo->pPublishInfo->payloadLength);
-            }
+            /* S2E payload delivery. OTA runs on its own connection in
+             * otaService.c — this callback is pure S2E. */
+            user_sub_callback(pDeserializedInfo->pPublishInfo->pPayload, pDeserializedInfo->pPublishInfo->payloadLength);
         }
     } else {
         /* Handle other packets. */

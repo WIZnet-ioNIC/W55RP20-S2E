@@ -9,7 +9,6 @@
 
 #include "mqtt_transport_interface.h"
 #include "seg.h"
-#include "otaHandler.h"
 #include "deviceHandler.h"
 #include "timerHandler.h"
 #include "bufferHandler.h"
@@ -727,15 +726,8 @@ void proc_SEG_mqtt_client(uint8_t sock) {
         }
         PRT_SEG(" > SEG:MQTT_CLIENT_MODE:MQTTSubscribed\r\n");
 
-        /* Subscribe to OTA notification topic */
-        ota_init(&g_mqtt_config);
-
-        /* Force-clear the IN_PROGRESS state in Device Shadow on every connect. */
-        ota_clear_shadow_status();
-
-        /* Actively pull the next queued job. Recovers jobs whose notify-next
-         * push was missed (e.g., device was offline when AWS sent it). */
-        ota_get_next_job();
+        /* OTA is handled by the standalone ota_service_task (own MQTT/TLS
+         * connection). The S2E MQTT connection no longer piggybacks OTA. */
 
         first_established = 1;
         break;
@@ -921,15 +913,8 @@ void proc_SEG_mqtts_client(uint8_t sock) {
         }
         PRT_SEG(" > SEG:MQTTS_CLIENT_MODE:MQTTSubscribed\r\n");
 
-        /* Subscribe to OTA notification topic */
-        ota_init(&g_mqtt_config);
-
-        /* Force-clear the IN_PROGRESS state in Device Shadow on every connect. */
-        ota_clear_shadow_status();
-
-        /* Actively pull the next queued job. Recovers jobs whose notify-next
-         * push was missed (e.g., device was offline when AWS sent it). */
-        ota_get_next_job();
+        /* OTA is handled by the standalone ota_service_task (own MQTT/TLS
+         * connection). The S2E MQTT connection no longer piggybacks OTA. */
 
         first_established = 1;
         break;
