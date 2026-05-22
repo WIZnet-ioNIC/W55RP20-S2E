@@ -1,345 +1,258 @@
-# OTA 변경 내역 (W55RP20-S2E)
+# OTA 구현 문서 (W55RP20-S2E)
 
-AWS IoT Jobs 기반 OTA 펌웨어 업데이트 기능 도입과 그에 이은 안정성 개선 작업을 정리한 문서.
-
-- **베이스 커밋**: `dc16715` — *OTA update* (OTA 기반 구축)
-- **이후 추가 수정**: 다운로드 중 SHA256 스트리밍 검증, AWS Device Shadow 보고, Bank1 사전 검사, 디버그용 heap 모니터링 태스크, 빌드 환경 정비
+AWS IoT Jobs 기반 OTA(Over-The-Air) 펌웨어 업데이트 — 현재 구현 상태와 동작
+FLOW를 정리한 문서. 실제 코드(`port/app/ota/`) 기준.
 
 ---
 
-## 1. 전체 동작 개요
+## 1. 설계 개요
 
-1. MQTT 연결 직후 `ota_init()` 호출 → AWS IoT Jobs 토픽 구독.
-2. 클라우드가 Job을 publish하면 `$aws/things/<thing>/jobs/notify-next` 수신.
-3. coreJSON으로 Job document 파싱 (URL / size / SHA256 / version).
-4. 별도 `OTA_TASK`가 세마포어로 깨어나 HTTPS(S3 presigned URL)로 펌웨어 다운로드.
-5. 다운로드 청크를 그대로 **Bank1 flash**에 sector 단위로 streaming write.
-6. **다운로드 중 동시에 SHA256 계산** → 완료 후 Job document의 expected SHA256과 비교.
-7. Bank1 첫 워드가 valid한지 사전 확인.
-8. `firmware_update.fwup_copy_flag = 1` 설정 후 저장 → reboot.
-9. 부트로더가 Bank1 → Bank0 복사 후 새 펌웨어 부팅.
-10. Jobs / Device Shadow에 `SUCCEEDED` / `FAILED` 상태 보고.
-
-```
-[AWS IoT Jobs] ──notify-next──▶ MQTT CB ──ota_mqtt_handle()──▶ [OTA_TASK]
-                                                                   │
-                                                  ┌────────────────┴────────────────┐
-                                                  ▼                                 ▼
-                                       HTTPS GET (S3 presigned URL)         streaming SHA256
-                                                  │                                 │
-                                                  ▼                                 │
-                                       Bank1 flash (sector write) ◀─────────────────┘
-                                                  │
-                                                  ▼
-                                        SHA256 verify + Bank1 sanity
-                                                  │
-                                                  ▼
-                                        fwup_copy_flag=1 → reboot → 부트로더가 Bank1→Bank0
-                                                  │
-                                                  ▼
-                                       Jobs UPDATE + Shadow UPDATE
-```
+- OTA는 **S2E 동작 모드와 완전히 독립**된 별도 백그라운드 서비스(`ota_service_task`)다.
+  TCP/UDP/MQTT 등 어떤 working mode에서도 항상 동작한다.
+- 자체 MQTT-over-TLS 연결, 자체 소켓, 자체 client ID를 가진다. S2E의 MQTT 연결을
+  재사용하지 않는다.
+- 의존성은 **단방향**: `App.c → ota → (platform_handler / config / mbedtls / AWS SDK)`.
+  platform_handler·S2E 코드는 OTA를 전혀 참조하지 않는다.
+- **2단계 커밋(two-phase commit)**: 다운로드 직후가 아니라, 새 펌웨어가 실제로
+  부팅에 성공한 다음에만 Job을 `SUCCEEDED`로 보고한다. → 부팅 실패 시 거짓 성공이
+  발생하지 않는다.
 
 ---
 
-## 2. 신규 파일
+## 2. 모듈 구성
 
-### 2-1. `port/app/platform_handler/inc/otaHandler.h`
-
-OTA 모듈 공개 API와 토픽 매크로.
-
-```c
-#define OTA_BROKER_ENDPOINT "a3uz5t2azg1xdz-ats.iot.ap-northeast-2.amazonaws.com"
-#define OTA_BROKER_PORT     8883
-#define OTA_TOPIC_BUF_SIZE  256
-
-#define OTA_NOTIFY_TOPIC_FMT        "$aws/things/%s/jobs/notify-next"
-#define OTA_JOB_UPDATE_TOPIC_FMT    "$aws/things/%s/jobs/%s/update"
-#define OTA_SHADOW_UPDATE_TOPIC_FMT "$aws/things/%s/shadow/update"   /* 추가 */
-#define OTA_PING_PUB_TOPIC_FMT      "$aws/things/%s/jobs/get"
-#define OTA_PING_ACC_TOPIC_FMT      "$aws/things/%s/jobs/get/accepted"
-#define OTA_PING_REJ_TOPIC_FMT      "$aws/things/%s/jobs/get/rejected"
-
-#define SOCK_OTA_HTTP   7   /* HTTPS download 전용 소켓 */
+```
+port/app/ota/
+  inc/
+    otaConfig.h     파라미터 1개 헤더 (엔드포인트 / 인증서 / 소켓 / 토픽)
+    otaDownload.h   다운로드 엔진 API
+    otaService.h    태스크 진입점 (ota_service_task)
+  src/
+    otaDownload.c   HTTPS 다운로드 · SHA256 검증 · Bank1 플래시 엔진 (MQTT 없음)
+    otaService.c    MQTT AWS IoT Jobs 서비스 + 2단계 커밋
 ```
 
-공개 API:
-| 함수 | 역할 |
-| --- | --- |
-| `int ota_init(void *mqtt_config)` | OTA 모듈 초기화. 토픽 구독, OTA 태스크 생성. |
-| `int ota_ping(void)` | `$aws/things/<id>/jobs/get` 발행으로 클라우드 연결 확인. |
-| `int ota_is_ota_topic(const char *topic, uint16_t topicLen)` | `$aws/things/` 접두사 여부 판단. |
-| `void ota_mqtt_handle(...)` | OTA 메시지 라우팅 (ping accepted/rejected, job document). |
-
-> Fleet Provisioning 적용 시 하드코딩 endpoint 제거 필요 (TODO 명시).
+- CMake: 전용 라이브러리 `APP_OTA_FILES` (`App` / `App_linker` 양쪽이 링크).
+- 의존 방향: `otaService.c → otaDownload.h` (단방향). 다운로드 엔진은 서비스를
+  역참조하지 않는다.
 
 ---
 
-### 2-2. `port/app/platform_handler/src/otaHandler.c`
+## 3. 사용 리소스
 
-OTA 본체 구현. 주요 구성 요소:
+| 항목 | 값 |
+|---|---|
+| AWS 엔드포인트 | `a3uz5t2azg1xdz-ats.iot.ap-northeast-2.amazonaws.com:8883` |
+| Thing 이름 | `lihan_thing` |
+| MQTT Client ID | `lihan_thing_ota` (S2E와 별개 — duplicate-client-id 충돌 방지) |
+| **소켓 6** | MQTT-over-TLS 제어 채널 (AWS IoT) — 상시 유지 |
+| **소켓 7** | HTTPS 펌웨어 다운로드 (S3) — 다운로드 시에만 사용 |
+| MQTT keepalive | 1200초 |
+| 인증서 | `otaConfig.h`에 내장 (Root CA / 디바이스 인증서 / 개인키) |
 
-#### (a) 내부 상태
-- `s_mqtt_config`, `s_thing_name`
-- 현재 작업 정보: `s_job_id`, `s_fw_url`, `s_fw_size`, `s_fw_sha256`
-- TLS context `s_ota_tls_ctx`
-- FreeRTOS 동기화: `s_ota_job_sem` (binary semaphore), `s_ota_task_handle`
-- **추가**: `static uint8_t s_download_sha256[32];` — 다운로드 중 계산된 SHA256
-- **추가**: `static uint32_t s_actual_written;` — 실제 flash 에 기록된 바이트 수 (Boot 가 사용할 `fwup_size` 값과 동일)
+### 플래시 맵 (2MB)
 
-#### (b) `ota_init()`
-- `client_id`에서 Thing Name 복사.
-- 토픽 문자열 생성 (`notify`, `ping acc/rej`).
-- 중복 구독 방지(`ota_subscribe_topic_if_needed`)로 `notify` / `ping acc/rej` 구독.
-- 최초 호출 시 `OTA_TASK` 생성 (stack 2048, `tskIDLE_PRIORITY+2`).
+| 영역 | 오프셋 | 크기 |
+|---|---|---|
+| Bootloader | `0x00000` | 128KB |
+| Bank0 (실행 중인 앱) | `0x20000` | 512KB |
+| Bank1 (OTA 스테이징) | `0xA0000` | 512KB |
+| Config / RootCA / CliCA / PriKey / MAC | `0x120000`~`0x124000` | 4KB ×5 |
+| **OTA 레코드** | `0x125000` | 4KB (1섹터) |
 
-#### (c) Job document 파싱 (`ota_parse_job_document`)
-coreJSON으로 다음 필드를 추출:
-```
-execution.jobId
-execution.jobDocument.firmware.url
-execution.jobDocument.firmware.size
-execution.jobDocument.firmware.sha256
-```
-크기/길이 검증 후 정적 버퍼에 저장.
+### MQTT 토픽
 
-#### (d) HTTPS 다운로드 (`ota_download_and_flash`)
-- `ota_parse_url()`로 https URL에서 host/path 분리.
-- DNS resolve → `wiz_tls_init / socket / connect` → TLS handshake.
-- 단순 `GET ... HTTP/1.1` + `Host` + `Connection: close` 요청.
-- `\r\n\r\n`까지 헤더 읽고, status가 200인지 확인.
-- 본문은 `DATA_BUF_SIZE` 단위로 stream 수신.
-- `FLASH_SECTOR_SIZE` 채워질 때마다 `write_flash(Bank1 offset, ...)` 호출.
-- **추가**: 수신 청크마다 `mbedtls_sha256_update(...)` 수행해 다운로드와 동시에 SHA256 계산. 완료 후 `s_download_sha256`에 저장.
-- 워치독 enable 시 매 루프에 `device_wdt_reset()`.
-
-#### (e) SHA256 검증 (`ota_verify_sha256`)
-- 초기 구현은 Bank1 flash(XIP)에서 256바이트씩 다시 읽어 SHA256 재계산.
-- **현재 구현**: 다운로드 단계에서 누적된 `s_download_sha256`을 expected와 직접 `memcmp`.
-- 효과:
-  - flash readback 부담 / XIP 타이밍 이슈 회피
-  - 다운로드와 검증이 한 패스로 끝나 속도 향상
-- 불일치 시 expected/computed 해시를 모두 로그로 덤프.
-
-#### (f) Job 상태 보고 (`ota_report_status`)
-**Jobs UPDATE 페이로드 분기:**
-- `SUCCEEDED`:
-  ```json
-  {"status":"SUCCEEDED","statusDetails":{"version":"2.2.2"}}
-  ```
-- `reason != NULL`:
-  ```json
-  {"status":"<status>","statusDetails":{"reason":"<reason>"}}
-  ```
-- 그 외:
-  ```json
-  {"status":"<status>"}
-  ```
-
-**추가: Device Shadow UPDATE 동시 발행**
-
-같은 함수에서 `$aws/things/<thing>/shadow/update`로도 QoS1 publish:
-- 성공 시:
-  ```json
-  {"state":{"reported":{"FW Version":"2.2.2","Status":"idle"}}}
-  ```
-- 그 외:
-  ```json
-  {"state":{"reported":{"Status":"<status>"}}}
-  ```
-- 로그: `> OTA:SHADOW:<body>`
-
-#### (g) OTA 메인 태스크 (`ota_task`)
-무한 루프로 세마포어 대기 → 다음 시퀀스 수행:
-
-1. `ota_report_status("IN_PROGRESS", NULL)` + `set_device_status(ST_UPGRADE)`
-2. `ota_download_and_flash()` → 실패 시 `FAILED / DOWNLOAD_ERROR` 보고 후 `continue`
-3. `ota_verify_sha256()` → 실패 시 `FAILED / SHA256_MISMATCH`
-4. **Bank1 첫 워드 검사** (현재 구현 추가):
-   ```c
-   uint32_t bank1_word0 = *(volatile uint32_t *)(FLASH_START_ADDR_BANK1);
-   if (bank1_word0 == 0x00000000 || bank1_word0 == 0xFFFFFFFF) {
-       /* FAILED / INVALID_FLASH */
-   }
-   ```
-   → 잘못된 Bank1로 부트로더가 진입해 벽돌이 되는 상황을 방지.
-5. `firmware_update.fwup_size = s_actual_written` (실제 다운로드/기록한 바이트 수), `fwup_copy_flag = 1`, `save_DevConfig_to_storage()`
-   - **주의**: Config tool (`update_module_firmware()`) 와 동일한 의미. Job document 의 `size` 값이 아니라 **실제 flash 에 쓴 길이**. Boot 의 `device_bank_copy()` 가 이 값을 기준으로 Bank1→Bank0 sector 복사 범위를 결정.
-   - Job document 의 size 와 실제 다운로드 크기가 다르면 `ota_download_and_flash()` 가 그 시점에 이미 `OTA_RET_FAILED` 반환하므로 여기엔 도달하지 않음.
-6. `SUCCEEDED` 보고 후 500ms 대기 → `device_reboot()`
-
-#### (h) 유틸리티
-- `hex_char_to_nibble`, `sha256_hex_to_bytes`
-- `ota_parse_url` (간단한 https URL 파서)
-- `ota_subscribe_topic_if_needed` (중복 구독 방지)
-- `ota_copy_thing_name`
+| 방향 | 토픽 |
+|---|---|
+| SUB | `$aws/things/lihan_thing/jobs/notify-next` |
+| SUB | `$aws/things/lihan_thing/jobs/$next/get/accepted` |
+| PUB | `$aws/things/lihan_thing/jobs/$next/get` |
+| PUB | `$aws/things/lihan_thing/jobs/{jobId}/update` |
+| PUB | `$aws/things/lihan_thing/shadow/update` |
 
 ---
 
-### 2-3. `port/app/configuration/inc/fw_info.h`
+## 4. 동작 FLOW (타임라인)
 
-빌드된 펌웨어 바이너리에 임베드되는 정보 블록 정의 (OTA 사전 검증 및 운영 식별용).
+마커: 📤 W55RP20→AWS · 📥 AWS→W55RP20 · ⚙️ W55RP20 내부 작업
 
-```c
-#define FW_INFO_MAGIC   0x57495A4E  /* 'WIZN' */
-#define FW_INFO_OFFSET  0x100       /* 2nd stage bootloader 직후 */
+### Phase 0 — 부팅 & 연결
 
-typedef struct __attribute__((packed)) {
-    uint32_t magic;
-    uint8_t  major, minor, patch, reserved;
-    char     version_str[16];
-    char     board[16];
-    char     manufacturer[16];
-    char     status[12];
-    uint32_t build_date;   /* BCD */
-} fw_info_t;
+`ota_service_task()` → `ota_service_connect()`
+
+```
+⚙️ App.c가 ota_service_task 생성 (S2E 모드와 무관, 항상 생성)
+⚙️ 토픽 문자열 4종 생성
+⚙️ ota_last_load() — 플래시 0x125000 읽기, magic 'OTA2' 확인
+       → 레코드 유효: state / job_id / version / result / timestamp 복원
+       → 무효(0xFF, 미기록/지움): last_ota = N/A
+⚙️ 8초 대기 (DHCP / 링크 안정화)
+
+⚙️ DNS 조회 → 엔드포인트 IP
+⚙️ TLS 핸드셰이크 (소켓 6, 포트 8883, 내장 인증서)
+📤 MQTT CONNECT (client=lihan_thing_ota, keepalive=1200)
+📥 CONNACK
+📤 SUBSCRIBE  jobs/notify-next
+📤 SUBSCRIBE  jobs/$next/get/accepted
+📥 SUBACK ×2
+📤 PUBLISH    jobs/$next/get   {}        ← 대기 중인 잡 폴링
+
+   ota_confirm_pending() 분기:
+     · PENDING 레코드 있음  → Phase 2 실행 (아래)
+     · 없음 (정상 부팅)     → 📤 shadow/update {status:"idle"}
+
+📤 PUBLISH shadow/update — 기기 상태 스냅샷 (부팅당 1회)
+         {fw_version, chip, mac, ip, uptime_sec, last_ota{...}}
+⚙️ 무한 루프 진입: MQTT_ProcessLoop() 200ms 주기 (잡 수신 대기)
 ```
 
-Flash map:
+### Phase 1 — 잡 수신 → 다운로드 → 적용  (BOOT N, 구 펌웨어)
+
+`ota_handle_job()`
+
 ```
-0x00000000  [0x100]  2nd stage bootloader
-0x00000100  [0x100]  fw_info_t      ← 여기
-0x00000200  [...]    vector table + code
+📥 PUBLISH 수신 — notify-next 푸시 또는 $next/get/accepted 응답
+            payload = 잡 문서 (execution.jobId / status /
+                       jobDocument.firmware.{url, size, sha256, version})
+⚙️ ota_mqtt_event_cb: 문서를 s_job_doc로 복사, "jobDocument" 있으면 s_job_pending=1
+⚙️ 루프가 s_job_pending 감지 → ota_handle_job()
+⚙️ 잡 문서 파싱 (jobId, status, version, 루트 timestamp)
+⚙️ 중복/복구 체크 — 신규 잡이면 통과 (자세한 분기는 §6)
+
+──── 다운로드 구간: ota_download_apply() — 블로킹, MQTT 보고 0건 ────
+⚙️ 잡 문서에서 S3 presigned URL · 크기 · SHA256 추출
+⚙️ 펌웨어 크기 검증 (0 < size ≤ 512KB)
+⚙️ 소켓 7로 HTTPS GET → S3
+📥 (소켓7) 펌웨어 이미지 스트림 수신
+⚙️ 받는 즉시 Bank1(0xA0000)에 섹터 단위 기록 + SHA256 동시 계산
+⚙️ SHA256 대조 검증
+⚙️ Bank1 첫 워드 sanity 체크 (유효한 벡터테이블 형태인가)
+⚙️ 부트로더 arm — fwup_copy_flag=1, ConfigData 플래시 저장
+──────────────────────────────────────────────────────────────
+
+   ↓ 다운로드 + 검증 성공
+📤 PUBLISH jobs/{jobId}/update   {status:"IN_PROGRESS"}
+📤 PUBLISH shadow/update         {status:"installing"}   ← 서버가 듣는 마지막 상태
+⚙️ ota_last_store(PENDING) — 플래시 0x125000에 {state=PENDING, job_id, version, ts}
+⚙️ 1초 대기 (publish 플러시)
+⚙️ device_reboot()
+──────────────────────────────────────────────────────────────
+⚙️ [부트로더] Bank1 → Bank0 복사   ← 실제 펌웨어 교체
+⚙️ 새 펌웨어로 부팅
+```
+
+> **실패 시** (다운로드/검증 실패): `📤 jobs/{id}/update {status:"FAILED",
+> statusDetails.reason:"SHA256_MISMATCH"...}` + `📤 shadow {status:"failed"}` +
+> 플래시 DONE/failed 기록. **리붓하지 않음.**
+
+### Phase 2 — 부팅 확인 → 성공 보고  (BOOT N+1, 새 펌웨어)
+
+`ota_confirm_pending()`
+
+```
+⚙️ ota_service_task 재시작 → ota_last_load() → state == PENDING 감지
+⚙️ 8초 대기 → DNS → TLS → MQTT CONNECT → SUBSCRIBE ×2 → 📤 $next/get
+⚙️ ota_confirm_pending() 발동:
+       "이 코드가 실행 중 = 새 FW가 정상 부팅함 = OTA 성공"
+📤 PUBLISH jobs/{jobId}/update   {status:"SUCCEEDED", statusDetails.version}
+📤 PUBLISH shadow/update         {status:"success"}
+⚙️ ota_last_store(DONE, result="success") — 플래시 레코드 PENDING → DONE
+📤 PUBLISH shadow/update — 기기 상태 스냅샷 (last_ota=success 반영)
+⚙️ 무한 루프 진입 (다음 잡 대기)
+
+📥 $next/get/accepted 응답: 잡이 이미 SUCCEEDED → 빈 응답 → 정상 종료
 ```
 
 ---
 
-### 2-4. `tools/test_ota_ping.py`
+## 5. Job 상태 vs Shadow 상태
 
-OTA ping 동작 검증용 호스트 스크립트 (`$aws/things/<id>/jobs/get` 발행 및 accepted/rejected 응답 확인용).
+서로 **다른 AWS 서비스**이며 별개 채널로 보고된다.
 
----
+| | Job 상태 | Shadow `status` |
+|---|---|---|
+| 정의 주체 | **AWS** (고정 enum) | **펌웨어** (임의 문자열) |
+| 토픽 | `jobs/{id}/update` | `shadow/update` |
+| 값 | `QUEUED`→`IN_PROGRESS`→`SUCCEEDED`/`FAILED`... | `idle` / `installing` / `success` / `failed` |
+| AWS 해석 | ✅ 잡 큐·재시도에 사용 | ❌ 저장만 |
+| 보고 함수 | `ota_report_job()` | `ota_report_shadow()` |
 
-## 3. 기존 파일 수정
+- `TIMED_OUT` / `CANCELED` / `REJECTED`는 **AWS가 직접** 설정 — 디바이스는 보고하지
+  않는다. 디바이스가 보고하는 종료 상태는 `SUCCEEDED` / `FAILED` 둘뿐.
+- Shadow `reported`는 누적 문서다. `fw_version`은 `ota_report_status()`만, `status`는
+  `ota_report_shadow()`만 소유 — 필드 충돌 없음.
 
-### 3-1. `port/app/AWS-IoT-Device-SDK-Embedded-C/coreMQTT/inc/core_mqtt_config.h`
-
-| 항목 | 변경 전 | 변경 후 | 이유 |
-| --- | --- | --- | --- |
-| `MQTT_BUF_MAX_SIZE` | `1024 * 2` | `1024 * 4` | Job document 페이로드가 큼 |
-| `MQTT_SUBSCRIPTION_MAX_NUM` | `3` | `6` | OTA 토픽 3종 추가 구독 |
-
-### 3-2. `port/app/AWS-IoT-Device-SDK-Embedded-C/coreMQTT/src/mqtt_transport_interface.c`
-
-- `mqtt_event_callback`:
-  - 디버그 로그 `MQTT:CB:type=0x..` 추가.
-  - publish 수신 시 `ota_is_ota_topic()` 결과에 따라 **OTA 토픽은 `ota_mqtt_handle()`, 그 외는 기존 `user_sub_callback()`** 으로 라우팅.
-- `mqtt_transport_subscribe`:
-  - `> MQTT_SUBSCRIPTION_MAX_NUM` → `>= MQTT_SUBSCRIPTION_MAX_NUM` (off-by-one 수정).
-- `mqtts_read`:
-  - `wiz_tls_read()` 반환값이 음수일 때 (`WANT_READ`) 0으로 정규화해 비정상 에러 처리 방지.
-
-### 3-3. `port/app/configuration/inc/common.h`
-
-| 항목 | 변경 |
-| --- | --- |
-| `MAX_HTTPSOCK` | `4` → `3` |
-| `SOCK_HTTPSERVER_4` (소켓 7) | OTA HTTPS 다운로드 전용으로 예약 (HTTP 서버에서 미사용) |
-| `MQTT_BUF_SIZE` | `2048` → `4096` |
-
-### 3-4. `libraries/CMakeLists.txt`
-
-`AWS_SDK_FILES`에 coreJSON 추가:
-- 소스: `coreJSON/source/core_json.c`
-- include: `coreJSON/source/include`
-
-### 3-5. `port/app/CMakeLists.txt`
-
-`APP_PLATFORM_FILES`에 다음 추가:
-- 소스: `platform_handler/src/otaHandler.c`
-- link: `AWS_SDK_FILES`
-
-### 3-6. `port/app/serial_to_ethernet/src/seg.c`
-
-- `otaHandler.h` include 추가.
-- `proc_SEG_mqtt_client()` / `proc_SEG_mqtts_client()` 둘 다, MQTT 연결 및 구독 성공 직후:
-  ```c
-  /* Subscribe to OTA notification topic */
-  ota_init(&g_mqtt_config);
-  ```
-
-### 3-7. `main/App/App.c`
-
-- `start_task()` 진입 시 빌드 식별 로그:
-  ```c
-  PRT_INFO(" > Lihan`s New OTA Ver\r\n");
-  ```
-- **추가: Heap 모니터링 태스크** (현재 단계)
-  ```c
-  #define HEAP_MONITOR_TASK_STACK_SIZE 512
-  #define HEAP_MONITOR_TASK_PRIORITY   9
-
-  void heap_monitor_task(void *argument) {
-      while (1) {
-          printf("Free heap: %d\n", xPortGetFreeHeapSize());
-          printf("Min free heap: %d\n", xPortGetMinimumEverFreeHeapSize());
-          vTaskDelay(pdMS_TO_TICKS(100));
-      }
-  }
-  ```
-  `start_task()`에서 `xTaskCreate(heap_monitor_task, ...)` 등록.
-  → OTA 다운로드 / TLS 핸드셰이크 동안 메모리 여유 추적용 디버그 태스크. 릴리즈 전 제거 또는 컨디셔널 컴파일 권장.
-
-### 3-8. `port/app/html_file/Web_page.h`
-
-- OTA UI 관련 대규모 갱신 (1712줄 변경).
-- 헤더 주석 `data:` 필드를 `2026-04-21`까지 두 번 갱신.
-
----
-
-## 4. 빌드 설정 변경 (`CMakeLists.txt` 루트)
-
-### 4-1. 타겟 보드 전환
-- `BOARD_NAME`: `W55RP20_S2E` → `PLATYPUS_S2E`
-
-### 4-2. Windows Python launcher로 통일
-- `html_to_c_header` 타깃:
-  - `python ...` → `cmd /c "py ... & exit 0"` (스크립트 실패해도 빌드 계속)
-- `merge_hex` 타깃: `python` → `py`
-- `hex_to_uf2_converter` 타깃: `python` → `py`
-
-### 4-3. `restyle` 타깃 비활성화
-- `style/restyle.py` 자동 실행 custom target과 `add_dependencies(restyle ...)`를 모두 주석 처리.
-
----
-
-## 5. AWS IoT Jobs Job document 포맷 (참고)
+### Shadow 문서 예시
 
 ```json
 {
-  "execution": {
-    "jobId": "ota-test-xxx",
-    "jobDocument": {
-      "operation": "ota_update",
-      "firmware": {
-        "url":     "https://<bucket>.s3.<region>.amazonaws.com/...?X-Amz-...",
-        "version": "2.2.2",
-        "size":    524288,
-        "sha256":  "abcdef..."
-      }
-    }
-  }
+  "fw_version": "1.2.1",
+  "chip": "W55RP20",
+  "mac": "EC:74:CD:00:01:C6",
+  "ip": "192.168.11.2",
+  "uptime_sec": 11,
+  "status": "idle",
+  "last_ota": { "job_id": "ota-...", "result": "success", "timestamp": 1779348277 }
 }
 ```
 
 ---
 
-## 6. 리포팅 토픽 요약
+## 6. 플래시 OTA 레코드 & 상태머신
 
-| 시점 | 토픽 | 페이로드 |
-| --- | --- | --- |
-| 다운로드 시작 | `$aws/things/<id>/jobs/<jobId>/update` | `{"status":"IN_PROGRESS"}` |
-| 다운로드 실패 | 〃 | `{"status":"FAILED","statusDetails":{"reason":"DOWNLOAD_ERROR"}}` |
-| SHA256 실패 | 〃 | `{"status":"FAILED","statusDetails":{"reason":"SHA256_MISMATCH"}}` |
-| Bank1 invalid | 〃 | `{"status":"FAILED","statusDetails":{"reason":"INVALID_FLASH"}}` |
-| 성공 | 〃 | `{"status":"SUCCEEDED","statusDetails":{"version":"2.2.2"}}` |
-| 모든 상태 변화 | `$aws/things/<id>/shadow/update` | `{"state":{"reported":{"Status":"<state>"}}}` (성공 시 `FW Version` 포함) |
+`FLASH_OTA_INFO_ADDR`(0x125000)에 1섹터로 영속 저장. OTA 경로는 리붓을 동반하므로
+결과를 플래시에 남겨야 다음 부팅에서 확인할 수 있다.
+
+```c
+typedef struct {
+    uint32_t magic;        // 'OTA2' — 유효성 마커 (불일치 시 "레코드 없음")
+    uint32_t state;        // OTA_REC_PENDING(1) / OTA_REC_DONE(2)
+    uint32_t timestamp;    // AWS 잡 timestamp (epoch sec)
+    char     job_id[65];
+    char     version[33];
+    char     result[12];   // "pending" / "success" / "failed"
+} ota_last_record_t;
+```
+
+상태 전이:
+
+```
+(없음) ──다운로드 성공──▶ PENDING ──부팅 확인──▶ DONE/success
+(없음) ──다운로드 실패──────────────────────▶ DONE/failed
+```
+
+`ota_handle_job()`의 잡 처리 분기:
+
+1. **DONE 레코드 + job_id 일치** → 종료 보고가 유실됨 → 멱등 재전송 (`SUCCEEDED`/`FAILED`)
+2. **PENDING 레코드 + job_id 일치** → 부팅 확인 (`ota_confirm_pending`)
+3. **안전망**: 레코드 없음 + 잡 `IN_PROGRESS` + 버전이 현재 실행 버전과 일치 →
+   재다운로드 없이 `SUCCEEDED` (무한 루프 방지)
+4. **신규 잡** → 다운로드 → Phase 1
 
 ---
 
-## 7. 알려진 TODO / 후속 작업
+## 7. 견고성 / 실패 처리
 
-- Fleet Provisioning 적용 후 `OTA_BROKER_ENDPOINT` 하드코딩 제거.
-- 성공 시 페이로드의 `"version":"2.2.2"`가 상수로 박혀 있음 → `fw_info_t.version_str` 기반으로 동적 치환 필요.
-- `heap_monitor_task`는 디버그 용도 — 릴리즈 빌드에서 제거 또는 `#ifdef` 가드.
-- `Web_page.h` 헤더 `data:` 필드 갱신은 자동화 여지 있음.
+- **부팅 실패(부트루프):** Phase 2가 실행되지 않음 → Job은 `IN_PROGRESS`로 남음 →
+  거짓 `SUCCEEDED` 없음. (2단계 커밋의 핵심)
+- **보고 유실:** AWS가 잡을 재전달하면 플래시 DONE 레코드를 근거로 멱등 재전송.
+- **플래시 wipe:** OTA 레코드 섹터가 0xFF → magic 불일치 → "레코드 없음" → `last_ota`
+  N/A. 별도 초기화 없이 정상 동작.
+- **소켓 분리:** MQTT(6)와 HTTPS 다운로드(7)가 별개 소켓 → 다운로드 중에도 MQTT 유지.
+- **RTC 부재:** `timestamp`는 AWS 잡 메시지 루트의 `timestamp` 필드(epoch초)를 파싱해
+  사용 — 디바이스 자체 시계 없이 실제 시각 확보.
+
+---
+
+## 8. 변경 이력 (이번 리팩토링)
+
+| # | 내용 |
+|---|---|
+| 1 | OTA를 S2E 피기백 → **독립 백그라운드 서비스**(`ota_service_task`)로 분리 |
+| 2 | 다운로드 엔진(`otaDownload`)과 MQTT 서비스(`otaService`)를 단방향 의존으로 분리 |
+| 3 | `last_ota` 결과를 **플래시 영속 저장** (전용 섹터 0x125000) |
+| 4 | 부팅 시 **기기 상태 스냅샷** 보고 추가 (`ota_report_status`) |
+| 5 | **2단계 커밋** 도입 — `SUCCEEDED`는 새 FW 부팅 확인 후에만 보고 |
+| 6 | Shadow 필드 정리 — `status` 소문자 통일, `fw_version` 충돌 제거 |
+| 7 | Shadow 상태 단어 `rebooting` → `installing` |
+| 8 | OTA 코드를 독립 모듈 `port/app/ota/`로 이동, CMake `APP_OTA_FILES` 신설 |

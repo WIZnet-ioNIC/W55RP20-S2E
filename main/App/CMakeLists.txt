@@ -15,6 +15,7 @@ target_link_libraries(${TARGET_NAME} PRIVATE
         APP_PLATFORM_FILES
         APP_MODBUS_FILES
         APP_AWS_SDK_PORT_FILES
+        APP_OTA_FILES
         )
 
 set_target_properties(${TARGET_NAME} PROPERTIES COMPILE_FLAGS "-Wall")
@@ -35,6 +36,7 @@ target_link_libraries(${TARGET_NAME_LINKER} PRIVATE
         APP_S2E_FILES
         APP_TIMER_FILES
         APP_PLATFORM_FILES
+        APP_OTA_FILES
         )
 set_target_properties(${TARGET_NAME_LINKER} PROPERTIES COMPILE_FLAGS "-Wall")
 pico_set_linker_script(${TARGET_NAME_LINKER} ${CMAKE_CURRENT_SOURCE_DIR}/${TARGET_NAME_LINKER}.ld)

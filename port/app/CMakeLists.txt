@@ -195,8 +195,6 @@ target_sources(APP_PLATFORM_FILES PUBLIC
         ${APP_PORT_DIR}/platform_handler/src/gpioHandler.c
         ${APP_PORT_DIR}/platform_handler/src/httpHandler.c
         ${APP_PORT_DIR}/platform_handler/src/netHandler.c
-        ${APP_PORT_DIR}/platform_handler/src/otaDownload.c
-        ${APP_PORT_DIR}/platform_handler/src/otaService.c
         ${APP_PORT_DIR}/platform_handler/src/spiHandler.c
         ${APP_PORT_DIR}/platform_handler/src/storageHandler.c
         ${APP_PORT_DIR}/platform_handler/src/timerHandler.c
@@ -259,5 +257,31 @@ target_link_libraries(APP_AWS_SDK_PORT_FILES PUBLIC
         APP_CONFIG_FILES
         APP_IOLIBRARY_FILES
         APP_MBEDTLS_FILES
+        AWS_SDK_FILES
+        )
+
+# OTA service — standalone module, independent of S2E.
+#   otaService.c : MQTT AWS IoT Jobs service + two-phase commit
+#   otaDownload.c: HTTPS firmware download / verify / flash engine
+# Depends one-way on platform_handler / config / mbedtls / AWS SDK;
+# nothing in those modules depends back on OTA.
+add_library(APP_OTA_FILES STATIC)
+
+target_sources(APP_OTA_FILES PUBLIC
+        ${APP_PORT_DIR}/ota/src/otaDownload.c
+        ${APP_PORT_DIR}/ota/src/otaService.c
+        )
+
+target_include_directories(APP_OTA_FILES PUBLIC
+        ${APP_PORT_DIR}/ota/inc
+        ${APP_PORT_DIR}
+        )
+
+target_link_libraries(APP_OTA_FILES PUBLIC
+        APP_MCU_FILES
+        APP_CONFIG_FILES
+        APP_IOLIBRARY_FILES
+        APP_MBEDTLS_FILES
+        APP_PLATFORM_FILES
         AWS_SDK_FILES
         )
