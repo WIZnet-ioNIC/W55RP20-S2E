@@ -21,12 +21,21 @@ To develop and modify W55RP20-S2E, the development environment must be configure
 
 ### Required Build Environment
 
-We recommend the following versions for successful build and development:
+We recommend the following versions for successful build and development.
+Click each name to open the official download page:
 
-- **pico-sdk**: `2.2.0`  
-- **ARM GCC Toolchain**: `14.2.Rel1`
+- [**pico-sdk**](https://github.com/raspberrypi/pico-sdk/releases/tag/2.2.0): `2.2.0`
+- [**ARM GCC Toolchain**](https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads): `14.2.Rel1`
+- [**CMake**](https://cmake.org/download/): `3.13` or later
+- [**Ninja**](https://github.com/ninja-build/ninja/releases): `1.12.x` (build system used by the tasks under `build/`)
+- [**Python**](https://www.python.org/downloads/): `3.8` or later (required by `pico-sdk` and the scripts in [tools/](tools))
+- [**Git**](https://git-scm.com/download/win): latest (needed to clone `pico-sdk` and submodules)
+- [**picotool**](https://github.com/raspberrypi/picotool): `2.2.0` (used by the *Run Project* task to load firmware via USB)
+- [**OpenOCD**](https://github.com/raspberrypi/openocd): `0.12.0+dev` (used by the *Flash* / *Rescue Reset* tasks via CMSIS-DAP)
+- [**SRecord**](https://srecord.sourceforge.net/download.html): provides `srec_cat` used by [tools/merge_hex.py](tools/merge_hex.py)
+- [**Artistic Style (astyle)**](https://astyle.sourceforge.net/): used by [style/restyle.py](style/restyle.py)
 
-> Using other versions of the toolchain may result in build errors.  
+> Using other versions of the toolchain may result in build errors.
 
 W55RP20-S2E was developed by configuring the development environment for **Windows**, When configuring the development environment, refer to the '**9.2. Building on MS Windows**' section of '**Getting started with Raspberry Pi Pico**' document below to configure the development environment.
 
@@ -34,16 +43,107 @@ W55RP20-S2E was developed by configuring the development environment for **Windo
 
 If you want development environments other than the development environment for Windows, note that you can find other ways to configure development environment in **'Chapter 9. Building on other platforms'**  section of the document above.
 
-<a name="applying_patches"></a>
-### Applying Patches
+### Additional Tools Required by the `tools/` Scripts
 
-Some features of the W55RP20-S2E firmware require patches to be applied to the **pico-sdk**.  
-To apply the provided patch files, run the following commands from the repository root:
+The Python helper scripts under [tools/](tools) drive the post-build steps
+(generating `.bin` / `.hex` / `.uf2` artifacts and the embedded Web page header).
+The table below lists what each script needs:
 
-```bash
-cd .\libraries\pico-sdk\
-git apply ..\..\patches\001_pico-sdk_watchdog.patch
+| Script | Purpose | External programs used |
+| ------ | ------- | ---------------------- |
+| [tools/merge_hex.py](tools/merge_hex.py) | Convert `Boot.elf` / `App_linker.elf` to HEX/BIN and merge them | `arm-none-eabi-objcopy`, `srec_cat` |
+| [tools/hex_to_uf2_converter.py](tools/hex_to_uf2_converter.py) | Convert the merged HEX to BIN and then to UF2 | `arm-none-eabi-objcopy`, `python` + `tools/uf2conv.py` |
+| [tools/uf2conv.py](tools/uf2conv.py) | UF2 packing / unpacking helper | Python 3 only (stdlib) |
+| [tools/html_to_c_header.py](tools/html_to_c_header.py) | Embed `port/app/html_file/Web_page.html` into a C header | Python 3 only (stdlib) |
+| [style/restyle.py](style/restyle.py) | Apply project coding style to C/C++ sources under `main/` and `port/` | `astyle` (Artistic Style) |
+
+> `arm-none-eabi-objcopy` is shipped with the ARM GCC Toolchain listed above.
+> `srec_cat` is provided by the **SRecord** package and must be installed
+> separately on Windows.
+> `astyle` must be installed and available on `PATH` for [style/restyle.py](style/restyle.py)
+> to find it (the script searches for `astyle.exe` / `astyle`).
+
+#### Install / Download CLI commands (Windows)
+
+The easiest way to install the required programs on Windows is via
+[winget](https://learn.microsoft.com/windows/package-manager/winget/) or
+[Chocolatey](https://chocolatey.org/). Run the commands below from an
+elevated PowerShell prompt.
+
+```powershell
+# Python 3 (>= 3.8)
+winget install --id Python.Python.3.12 -e
+
+# CMake
+winget install --id Kitware.CMake -e
+
+# Ninja build system
+winget install --id Ninja-build.Ninja -e
+
+# Git (needed to clone pico-sdk and submodules)
+winget install --id Git.Git -e
+
+# ARM GCC Toolchain 14.2.Rel1
+winget install --id Arm.GnuArmEmbeddedToolchain -e
+# Alternative: download the installer manually from
+#   https://developer.arm.com/downloads/-/arm-gnu-toolchain-downloads
+
+# SRecord (provides srec_cat used by tools/merge_hex.py)
+choco install srecord -y
+# Alternative: download the Windows binary from
+#   https://srecord.sourceforge.net/download.html
+# and add the extracted folder to your PATH.
+
+# Artistic Style (provides astyle used by style/restyle.py)
+choco install astyle -y
+# Alternative: download the Windows binary from
+#   https://astyle.sourceforge.net/
+# and add the extracted folder to your PATH.
 ```
+
+The Raspberry Pi Pico specific tools (pico-sdk, picotool, OpenOCD) are most
+easily installed through the **Raspberry Pi Pico** VS Code extension, which
+downloads matching versions into `%USERPROFILE%\.pico-sdk\` (the tasks in this
+workspace already point at that location):
+
+```powershell
+# Install the VS Code extension (one-time)
+code --install-extension raspberry-pi.raspberry-pi-pico
+```
+
+If you prefer to install them manually:
+
+```powershell
+# pico-sdk 2.2.0
+git clone -b 2.2.0 https://github.com/raspberrypi/pico-sdk.git
+cd pico-sdk
+git submodule update --init
+# Then set PICO_SDK_PATH to the cloned folder
+
+# picotool 2.2.0
+git clone -b 2.2.0 https://github.com/raspberrypi/picotool.git
+# Build instructions: https://github.com/raspberrypi/picotool#building
+
+# OpenOCD for Raspberry Pi (with RP2040/RP2350 support)
+git clone https://github.com/raspberrypi/openocd.git
+# Build instructions: https://github.com/raspberrypi/openocd#readme
+```
+
+After installation, verify that every CLI is on your `PATH`:
+
+```powershell
+python --version
+cmake --version
+ninja --version
+arm-none-eabi-gcc --version
+arm-none-eabi-objcopy --version
+srec_cat --version
+astyle --version
+picotool version
+openocd --version
+```
+
+
 
 <a name="hardware_requirements"></a>
 
