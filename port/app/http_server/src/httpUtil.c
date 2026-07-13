@@ -12,9 +12,12 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include "WIZnet_board.h"
 #include "httpUtil.h"
 #include "WIZ5XXSR-RP_Debug.h"
 #include "httpHandler.h"
+
+extern uint8_t *pHTTP_RX;
 
 uint8_t http_get_cgi_handler(uint8_t * uri_name, uint8_t * buf, uint32_t * file_len) {
     uint8_t ret = HTTP_OK;
@@ -36,6 +39,23 @@ uint8_t http_get_cgi_handler(uint8_t * uri_name, uint8_t * buf, uint32_t * file_
 uint8_t http_post_cgi_handler(uint8_t * uri_name, st_http_request * p_http_request, uint8_t * buf, uint32_t * file_len) {
     uint8_t ret = HTTP_OK;
     uint16_t len = 0;
+
+#ifdef __USE_S2E_OVER_TLS__
+    /* SSL cert uploads: store cert without device reset */
+    if (strcmp((const char *)uri_name, "update_ssl_rootca.cgi") == 0 ||
+            strcmp((const char *)uri_name, "update_ssl_clica.cgi") == 0 ||
+            strcmp((const char *)uri_name, "update_ssl_prikey.cgi") == 0) {
+        if (predefined_set_cgi_processor(uri_name, p_http_request, buf, &len)) {
+            ret = HTTP_OK;  /* no device reset for cert upload */
+        } else {
+            ret = HTTP_FAILED;
+        }
+        if (ret) {
+            *file_len = len;
+        }
+        return ret;
+    }
+#endif /* __USE_S2E_OVER_TLS__ */
 
     if (predefined_set_cgi_processor(uri_name, p_http_request, buf, &len)) {
         ret = HTTP_RESET;
@@ -73,7 +93,9 @@ uint8_t predefined_set_cgi_processor(uint8_t * uri_name, st_http_request * p_htt
     // Devinfo; devname
     PRT_INFO("uri_name = %s\r\n", uri_name);
     if (strcmp((const char *)uri_name, "set_devinfo.cgi") == 0) {
-        val = set_devinfo(p_http_request->URI);
+        /*  URI is truncated to MAX_URI_SIZE-1 (127B) so POST body params are not in URI.
+            Pass the full raw request (pHTTP_RX+5, skipping POST\0) instead. */
+        val = set_devinfo((uint8_t *)pHTTP_RX + 5);
         *len = sprintf((char *)buf, "%d", val);
     } else if (strcmp((const char *)uri_name, "set_devreset.cgi") == 0) {
         val = set_devreset(p_http_request->URI);
@@ -85,8 +107,21 @@ uint8_t predefined_set_cgi_processor(uint8_t * uri_name, st_http_request * p_htt
         //*len = sprintf((char *)buf,"<html><head><title>WIZ750SR - Configuration</title><body>Factory Reset Complete. Please wait a few seconds. <span style='color:red;'>DHCP server</span></body></html>\r\n\r\n");
     } else if (strcmp((const char *)uri_name, "update_module_firmware.cgi") == 0) {
         if (update_module_firmware(p_http_request, buf)) {
-            *len = sprintf((char *)buf, "<html><head><title>W55RP20-S2E</title><body>F/W Update Complete. Device Reboot Please wait a few seconds.</body></html>\r\n\r\n");
+            *len = sprintf((char *)buf, "success");
+        } else {
+            *len = sprintf((char *)buf, "fail");
         }
+#ifdef __USE_S2E_OVER_TLS__
+    } else if (strcmp((const char *)uri_name, "update_ssl_rootca.cgi") == 0) {
+        val = update_ssl_rootca(p_http_request, buf);
+        *len = sprintf((char *)buf, "%s", val ? "success" : "fail");
+    } else if (strcmp((const char *)uri_name, "update_ssl_clica.cgi") == 0) {
+        val = update_ssl_clica(p_http_request, buf);
+        *len = sprintf((char *)buf, "%s", val ? "success" : "fail");
+    } else if (strcmp((const char *)uri_name, "update_ssl_prikey.cgi") == 0) {
+        val = update_ssl_prikey(p_http_request, buf);
+        *len = sprintf((char *)buf, "%s", val ? "success" : "fail");
+#endif /* __USE_S2E_OVER_TLS__ */
     } else {
         ret = 0;
     }

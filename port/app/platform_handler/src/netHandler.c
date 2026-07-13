@@ -79,7 +79,7 @@ void net_status_task(void *argument) {
             display_Net_Info();
             display_Dev_Info_dhcp();
 
-            if (dev_config->network_connection.working_mode != TCP_SERVER_MODE)  {
+            if ((dev_config->network_connection.working_mode != TCP_SERVER_MODE) && (dev_config->network_connection.working_mode != SSL_TCP_SERVER_MODE)) {
                 if (dev_config->network_connection.dns_use) {
                     //PRT_INFO("DNS waiting 3 seconds...\r\n");
                     //vTaskDelay(3000); // Wait for 3 seconds before starting DHCP
@@ -204,6 +204,7 @@ void wizchip_recovery(uint8_t working_mode) {
     case TCP_SERVER_MODE:
     case TCP_MIXED_MODE:
     case SSL_TCP_CLIENT_MODE:
+    case SSL_TCP_SERVER_MODE:
     case UDP_MODE:
         wizchip_gpio_interrupt_initialize(SEG_DATA0_SOCK, SIK_RECEIVED);
         break;

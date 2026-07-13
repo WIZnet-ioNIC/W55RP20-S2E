@@ -77,7 +77,7 @@ uint16_t peerport = 0;
 // XON/XOFF (Software flow control) flag, Serial data can be transmitted to peer when XON enabled.
 uint8_t isXON = SEG_ENABLE;
 
-char * str_working[] = {"TCP_CLIENT_MODE", "TCP_SERVER_MODE", "TCP_MIXED_MODE", "UDP_MODE", "SSL_TCP_CLIENT_MODE", "MQTT_CLIENT_MODE", "MQTTS_CLIENT_MODE"};
+char * str_working[] = {"TCP_CLIENT_MODE", "TCP_SERVER_MODE", "TCP_MIXED_MODE", "UDP_MODE", "SSL_TCP_CLIENT_MODE", "MQTT_CLIENT_MODE", "MQTTS_CLIENT_MODE", "SSL_TCP_SERVER_MODE"};
 
 uint8_t flag_process_dhcp_success = OFF;
 uint8_t flag_process_dns_success = OFF;

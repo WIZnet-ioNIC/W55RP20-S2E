@@ -88,6 +88,7 @@ typedef enum {ST_BOOT, ST_OPEN, ST_CONNECT, ST_UPGRADE, ST_ATMODE, ST_UDP} teDEV
 #define SSL_TCP_CLIENT_MODE  4
 #define MQTT_CLIENT_MODE  5
 #define MQTTS_CLIENT_MODE  6
+#define SSL_TCP_SERVER_MODE  7
 
 #define MQTT_TIMEOUT_MS                 400     // unit: ms
 

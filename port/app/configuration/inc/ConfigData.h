@@ -59,7 +59,7 @@ struct __network_common {
 } __attribute__((packed));
 
 struct __network_connection {
-    uint8_t working_mode;           // TCP_CLIENT_MODE (0), TCP_SERVER_MODE (1), TCP_MIXED_MODE (2), UDP_MODE (3), SSL_TCP_CLIENT_MODE (4), MQTT_CLIENT_MODE (5), MQTTS_CLIENT_MODE (6)
+    uint8_t working_mode;           // TCP_CLIENT_MODE (0), TCP_SERVER_MODE (1), TCP_MIXED_MODE (2), UDP_MODE (3), SSL_TCP_CLIENT_MODE (4), MQTT_CLIENT_MODE (5), MQTTS_CLIENT_MODE (6), SSL_TCP_SERVER_MODE (7)
     uint8_t working_state;          // Network operation state: BOOT(0), OPEN (1), CONNECT (2), UPGRADE (3), ATMODE (4)
     uint16_t local_port;
     uint16_t remote_port;

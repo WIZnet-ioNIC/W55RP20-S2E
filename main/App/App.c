@@ -237,6 +237,7 @@ void start_task(void *argument) {
     case TCP_SERVER_MODE:
     case TCP_MIXED_MODE:
     case SSL_TCP_CLIENT_MODE:
+    case SSL_TCP_SERVER_MODE:
     case UDP_MODE:
         wizchip_gpio_interrupt_initialize(SEG_DATA0_SOCK, SIK_RECEIVED);
         break;

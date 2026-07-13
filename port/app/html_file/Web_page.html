@@ -201,6 +201,8 @@
 	 	obj=$$('TCP Client');
 	 }
 	 ch0info_block(o.opmode);
+	 selset('selRootCA', o.rootca_opt);
+	 selset('selCliCert', o.clicert_en);
 	 
 	 if(o.uart == '0'){
 	 	 selset('selBaud1',o.baud);
@@ -243,7 +245,7 @@
  }
 
  function ch0info_block(o){
- 	if(o == 1) { // Using Server mode, Ch0info Remote ip/port blocked
+ 	if(o == 1 || o == 7) { // Using Server mode (TCP Server or SSL Server), Ch0info Remote ip/port blocked
 		$('txtRip').disabled=true;
 		$('txtRport').disabled=true;
 		server_enabled = 1;
@@ -302,17 +304,20 @@
 					   '&modbus=' + $('txtModbus').value;
 	}
  	
- 	uart0_info_str = '&baud=' + $('selBaud1').value; +
+ 	uart0_info_str = '&baud=' + $('selBaud1').value +
  	                 '&databit=' + $('selDb1').value +
  	                 '&parity=' + $('selParity1').value +
  	                 '&stopbit=' + $('selStop1').value +
  	                 '&flow=' + $('selFlow1').value;
+
+ 	ssl_info_str = '&rootca_opt=' + $('selRootCA').value +
+ 	               '&clicert_en=' + $('selCliCert').value;
  	                 
  	setTimeout(function(){
 		 dout=new AJAX('set_devinfo.cgi', function(t){
 		 	try{eval(t);}catch(e){alert(e);}
 		 });
-		 dout.doPost(dev_name_str + net_info_str + ch0_info_str + uart0_info_str);
+		 dout.doPost(dev_name_str + net_info_str + ch0_info_str + uart0_info_str + ssl_info_str);
 	},300);
  }
 
@@ -324,22 +329,65 @@
 		return ;
 	}
 	if(confirm('Are you sure to update firmware?')){
-	   document.UpdateModuleFirmware.submit() ;
+	   ajaxUpload(document.UpdateModuleFirmware, 'Firmware update successful. Device will reboot.', 'Firmware update failed.');
 	}
 }
 
- </script>
- <style id="__web-inspector-hide-shortcut-style__">
-.__web-inspector-hide-shortcut__, .__web-inspector-hide-shortcut__ *, .__web-inspector-hidebefore-shortcut__::before, .__web-inspector-hideafter-shortcut__::after
+ function ajaxUpload(formEl, successMsg, failMsg)
 {
-    visibility: hidden !important;
+	var xhr = new XMLHttpRequest();
+	xhr.open('POST', formEl.action, true);
+	xhr.onreadystatechange = function() {
+		if (xhr.readyState == 4) {
+			var ok = (xhr.status == 200) && (xhr.responseText.indexOf('success') >= 0);
+			alert(ok ? successMsg : failMsg);
+			formEl.reset();
+		}
+	};
+	xhr.send(new FormData(formEl));
 }
-</style></head>
+
+ function UploadRootCA()
+{
+	if (document.UpdateRootCA.file.value == "")
+	{
+		alert("Please select a Root CA file first");
+		return ;
+	}
+	if(confirm('Upload Root CA certificate?')){
+	   ajaxUpload(document.UpdateRootCA, 'Root CA uploaded successfully.', 'Root CA upload failed.');
+	}
+}
+
+ function UploadSrvCert()
+{
+	if (document.UpdateSrvCert.file.value == "")
+	{
+		alert("Please select a Server Certificate file first");
+		return ;
+	}
+	if(confirm('Upload Server Certificate?')){
+	   ajaxUpload(document.UpdateSrvCert, 'Server Certificate uploaded successfully.', 'Server Certificate upload failed.');
+	}
+}
+
+ function UploadPriKey()
+{
+	if (document.UpdatePriKey.file.value == "")
+	{
+		alert("Please select a Private Key file first");
+		return ;
+	}
+	if(confirm('Upload Private Key?')){
+	   ajaxUpload(document.UpdatePriKey, 'Private Key uploaded successfully.', 'Private Key upload failed.');
+	}
+}
+ </script>
+ </head>
  <body>
- 	 <div id="header">
-		 <h1>W55RP20-S2E</h1>
-		 <h2>Get/Set Interface Functions</h2>
-	 </div>
+ <div id="header">
+	 <h2>Get/Set Interface Functions</h2>
+ </div>
 	 <div class="usual">
 	 	<h3>Device Information <input type="button" class="btn" value="Get Settings" onclick="getDevinfo();"> <input type="button" class="btn" value="Set Settings" onclick="setDevinfo();"> <input type="button" class="btn" value="Reset" onclick="setDevReset();"> <input type="button" class="btn" value="Factory Reset" onclick="setDevFacReset();"></h3>
 		<br>
@@ -371,11 +419,12 @@
 				<option value="2">TCP mixed</option>
 				<option value="3">UDP</option>
 				<option value="4">SSL CLient</option>
+				<option value="7">SSL Server</option>
 				<option value="5">MQTT CLient</option>
 				<option value="6">MQTTS CLient</option>
 			</select></p>
 		  	<p><label for="txtLport">Local Port:</label><input id="txtLport" name="lport" type="text" size="20" value=""></p>
-			<p><label for="txtRip">Remote IP</label><input id="txtRip" name="rip" type="text" size="20" value=""></p>
+			<p><label for="txtRip">Remote IP</label><input id="txtRip" name="rip" type="text" size="60" maxlength="127" value="" placeholder="IP address or hostname"></p>
 			<p><label for="txtRport">Remote Port</label><input id="txtRport" name="rport" type="text" size="20" value=""></p>
 			<p><label for="txtModbus">Modbus</label>
 				<select id="txtModbus" name="modbus">
@@ -443,8 +492,47 @@
 				</label>&nbsp;&nbsp;</td>
 			</form>
 		</div>
-		<br>
-	 </div> 
+		<br>		<h3>SSL Certificate</h3><br><div>
+			<div class="ipt">
+				<p>
+					<label>Root CA Verify:</label>
+					<select id="selRootCA" name="rootca_opt">
+						<option value="0">None</option>
+						<option value="1">Optional</option>
+						<option value="2">Required</option>
+					</select>
+				</p>
+				<p>
+					<label>Client Cert:</label>
+					<select id="selCliCert" name="clicert_en">
+						<option value="0">Disable</option>
+						<option value="1">Enable</option>
+					</select>
+				</p>
+				<p>
+					<label>Root CA:</label>
+					<form action="update_ssl_rootca.cgi" method="post" enctype="multipart/form-data" name="UpdateRootCA" id="form_rootca" style="display:inline">
+						<input type="file" name="file" accept=".pem,.crt,.cer" />
+						<input name="Upload" type="button" onClick="UploadRootCA()" value="Upload" />
+					</form>
+				</p>
+				<p>
+					<label>Server Cert:</label>
+					<form action="update_ssl_clica.cgi" method="post" enctype="multipart/form-data" name="UpdateSrvCert" id="form_clica" style="display:inline">
+						<input type="file" name="file" accept=".pem,.crt,.cer" />
+						<input name="Upload" type="button" onClick="UploadSrvCert()" value="Upload" />
+					</form>
+				</p>
+				<p>
+					<label>Private Key:</label>
+					<form action="update_ssl_prikey.cgi" method="post" enctype="multipart/form-data" name="UpdatePriKey" id="form_prikey" style="display:inline">
+						<input type="file" name="file" accept=".pem,.key" />
+						<input name="Upload" type="button" onClick="UploadPriKey()" value="Upload" />
+					</form>
+				</p>
+			</div>
+		</div>
+		<br>	 </div> 
 	 <div style="margin:5px 5px; clear:both">
 	 	<center>
 	 	©Copyright 2024 WIZnet Co., Ltd.

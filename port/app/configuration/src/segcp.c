@@ -685,7 +685,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                 case SEGCP_OP:
                     tmp_byte = is_hex(*param);
 #ifdef __USE_S2E_OVER_TLS__
-                    if (param_len != 1 || tmp_byte > MQTTS_CLIENT_MODE)
+                    if (param_len != 1 || tmp_byte > SSL_TCP_SERVER_MODE)
 #else
                     if (param_len != 1 || tmp_byte == SSL_TCP_CLIENT_MODE || tmp_byte >= MQTTS_CLIENT_MODE)
 #endif

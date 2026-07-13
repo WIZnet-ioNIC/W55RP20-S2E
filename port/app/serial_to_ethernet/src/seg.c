@@ -106,7 +106,7 @@ uint16_t peerport = 0;
 // XON/XOFF (Software flow control) flag, Serial data can be transmitted to peer when XON enabled.
 uint8_t isXON = SEG_ENABLE;
 
-char * str_working[] = {"TCP_CLIENT_MODE", "TCP_SERVER_MODE", "TCP_MIXED_MODE", "UDP_MODE", "SSL_TCP_CLIENT_MODE", "MQTT_CLIENT_MODE", "MQTTS_CLIENT_MODE"};
+char * str_working[] = {"TCP_CLIENT_MODE", "TCP_SERVER_MODE", "TCP_MIXED_MODE", "UDP_MODE", "SSL_TCP_CLIENT_MODE", "MQTT_CLIENT_MODE", "MQTTS_CLIENT_MODE", "SSL_TCP_SERVER_MODE"};
 
 //Network mqtt_n;
 //MQTTClient mqtt_c = DefaultClient;
@@ -125,6 +125,7 @@ void proc_SEG_mqtts_client(uint8_t sock);
 
 #ifdef __USE_S2E_OVER_TLS__
 void proc_SEG_tcp_client_over_tls(uint8_t sock);
+void proc_SEG_tcp_server_over_tls(uint8_t sock);
 #endif
 
 void uart_to_ether(uint8_t sock);
@@ -165,6 +166,10 @@ void do_seg(uint8_t sock) {
 #ifdef __USE_S2E_OVER_TLS__
         case SSL_TCP_CLIENT_MODE:
             proc_SEG_tcp_client_over_tls(sock);
+            break;
+
+        case SSL_TCP_SERVER_MODE:
+            proc_SEG_tcp_server_over_tls(sock);
             break;
 #endif
 
@@ -231,7 +236,7 @@ void set_device_status(teDEVSTATUS status) {
                 wizchip_mqtt_publish(&g_mqtt_config, mqtt_option->pub_topic, mqtt_option->qos, device_option->device_eth_connect_data, strlen((char *)device_option->device_eth_connect_data));
             }
 #ifdef __USE_S2E_OVER_TLS__
-            else if (network_connection->working_mode == SSL_TCP_CLIENT_MODE) {
+            else if (network_connection->working_mode == SSL_TCP_CLIENT_MODE || network_connection->working_mode == SSL_TCP_SERVER_MODE) {
                 wiz_tls_write(&s2e_tlsContext, device_option->device_eth_connect_data, strlen((char *)device_option->device_eth_connect_data));
             }
 #endif
@@ -650,6 +655,172 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock) {
             }
         } else {
             PRT_SEG("wiz_tls_init() failed\r\n");
+            wiz_tls_deinit(&s2e_tlsContext);
+            set_wiz_tls_init_state(DISABLE);
+        }
+        break;
+
+    default:
+        break;
+    }
+}
+
+void proc_SEG_tcp_server_over_tls(uint8_t sock) {
+    struct __tcp_option         *tcp_option         = (struct __tcp_option *)         & (get_DevConfig_pointer()->tcp_option);
+    struct __serial_common      *serial_common      = (struct __serial_common *)      & (get_DevConfig_pointer()->serial_common);
+    struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection);
+    struct __serial_command     *serial_command     = (struct __serial_command *)     & (get_DevConfig_pointer()->serial_command);
+    struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *) & (get_DevConfig_pointer()->serial_data_packing);
+
+    uint8_t  destip[4]   = {0,};
+    uint16_t destport    = 0;
+    uint8_t  serial_mode = get_serial_communation_protocol();
+    uint8_t  state       = getSn_SR(sock);
+    uint16_t reg_val;
+    int      ret;
+    static uint8_t first_established;
+
+    switch (state) {
+    case SOCK_INIT:
+    case SOCK_LISTEN:
+        /* Wait for client TCP connection */
+        break;
+
+    case SOCK_ESTABLISHED:
+        if (getSn_IR(sock) & Sn_IR_CON) {
+            /* TCP 3-way handshake completed; clear CONNECTED interrupt */
+            reg_val = SIK_CONNECTED & 0x00FF;
+            ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
+
+            /* TLS handshake (server side) */
+            ret = wiz_tls_accept(&s2e_tlsContext);
+            if (ret != 0) {
+                PRT_SEG(" > SEG:SSL_TCP_SERVER_MODE: HANDSHAKE FAILED\r\n");
+                disconnect(sock);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY, FALSE);
+                break;
+            }
+
+            /* Restore RX interrupt mask so eth_interrupt_task wakes seg_e2u_sem */
+            reg_val = SIK_RECEIVED & 0x00FF;
+            ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
+            ctlsocket(sock, CS_SET_INTMASK, (void *)&reg_val);
+
+            ctlwizchip(CW_GET_INTRMASK, (void *)&reg_val);
+#if (_WIZCHIP_ == W5100S)
+            reg_val = (1 << sock);
+#elif (_WIZCHIP_ == W5500)
+            reg_val = ((1 << sock) << 8) | reg_val;
+#endif
+            ctlwizchip(CW_SET_INTRMASK, (void *)&reg_val);
+
+            first_established = 1;
+        }
+
+        if (first_established) {
+            if (serial_common->serial_debug_en) {
+                getsockopt(sock, SO_DESTIP, &destip);
+                getsockopt(sock, SO_DESTPORT, &destport);
+                PRT_SEG(" > SEG:CONNECTED FROM - %d.%d.%d.%d : %d\r\n",
+                        destip[0], destip[1], destip[2], destip[3], destport);
+            }
+
+            if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
+                data_buffer_flush();
+            }
+
+            if (tcp_option->inactivity) {
+                flag_inactivity = SEG_DISABLE;
+                if (seg_inactivity_timer == NULL) {
+                    seg_inactivity_timer = xTimerCreate("seg_inactivity_timer",
+                                                        pdMS_TO_TICKS(tcp_option->inactivity * 1000),
+                                                        pdFALSE, 0, inactivity_timer_callback);
+                }
+                xTimerStart(seg_inactivity_timer, 0);
+            }
+
+            if (tcp_option->keepalive_en) {
+                if (seg_keepalive_timer == NULL) {
+                    seg_keepalive_timer = xTimerCreate("seg_keepalive_timer",
+                                                       pdMS_TO_TICKS(tcp_option->keepalive_wait_time),
+                                                       pdFALSE, 0, keepalive_timer_callback);
+                } else {
+                    if (xTimerIsTimerActive(seg_keepalive_timer) == pdTRUE) {
+                        xTimerStop(seg_keepalive_timer, 0);
+                    }
+                    xTimerChangePeriod(seg_keepalive_timer,
+                                       pdMS_TO_TICKS(tcp_option->keepalive_wait_time), 0);
+                }
+            }
+
+            if (tcp_option->pw_connect_en) {
+                flag_auth_time = SEG_DISABLE;
+                if (seg_auth_timer == NULL) {
+                    seg_auth_timer = xTimerCreate("seg_auth_timer",
+                                                  pdMS_TO_TICKS(MAX_CONNECTION_AUTH_TIME),
+                                                  pdFALSE, 0, auth_timer_callback);
+                }
+                xTimerStart(seg_auth_timer, 0);
+            }
+
+            first_established = 0;
+            set_device_status(ST_CONNECT);
+        }
+        break;
+
+    case SOCK_CLOSE_WAIT:
+        if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
+            while (getSn_RX_RSR(sock) || e2u_size) {
+                ether_to_uart(sock);
+            }
+        }
+        wiz_tls_close_notify(&s2e_tlsContext);
+        disconnect(sock);
+        break;
+
+    case SOCK_FIN_WAIT:
+    case SOCK_CLOSED:
+        process_socket_termination(sock, SOCK_TERMINATION_DELAY, FALSE);
+        set_device_status(ST_OPEN);
+
+        u2e_size = 0;
+        e2u_size = 0;
+
+        /* Re-init TLS context for next client and re-open listening socket */
+        wiz_tls_deinit(&s2e_tlsContext);
+        set_wiz_tls_init_state(DISABLE);
+
+        if (wiz_tls_init_server(&s2e_tlsContext, (int *)sock) > 0) {
+            int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, 0x00);
+            if (s == sock) {
+                if ((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time) {
+                    modeswitch_gap_time = serial_data_packing->packing_time;
+                }
+
+                /*  Disable socket RX interrupts during listen + TLS handshake.
+                    Otherwise eth_interrupt_task posts seg_e2u_sem, ether_to_uart()
+                    calls wiz_tls_read() and consumes handshake bytes before
+                    mbedtls_ssl_handshake can read them (-> MBEDTLS_ERR_SSL_CONN_EOF). */
+                reg_val = 0;
+                ctlsocket(sock, CS_SET_INTMASK, (void *)&reg_val);
+
+                listen(sock);
+                set_wiz_tls_init_state(ENABLE);
+
+                if (serial_common->serial_debug_en) {
+                    PRT_SEG(" > SEG:SSL_TCP_SERVER_MODE:SOCKOPEN+LISTEN port=%d\r\n",
+                            network_connection->local_port);
+                }
+            } else {
+                if (serial_common->serial_debug_en) {
+                    PRT_SEG(" > SEG:SSL_TCP_SERVER_MODE:SOCKOPEN FAILED\r\n");
+                }
+                wiz_tls_deinit(&s2e_tlsContext);
+                set_wiz_tls_init_state(DISABLE);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY, FALSE);
+            }
+        } else {
+            PRT_SEG(" > SEG:SSL_TCP_SERVER_MODE:wiz_tls_init_server() failed\r\n");
             wiz_tls_deinit(&s2e_tlsContext);
             set_wiz_tls_init_state(DISABLE);
         }
@@ -1438,7 +1609,8 @@ void uart_to_ether(uint8_t sock) {
                 sent_len = wizchip_mqtt_publish(&g_mqtt_config, mqtt_option->pub_topic, mqtt_option->qos, g_send_buf, len);
             }
 #ifdef __USE_S2E_OVER_TLS__
-            else if (network_connection->working_mode == SSL_TCP_CLIENT_MODE) {
+            else if ((network_connection->working_mode == SSL_TCP_CLIENT_MODE) ||
+                     (network_connection->working_mode == SSL_TCP_SERVER_MODE)) {
                 sent_len = wiz_tls_write(&s2e_tlsContext, g_send_buf, len);
             }
 #endif
@@ -1567,7 +1739,8 @@ void ether_to_uart(uint8_t sock) {
                     //} else if (network_connection->working_state == ST_CONNECT) {
                 } else {
 #ifdef __USE_S2E_OVER_TLS__
-                    if (network_connection->working_mode == SSL_TCP_CLIENT_MODE) {
+                    if ((network_connection->working_mode == SSL_TCP_CLIENT_MODE) ||
+                            (network_connection->working_mode == SSL_TCP_SERVER_MODE)) {
                         e2u_size = wiz_tls_read(&s2e_tlsContext, g_recv_buf, len);
                     } else {
                         e2u_size = recv(sock, g_recv_buf, len);
@@ -1690,7 +1863,8 @@ void ether_to_spi(uint8_t sock) {
                     }
                 } else if (network_connection->working_state == ST_CONNECT) {
 #ifdef __USE_S2E_OVER_TLS__
-                    if (network_connection->working_mode == SSL_TCP_CLIENT_MODE) {
+                    if ((network_connection->working_mode == SSL_TCP_CLIENT_MODE) ||
+                            (network_connection->working_mode == SSL_TCP_SERVER_MODE)) {
                         e2u_size = wiz_tls_read(&s2e_tlsContext, g_recv_buf, len);
                     }
 #endif

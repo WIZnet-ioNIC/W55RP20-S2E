@@ -199,7 +199,8 @@ void parse_http_request(
             request->METHOD = METHOD_ERR;
             return;
         }
-        strcpy((char *)request->URI, nexttok);
+        strncpy((char *)request->URI, nexttok, MAX_URI_SIZE - 1);
+        request->URI[MAX_URI_SIZE - 1] = '\0';
     } else {
         return;
     }

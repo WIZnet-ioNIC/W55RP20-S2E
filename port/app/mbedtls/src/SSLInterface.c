@@ -258,6 +258,194 @@ int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd) {
     return 1;
 }
 
+/*  SSL/TLS Server context initialization
+
+    - Endpoint is configured as MBEDTLS_SSL_IS_SERVER (set before ssl_setup()).
+    - The device certificate / private key stored at FLASH_CLICA_ADDR / FLASH_PRIKEY_ADDR
+      is reused as the SERVER certificate / key (a server must always present these).
+    - When ssl_option->root_ca_option == MBEDTLS_SSL_VERIFY_REQUIRED, the CA stored at
+      FLASH_ROOTCA_ADDR is used to verify the connecting client's certificate (mutual TLS).
+      Otherwise the server does not request a client certificate.
+    - mbedtls_ssl_set_hostname() is NOT called: it is for client-side SNI only.
+ * */
+int wiz_tls_init_server(wiz_tls_context* tlsContext, int* socket_fd) {
+    struct __ssl_option *ssl_option = (struct __ssl_option *) & (get_DevConfig_pointer()->ssl_option);
+    int ret = 1;
+    const char *pers = "ssl_server1";
+    uint8_t *rootca_addr = NULL;
+    uint8_t *clica_addr  = NULL;
+    uint8_t *pkey_addr   = NULL;
+
+#if defined (MBEDTLS_DEBUG_C)
+    mbedtls_debug_set_threshold(DEBUG_LEVEL);
+#endif
+
+    /* PSA Crypto must be initialized before TLS 1.3 handshake */
+    psa_status_t psa_status = psa_crypto_init();
+    if (psa_status != PSA_SUCCESS) {
+        PRT_SSL(" failed\r\n  ! psa_crypto_init returned %d\r\n", (int)psa_status);
+        return -1;
+    }
+
+    /* Allocate contexts (same layout as wiz_tls_init for symmetry / wiz_tls_deinit reuse) */
+#if defined (MBEDTLS_ENTROPY_C)
+    tlsContext->entropy = pvPortMalloc(sizeof(mbedtls_entropy_context));
+#endif
+    tlsContext->ctr_drbg = pvPortMalloc(sizeof(mbedtls_ctr_drbg_context));
+    tlsContext->ssl      = pvPortMalloc(sizeof(mbedtls_ssl_context));
+    tlsContext->conf     = pvPortMalloc(sizeof(mbedtls_ssl_config));
+    tlsContext->cacert   = pvPortMalloc(sizeof(mbedtls_x509_crt));
+    tlsContext->clicert  = pvPortMalloc(sizeof(mbedtls_x509_crt));
+    tlsContext->pkey     = pvPortMalloc(sizeof(mbedtls_pk_context));
+
+#if defined (MBEDTLS_ENTROPY_C)
+    mbedtls_entropy_init(tlsContext->entropy);
+#endif
+    mbedtls_ctr_drbg_init(tlsContext->ctr_drbg);
+    mbedtls_ssl_init(tlsContext->ssl);
+    mbedtls_ssl_config_init(tlsContext->conf);
+    mbedtls_x509_crt_init(tlsContext->cacert);
+    mbedtls_x509_crt_init(tlsContext->clicert);   /* reused as SERVER certificate */
+    mbedtls_pk_init(tlsContext->pkey);            /* reused as SERVER private key */
+
+    PRT_SSL("Supported ciphersuites (server):\r\n");
+    const int *ciphersuite_list = mbedtls_ssl_list_ciphersuites();
+    while (*ciphersuite_list != 0) {
+        const char *name = mbedtls_ssl_get_ciphersuite_name(*ciphersuite_list);
+        if (name != NULL) {
+            PRT_SSL("  %s\r\n", name);
+        }
+        ciphersuite_list++;
+    }
+
+#if defined (MBEDTLS_ENTROPY_C)
+    if ((ret = mbedtls_ctr_drbg_seed(tlsContext->ctr_drbg, mbedtls_entropy_func, tlsContext->entropy,
+                                     (const unsigned char *) pers, strlen(pers))) != 0) {
+        PRT_SSL(" failed\r\n  ! mbedtls_ctr_drbg_seed returned -0x%x\r\n", -ret);
+        return -1;
+    }
+#endif
+
+#if defined (MBEDTLS_DEBUG_C)
+    mbedtls_ssl_conf_dbg(tlsContext->conf, WIZnetDebugCB, stdout);
+#endif
+
+    /* --- Server certificate & private key (REQUIRED for any TLS server) --- */
+    clica_addr = (uint8_t *)(FLASH_CLICA_ADDR + XIP_BASE);
+    pkey_addr  = (uint8_t *)(FLASH_PRIKEY_ADDR + XIP_BASE);
+
+    PRT_SSL(" Loading the SERVER certificate len = %d\r\n", ssl_option->clica_len);
+    ret = mbedtls_x509_crt_parse(tlsContext->clicert, (const char *)clica_addr, ssl_option->clica_len + 1);
+    if (ret != 0) {
+        PRT_SSL(" failed\r\n  !  mbedtls_x509_crt_parse returned -0x%x while parsing server cert\r\n", -ret);
+        return -1;
+    }
+    PRT_SSL("ok! mbedtls_x509_crt_parse (server cert) returned -0x%x\r\n", -ret);
+
+    PRT_SSL(" Loading the SERVER private key len = %d\r\n", ssl_option->pkey_len);
+    ret = mbedtls_pk_parse_key(tlsContext->pkey, (const char *)pkey_addr, ssl_option->pkey_len + 1, NULL, 0, mbedtls_ctr_drbg_random, tlsContext->ctr_drbg);
+    if (ret != 0) {
+        PRT_SSL(" failed\r\n  !  mbedtls_pk_parse_key returned -0x%x while parsing server key\r\n", -ret);
+        return -1;
+    }
+    PRT_SSL("ok! mbedtls_pk_parse_key (server key) returned -0x%x\r\n", -ret);
+
+    /* --- Optional CA chain for client cert verification (mutual TLS) --- */
+    if (ssl_option->root_ca_option != MBEDTLS_SSL_VERIFY_NONE) {
+        PRT_SSL(" Loading the CA root certificate (mTLS) len = %d\r\n", ssl_option->rootca_len);
+        rootca_addr = (uint8_t *)(FLASH_ROOTCA_ADDR + XIP_BASE);
+        ret = mbedtls_x509_crt_parse(tlsContext->cacert, (const char *)rootca_addr, ssl_option->rootca_len + 1);
+        if (ret < 0) {
+            PRT_SSL(" failed\r\n  !  mbedtls_x509_crt_parse returned -0x%x while parsing root cert\r\n", -ret);
+            return -1;
+        }
+        PRT_SSL("ok! mbedtls_x509_crt_parse (root cert) returned -0x%x\r\n", -ret);
+    }
+
+    if ((ret = mbedtls_ssl_config_defaults(tlsContext->conf,
+                                           MBEDTLS_SSL_IS_SERVER,
+                                           MBEDTLS_SSL_TRANSPORT_STREAM,
+                                           MBEDTLS_SSL_PRESET_DEFAULT)) != 0) {
+        PRT_SSL(" failed mbedtls_ssl_config_defaults returned -0x%x\r\n", -ret);
+        return -1;
+    }
+
+    /* Allow both TLS 1.2 and TLS 1.3 (default, set explicitly for clarity) */
+    mbedtls_ssl_conf_min_tls_version(tlsContext->conf, MBEDTLS_SSL_VERSION_TLS1_2);
+    mbedtls_ssl_conf_max_tls_version(tlsContext->conf, MBEDTLS_SSL_VERSION_TLS1_3);
+
+#if defined(MBEDTLS_SSL_PROTO_TLS1_3)
+    mbedtls_ssl_conf_tls13_key_exchange_modes(tlsContext->conf,
+            MBEDTLS_SSL_TLS1_3_KEY_EXCHANGE_MODE_EPHEMERAL);
+#endif
+
+    PRT_SSL("ssl_option->root_ca_option = %d\r\n", ssl_option->root_ca_option);
+    mbedtls_ssl_conf_authmode(tlsContext->conf, ssl_option->root_ca_option);
+    if (ssl_option->root_ca_option != MBEDTLS_SSL_VERIFY_NONE) {
+        mbedtls_ssl_conf_ca_chain(tlsContext->conf, tlsContext->cacert, NULL);
+    }
+    mbedtls_ssl_conf_rng(tlsContext->conf, mbedtls_ctr_drbg_random, tlsContext->ctr_drbg);
+
+    /* Server MUST present its own certificate / key */
+    if ((ret = mbedtls_ssl_conf_own_cert(tlsContext->conf, tlsContext->clicert, tlsContext->pkey)) != 0) {
+        PRT_SSL("failed! mbedtls_ssl_conf_own_cert returned %d\r\n", ret);
+        return -1;
+    }
+    PRT_SSL("ok! mbedtls_ssl_conf_own_cert returned %d\r\n", ret);
+
+    mbedtls_ssl_conf_endpoint(tlsContext->conf, MBEDTLS_SSL_IS_SERVER);
+
+    if (ssl_option->recv_timeout == 0) {
+        ssl_option->recv_timeout = 2000;
+    }
+    mbedtls_ssl_conf_read_timeout(tlsContext->conf, ssl_option->recv_timeout);
+
+    if ((ret = mbedtls_ssl_setup(tlsContext->ssl, tlsContext->conf)) != 0) {
+        PRT_SSL(" failed mbedtls_ssl_setup returned -0x%x\r\n", -ret);
+        return -1;
+    }
+    mbedtls_ssl_set_bio(tlsContext->ssl, socket_fd, SSLSendCB, SSLRecvCB, SSLRecvTimeOutCB);
+
+    PRT_SSL("wiz_tls_init_server return 1\r\n");
+    return 1;
+}
+
+/*  SSL/TLS server-side handshake helper.
+    Caller must have already accepted a TCP connection (SOCK_ESTABLISHED) on the
+    underlying W5x00 socket. Returns 0 on success, -1 on failure.
+*/
+int wiz_tls_accept(wiz_tls_context* tlsContext) {
+    int ret;
+    uint32_t flags;
+    struct __ssl_option *ssl_option = (struct __ssl_option *) & (get_DevConfig_pointer()->ssl_option);
+
+    PRT_SSL(" Performing the SSL/TLS server handshake...\r\n");
+
+    while ((ret = mbedtls_ssl_handshake(tlsContext->ssl)) != 0) {
+        if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE) {
+            PRT_SSL(" failed\n\r  ! mbedtls_ssl_handshake (server) returned -0x%x\n\r", -ret);
+            return -1;
+        }
+        vTaskDelay(10);
+    }
+
+    if (ssl_option->root_ca_option == MBEDTLS_SSL_VERIFY_REQUIRED) {
+        PRT_SSL("  . Verifying peer (client) X.509 certificate...\r\n");
+        if ((flags = mbedtls_ssl_get_verify_result(tlsContext->ssl)) != 0) {
+            char vrfy_buf[512];
+            PRT_SSL("failed\r\n");
+            mbedtls_x509_crt_verify_info(vrfy_buf, sizeof(vrfy_buf), "  ! ", flags);
+            PRT_SSL("%s\r\n", vrfy_buf);
+            return -1;
+        } else {
+            PRT_SSL("ok\r\n");
+        }
+    }
+    PRT_SSL(" ok\n\r    [ Ciphersuite is %s ]\n\r",
+            mbedtls_ssl_get_ciphersuite(tlsContext->ssl));
+    return 0;
+}
+
 /*Free the memory for ssl context*/
 void wiz_tls_deinit(wiz_tls_context* tlsContext) {
     /*  free SSL context memory  */

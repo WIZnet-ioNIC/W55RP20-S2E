@@ -116,11 +116,25 @@ void WIZnetDebugCB(void *ctx, int level, const char *file, int line, const char 
 */
 int wiz_tls_init(wiz_tls_context* tlsContext, int* socket_fd);
 
+/*
+    name: wiz_tls_init_server
+    brief: Initialize SSL/TLS Contexts for SERVER role.
+           Endpoint is set to MBEDTLS_SSL_IS_SERVER before mbedtls_ssl_setup().
+           Server certificate/key are loaded from FLASH_CLICA_ADDR / FLASH_PRIKEY_ADDR.
+           If ssl_option->root_ca_option != VERIFY_NONE, client certificate verification
+           (mutual TLS) is enabled using FLASH_ROOTCA_ADDR.
+    param tlsContext: SSL/TLS Context
+    param socket_fd:  socket file descriptor (W5x00 socket number)
+*/
+int wiz_tls_init_server(wiz_tls_context* tlsContext, int* socket_fd);
+
 void wiz_tls_deinit(wiz_tls_context* tlsContext);
 
 int wiz_tls_socket(wiz_tls_context* tlsContext, uint8_t sock, unsigned int port);
 
 int wiz_tls_connect(wiz_tls_context* tlsContext, char * addr, unsigned int port);
+
+int wiz_tls_accept(wiz_tls_context* tlsContext);
 
 int wiz_tls_socket_connect(wiz_tls_context* tlsContext, char * addr, unsigned int port);
 
