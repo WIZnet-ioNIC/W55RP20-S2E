@@ -54,7 +54,16 @@ uint8_t * tbSEGCPCMD[] = {"MC", "VR", "MN", "IM", "OP", "CP", "DG", "KA", "KI", 
                           "UF", "FW", "SO", "SD", "DD", "QS", "EN", "EI", "AO", "QL",
                           "QH", "AP", "EB", "ED", "EP", "ES", "EF", "ND", "NS", "AT",
                           "RV", "RR", "RA", "RS", "RE", "RO", "EO", "RD", "RF", "SE",
-                          "EE", "0"
+                          "EE",
+#if (DEVICE_UART_CNT > 2)
+                          "GS", "WN", "WI", "TO", "GL", "GH", "TP", "WB", "WD", "WP", "WS", "WF", "HD", "HS",
+                          "TT", "XV", "XR", "XA", "XS", "XE", "XO", "WO", "XD", "XF", "WE", // ch2 (25)
+#endif
+#if (DEVICE_UART_CNT > 3)
+                          "CS", "YN", "YI", "JO", "CL", "CH", "JP", "YB", "YD", "YP", "YS", "YF", "UD", "US",
+                          "JT", "ZV", "ZR", "ZA", "ZS", "ZE", "ZO", "YO", "ZD", "ZF", "YE", // ch3 (25)
+#endif
+                          "0"
                          };
 
 #if 0
@@ -745,6 +754,124 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     }
                     break;
 
+#if (DEVICE_UART_CNT > 2)
+                // ---- ch2 (index [2]) GET ----
+                case SEGCP_GS: sprintf(trep, "%s", strDEVSTATUS[dev_config->network_connection[2].working_state]); break; // status(R)
+                case SEGCP_WN: sprintf(trep, "%s", uart_if_table[dev_config->serial_option[2].uart_interface]); break;    // IF str(R)
+                case SEGCP_WI: sprintf(trep, "%d", dev_config->serial_option[2].uart_interface); break;                   // IF num(R)
+                case SEGCP_TO: sprintf(trep, "%d", dev_config->network_connection[2].working_mode); break;                // opmode
+                case SEGCP_GL: sprintf(trep, "%d", dev_config->network_connection[2].local_port); break;
+                case SEGCP_GH: // remote host
+                    if (dev_config->network_connection[2].dns_use == SEGCP_DISABLE) {
+                        sprintf(trep, "%d.%d.%d.%d", dev_config->network_connection[2].remote_ip[0],
+                                dev_config->network_connection[2].remote_ip[1],
+                                dev_config->network_connection[2].remote_ip[2],
+                                dev_config->network_connection[2].remote_ip[3]);
+                    } else {
+                        if (dev_config->network_connection[2].dns_domain_name[0] == 0) {
+                            sprintf(trep, "%c", SEGCP_NULL);
+                        } else {
+                            sprintf(trep, "%s", dev_config->network_connection[2].dns_domain_name);
+                        }
+                    }
+                    break;
+                case SEGCP_TP: sprintf(trep, "%d", dev_config->network_connection[2].remote_port); break;
+                case SEGCP_WB: sprintf(trep, "%d", dev_config->serial_option[2].baud_rate); break;
+                case SEGCP_WD: sprintf(trep, "%d", dev_config->serial_option[2].data_bits); break;
+                case SEGCP_WP: sprintf(trep, "%d", dev_config->serial_option[2].parity); break;
+                case SEGCP_WS: sprintf(trep, "%d", dev_config->serial_option[2].stop_bits); break;
+                case SEGCP_WF: sprintf(trep, "%d", dev_config->serial_option[2].flow_control); break;
+                case SEGCP_HD: sprintf(trep, "%02X", dev_config->serial_data_packing[2].packing_delimiter[0]); break;
+                case SEGCP_HS: sprintf(trep, "%d", dev_config->serial_data_packing[2].packing_size); break;
+                case SEGCP_TT: sprintf(trep, "%d", dev_config->serial_data_packing[2].packing_time); break;
+                case SEGCP_XV: sprintf(trep, "%d", dev_config->tcp_option[2].inactivity); break;
+                case SEGCP_XR: sprintf(trep, "%d", dev_config->tcp_option[2].reconnection); break;
+                case SEGCP_XA: sprintf(trep, "%d", dev_config->tcp_option[2].keepalive_en); break;
+                case SEGCP_XS: sprintf(trep, "%d", dev_config->tcp_option[2].keepalive_wait_time); break;
+                case SEGCP_XE: sprintf(trep, "%d", dev_config->tcp_option[2].keepalive_retry_time); break;
+                case SEGCP_XO: sprintf(trep, "%d", dev_config->ssl_option[2].recv_timeout); break;
+                case SEGCP_WO: sprintf(trep, "%d", dev_config->serial_option[2].protocol); break;
+                case SEGCP_XD:
+                    if (dev_config->device_option.device_serial_connect_data[2][0] == 0) {
+                        sprintf(trep, "%c", SEGCP_NULL);
+                    } else {
+                        sprintf(trep, "%s", dev_config->device_option.device_serial_connect_data[2]);
+                    }
+                    break;
+                case SEGCP_XF:
+                    if (dev_config->device_option.device_serial_disconnect_data[2][0] == 0) {
+                        sprintf(trep, "%c", SEGCP_NULL);
+                    } else {
+                        sprintf(trep, "%s", dev_config->device_option.device_serial_disconnect_data[2]);
+                    }
+                    break;
+                case SEGCP_WE:
+                    if (dev_config->device_option.device_eth_connect_data[2][0] == 0) {
+                        sprintf(trep, "%c", SEGCP_NULL);
+                    } else {
+                        sprintf(trep, "%s", dev_config->device_option.device_eth_connect_data[2]);
+                    }
+                    break;
+#endif
+#if (DEVICE_UART_CNT > 3)
+                // ---- ch3 (index [3]) GET ----
+                case SEGCP_CS: sprintf(trep, "%s", strDEVSTATUS[dev_config->network_connection[3].working_state]); break; // status(R)
+                case SEGCP_YN: sprintf(trep, "%s", uart_if_table[dev_config->serial_option[3].uart_interface]); break;    // IF str(R)
+                case SEGCP_YI: sprintf(trep, "%d", dev_config->serial_option[3].uart_interface); break;                   // IF num(R)
+                case SEGCP_JO: sprintf(trep, "%d", dev_config->network_connection[3].working_mode); break;                // opmode
+                case SEGCP_CL: sprintf(trep, "%d", dev_config->network_connection[3].local_port); break;
+                case SEGCP_CH: // remote host
+                    if (dev_config->network_connection[3].dns_use == SEGCP_DISABLE) {
+                        sprintf(trep, "%d.%d.%d.%d", dev_config->network_connection[3].remote_ip[0],
+                                dev_config->network_connection[3].remote_ip[1],
+                                dev_config->network_connection[3].remote_ip[2],
+                                dev_config->network_connection[3].remote_ip[3]);
+                    } else {
+                        if (dev_config->network_connection[3].dns_domain_name[0] == 0) {
+                            sprintf(trep, "%c", SEGCP_NULL);
+                        } else {
+                            sprintf(trep, "%s", dev_config->network_connection[3].dns_domain_name);
+                        }
+                    }
+                    break;
+                case SEGCP_JP: sprintf(trep, "%d", dev_config->network_connection[3].remote_port); break;
+                case SEGCP_YB: sprintf(trep, "%d", dev_config->serial_option[3].baud_rate); break;
+                case SEGCP_YD: sprintf(trep, "%d", dev_config->serial_option[3].data_bits); break;
+                case SEGCP_YP: sprintf(trep, "%d", dev_config->serial_option[3].parity); break;
+                case SEGCP_YS: sprintf(trep, "%d", dev_config->serial_option[3].stop_bits); break;
+                case SEGCP_YF: sprintf(trep, "%d", dev_config->serial_option[3].flow_control); break;
+                case SEGCP_UD: sprintf(trep, "%02X", dev_config->serial_data_packing[3].packing_delimiter[0]); break;
+                case SEGCP_US: sprintf(trep, "%d", dev_config->serial_data_packing[3].packing_size); break;
+                case SEGCP_JT: sprintf(trep, "%d", dev_config->serial_data_packing[3].packing_time); break;
+                case SEGCP_ZV: sprintf(trep, "%d", dev_config->tcp_option[3].inactivity); break;
+                case SEGCP_ZR: sprintf(trep, "%d", dev_config->tcp_option[3].reconnection); break;
+                case SEGCP_ZA: sprintf(trep, "%d", dev_config->tcp_option[3].keepalive_en); break;
+                case SEGCP_ZS: sprintf(trep, "%d", dev_config->tcp_option[3].keepalive_wait_time); break;
+                case SEGCP_ZE: sprintf(trep, "%d", dev_config->tcp_option[3].keepalive_retry_time); break;
+                case SEGCP_ZO: sprintf(trep, "%d", dev_config->ssl_option[3].recv_timeout); break;
+                case SEGCP_YO: sprintf(trep, "%d", dev_config->serial_option[3].protocol); break;
+                case SEGCP_ZD:
+                    if (dev_config->device_option.device_serial_connect_data[3][0] == 0) {
+                        sprintf(trep, "%c", SEGCP_NULL);
+                    } else {
+                        sprintf(trep, "%s", dev_config->device_option.device_serial_connect_data[3]);
+                    }
+                    break;
+                case SEGCP_ZF:
+                    if (dev_config->device_option.device_serial_disconnect_data[3][0] == 0) {
+                        sprintf(trep, "%c", SEGCP_NULL);
+                    } else {
+                        sprintf(trep, "%s", dev_config->device_option.device_serial_disconnect_data[3]);
+                    }
+                    break;
+                case SEGCP_YE:
+                    if (dev_config->device_option.device_eth_connect_data[3][0] == 0) {
+                        sprintf(trep, "%c", SEGCP_NULL);
+                    } else {
+                        sprintf(trep, "%s", dev_config->device_option.device_eth_connect_data[3]);
+                    }
+                    break;
+#endif
                 default:
                     //ret |= SEGCP_RET_ERR_NOCOMMAND;
                     //sprintf(trep,"%s", strDEVSTATUS[dev_config->network_connection[0].working_state]);
@@ -1679,6 +1806,450 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     }
                     break;
 #endif
+                case SEGCP_UI: // ch0 serial IF (num) — R/W
+                    tmp_byte = is_hex(*param);
+                    if (param_len != 1 || tmp_byte > UART_IF_RS485_REVERSE) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->serial_option[0].uart_interface = tmp_byte;
+                    }
+                    break;
+                case SEGCP_EI: // ch1 serial IF (num) — R/W
+                    tmp_byte = is_hex(*param);
+                    if (param_len != 1 || tmp_byte > UART_IF_RS485_REVERSE) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->serial_option[1].uart_interface = tmp_byte;
+                    }
+                    break;
+#if (DEVICE_UART_CNT > 2)
+                // ---- ch2 (index [2]) SET ----
+                case SEGCP_TO: // opmode
+                    tmp_byte = is_hex(*param);
+                    if (param_len != 1 || tmp_byte > MQTTS_CLIENT_MODE) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->network_connection[2].working_mode = tmp_byte; // TODO Phase C: terminate ch2 socket on change
+                    }
+                    break;
+                case SEGCP_GL: // local port
+                    tmp_long = atol(param);
+                    if (tmp_long > 0xFFFF) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->network_connection[2].local_port = (uint16_t)tmp_long;
+                    }
+                    break;
+                case SEGCP_GH: // remote host
+                    if (is_ipaddr(param, tmp_ip)) {
+                        dev_config->network_connection[2].dns_use = SEGCP_DISABLE;
+                        dev_config->network_connection[2].remote_ip[0] = tmp_ip[0];
+                        dev_config->network_connection[2].remote_ip[1] = tmp_ip[1];
+                        dev_config->network_connection[2].remote_ip[2] = tmp_ip[2];
+                        dev_config->network_connection[2].remote_ip[3] = tmp_ip[3];
+                        strcpy(dev_config->network_connection[2].dns_domain_name, param);
+                    } else {
+                        dev_config->network_connection[2].dns_use = SEGCP_ENABLE;
+                        if (param[0] == SEGCP_NULL) {
+                            dev_config->network_connection[2].dns_domain_name[0] = 0;
+                        } else {
+                            strcpy(dev_config->network_connection[2].dns_domain_name, param);
+                        }
+                    }
+                    break;
+                case SEGCP_TP: // remote port
+                    tmp_long = atol(param);
+                    if (tmp_long > 0xFFFF) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->network_connection[2].remote_port = (uint16_t)tmp_long;
+                    }
+                    break;
+                case SEGCP_WB: // baud
+                    tmp_int = atoi(param);
+#if (DEVICE_BOARD_NAME == W232N)
+                    if (param_len > 2 || tmp_int > baud_230400) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    }
+#else
+                    if (param_len > 2 || tmp_int >= baud_max) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    }
+#endif
+                    else {
+                        dev_config->serial_option[2].baud_rate = (uint8_t)tmp_int;
+                    }
+                    break;
+                case SEGCP_WD: // data bits
+                    tmp_byte = is_hex(*param);
+                    if (param_len != 1 || tmp_byte > word_len8) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->serial_option[2].data_bits = tmp_byte;
+                    }
+                    break;
+                case SEGCP_WP: // parity
+                    tmp_byte = is_hex(*param);
+                    if (param_len != 1 || tmp_byte > parity_even) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->serial_option[2].parity = tmp_byte;
+                    }
+                    break;
+                case SEGCP_WS: // stop bits
+                    tmp_byte = is_hex(*param);
+                    if (param_len != 1 || tmp_byte > stop_bit2) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->serial_option[2].stop_bits = tmp_byte;
+                    }
+                    break;
+                case SEGCP_WF: // flow control (RS422/485 특례)
+                    tmp_byte = is_hex(*param);
+                    if (param_len != 1 || tmp_byte > flow_reverserts) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        if ((dev_config->serial_option[2].uart_interface == UART_IF_RS422) ||
+                                (dev_config->serial_option[2].uart_interface == UART_IF_RS485)) {
+                            if ((tmp_byte != flow_rtsonly) && (tmp_byte != flow_reverserts)) {
+                                dev_config->serial_option[2].flow_control = flow_none;
+                            } else {
+                                dev_config->serial_option[2].flow_control = tmp_byte;
+                            }
+                        } else {
+                            dev_config->serial_option[2].flow_control = tmp_byte;
+                        }
+                    }
+                    break;
+                case SEGCP_HD: // pack delimiter
+                    if (param_len != 2 || !is_hexstr(param)) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        str_to_hex(param, &tmp_byte);
+                        dev_config->serial_data_packing[2].packing_delimiter[0] = tmp_byte;
+                        if (dev_config->serial_data_packing[2].packing_delimiter[0] == 0x00) {
+                            dev_config->serial_data_packing[2].packing_delimiter_length = 0;
+                        } else {
+                            dev_config->serial_data_packing[2].packing_delimiter_length = 1;
+                        }
+                    }
+                    break;
+                case SEGCP_HS: // pack size
+                    tmp_int = atoi(param);
+                    if (param_len > 4 || tmp_int > (SEG_DATA_BUF_SIZE / 2)) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->serial_data_packing[2].packing_size = (uint16_t)tmp_int;
+                    }
+                    break;
+                case SEGCP_TT: // pack time
+                    tmp_long = atol(param);
+                    if (tmp_long > 0xFFFF) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->serial_data_packing[2].packing_time = (uint16_t)tmp_long;
+                    }
+                    break;
+                case SEGCP_XV: // inactivity
+                    tmp_long = atol(param);
+                    if (tmp_long > 0xFFFF) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->tcp_option[2].inactivity = (uint16_t)tmp_long;
+                    }
+                    break;
+                case SEGCP_XR: // reconnection
+                    tmp_long = atol(param);
+                    if (tmp_long > 0xFFFF) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->tcp_option[2].reconnection = (uint16_t)tmp_long;
+                    }
+                    break;
+                case SEGCP_XA: // keepalive en
+                    tmp_byte = is_hex(*param);
+                    if (param_len != 1 || tmp_byte > SEGCP_ENABLE) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->tcp_option[2].keepalive_en = tmp_byte;
+                    }
+                    break;
+                case SEGCP_XS: // keepalive wait
+                    tmp_long = atol(param);
+                    if (tmp_long > 0xFFFF) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->tcp_option[2].keepalive_wait_time = (uint16_t)tmp_long;
+                    }
+                    break;
+                case SEGCP_XE: // keepalive retry
+                    tmp_long = atol(param);
+                    if (tmp_long > 0xFFFF) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->tcp_option[2].keepalive_retry_time = (uint16_t)tmp_long;
+                    }
+                    break;
+                case SEGCP_XO: // ssl recv timeout
+                    tmp_int = atoi(param);
+                    if (tmp_int > SSL_RECV_MAX_TIMEOUT) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->ssl_option[2].recv_timeout = tmp_int;
+                    }
+                    break;
+                case SEGCP_WO: // protocol
+                    tmp_int = atoi(param);
+                    if (param_len > 2 || tmp_int > modbus_ascii) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->serial_option[2].protocol = tmp_int;
+                    }
+                    break;
+                case SEGCP_XD: // serial connect data
+                    if (param[0] == SEGCP_NULL) {
+                        dev_config->device_option.device_serial_connect_data[2][0] = 0;
+                    } else {
+                        sprintf(dev_config->device_option.device_serial_connect_data[2], "%s", param);
+                    }
+                    break;
+                case SEGCP_XF: // serial disconnect data
+                    if (param[0] == SEGCP_NULL) {
+                        dev_config->device_option.device_serial_disconnect_data[2][0] = 0;
+                    } else {
+                        sprintf(dev_config->device_option.device_serial_disconnect_data[2], "%s", param);
+                    }
+                    break;
+                case SEGCP_WE: // eth connect data
+                    if (param[0] == SEGCP_NULL) {
+                        dev_config->device_option.device_eth_connect_data[2][0] = 0;
+                    } else {
+                        sprintf(dev_config->device_option.device_eth_connect_data[2], "%s", param);
+                    }
+                    break;
+                case SEGCP_WI: // ch2 serial IF (num) — R/W
+                    tmp_byte = is_hex(*param);
+                    if (param_len != 1 || tmp_byte > UART_IF_RS485_REVERSE) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->serial_option[2].uart_interface = tmp_byte;
+                    }
+                    break;
+#endif
+#if (DEVICE_UART_CNT > 3)
+                // ---- ch3 (index [3]) SET ----
+                case SEGCP_JO: // opmode
+                    tmp_byte = is_hex(*param);
+                    if (param_len != 1 || tmp_byte > MQTTS_CLIENT_MODE) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->network_connection[3].working_mode = tmp_byte; // TODO Phase C: terminate ch3 socket on change
+                    }
+                    break;
+                case SEGCP_CL: // local port
+                    tmp_long = atol(param);
+                    if (tmp_long > 0xFFFF) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->network_connection[3].local_port = (uint16_t)tmp_long;
+                    }
+                    break;
+                case SEGCP_CH: // remote host
+                    if (is_ipaddr(param, tmp_ip)) {
+                        dev_config->network_connection[3].dns_use = SEGCP_DISABLE;
+                        dev_config->network_connection[3].remote_ip[0] = tmp_ip[0];
+                        dev_config->network_connection[3].remote_ip[1] = tmp_ip[1];
+                        dev_config->network_connection[3].remote_ip[2] = tmp_ip[2];
+                        dev_config->network_connection[3].remote_ip[3] = tmp_ip[3];
+                        strcpy(dev_config->network_connection[3].dns_domain_name, param);
+                    } else {
+                        dev_config->network_connection[3].dns_use = SEGCP_ENABLE;
+                        if (param[0] == SEGCP_NULL) {
+                            dev_config->network_connection[3].dns_domain_name[0] = 0;
+                        } else {
+                            strcpy(dev_config->network_connection[3].dns_domain_name, param);
+                        }
+                    }
+                    break;
+                case SEGCP_JP: // remote port
+                    tmp_long = atol(param);
+                    if (tmp_long > 0xFFFF) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->network_connection[3].remote_port = (uint16_t)tmp_long;
+                    }
+                    break;
+                case SEGCP_YB: // baud
+                    tmp_int = atoi(param);
+#if (DEVICE_BOARD_NAME == W232N)
+                    if (param_len > 2 || tmp_int > baud_230400) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    }
+#else
+                    if (param_len > 2 || tmp_int >= baud_max) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    }
+#endif
+                    else {
+                        dev_config->serial_option[3].baud_rate = (uint8_t)tmp_int;
+                    }
+                    break;
+                case SEGCP_YD: // data bits
+                    tmp_byte = is_hex(*param);
+                    if (param_len != 1 || tmp_byte > word_len8) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->serial_option[3].data_bits = tmp_byte;
+                    }
+                    break;
+                case SEGCP_YP: // parity
+                    tmp_byte = is_hex(*param);
+                    if (param_len != 1 || tmp_byte > parity_even) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->serial_option[3].parity = tmp_byte;
+                    }
+                    break;
+                case SEGCP_YS: // stop bits
+                    tmp_byte = is_hex(*param);
+                    if (param_len != 1 || tmp_byte > stop_bit2) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->serial_option[3].stop_bits = tmp_byte;
+                    }
+                    break;
+                case SEGCP_YF: // flow control (RS422/485 특례)
+                    tmp_byte = is_hex(*param);
+                    if (param_len != 1 || tmp_byte > flow_reverserts) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        if ((dev_config->serial_option[3].uart_interface == UART_IF_RS422) ||
+                                (dev_config->serial_option[3].uart_interface == UART_IF_RS485)) {
+                            if ((tmp_byte != flow_rtsonly) && (tmp_byte != flow_reverserts)) {
+                                dev_config->serial_option[3].flow_control = flow_none;
+                            } else {
+                                dev_config->serial_option[3].flow_control = tmp_byte;
+                            }
+                        } else {
+                            dev_config->serial_option[3].flow_control = tmp_byte;
+                        }
+                    }
+                    break;
+                case SEGCP_UD: // pack delimiter
+                    if (param_len != 2 || !is_hexstr(param)) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        str_to_hex(param, &tmp_byte);
+                        dev_config->serial_data_packing[3].packing_delimiter[0] = tmp_byte;
+                        if (dev_config->serial_data_packing[3].packing_delimiter[0] == 0x00) {
+                            dev_config->serial_data_packing[3].packing_delimiter_length = 0;
+                        } else {
+                            dev_config->serial_data_packing[3].packing_delimiter_length = 1;
+                        }
+                    }
+                    break;
+                case SEGCP_US: // pack size
+                    tmp_int = atoi(param);
+                    if (param_len > 4 || tmp_int > (SEG_DATA_BUF_SIZE / 2)) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->serial_data_packing[3].packing_size = (uint16_t)tmp_int;
+                    }
+                    break;
+                case SEGCP_JT: // pack time
+                    tmp_long = atol(param);
+                    if (tmp_long > 0xFFFF) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->serial_data_packing[3].packing_time = (uint16_t)tmp_long;
+                    }
+                    break;
+                case SEGCP_ZV: // inactivity
+                    tmp_long = atol(param);
+                    if (tmp_long > 0xFFFF) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->tcp_option[3].inactivity = (uint16_t)tmp_long;
+                    }
+                    break;
+                case SEGCP_ZR: // reconnection
+                    tmp_long = atol(param);
+                    if (tmp_long > 0xFFFF) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->tcp_option[3].reconnection = (uint16_t)tmp_long;
+                    }
+                    break;
+                case SEGCP_ZA: // keepalive en
+                    tmp_byte = is_hex(*param);
+                    if (param_len != 1 || tmp_byte > SEGCP_ENABLE) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->tcp_option[3].keepalive_en = tmp_byte;
+                    }
+                    break;
+                case SEGCP_ZS: // keepalive wait
+                    tmp_long = atol(param);
+                    if (tmp_long > 0xFFFF) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->tcp_option[3].keepalive_wait_time = (uint16_t)tmp_long;
+                    }
+                    break;
+                case SEGCP_ZE: // keepalive retry
+                    tmp_long = atol(param);
+                    if (tmp_long > 0xFFFF) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->tcp_option[3].keepalive_retry_time = (uint16_t)tmp_long;
+                    }
+                    break;
+                case SEGCP_ZO: // ssl recv timeout
+                    tmp_int = atoi(param);
+                    if (tmp_int > SSL_RECV_MAX_TIMEOUT) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->ssl_option[3].recv_timeout = tmp_int;
+                    }
+                    break;
+                case SEGCP_YO: // protocol
+                    tmp_int = atoi(param);
+                    if (param_len > 2 || tmp_int > modbus_ascii) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->serial_option[3].protocol = tmp_int;
+                    }
+                    break;
+                case SEGCP_ZD: // serial connect data
+                    if (param[0] == SEGCP_NULL) {
+                        dev_config->device_option.device_serial_connect_data[3][0] = 0;
+                    } else {
+                        sprintf(dev_config->device_option.device_serial_connect_data[3], "%s", param);
+                    }
+                    break;
+                case SEGCP_ZF: // serial disconnect data
+                    if (param[0] == SEGCP_NULL) {
+                        dev_config->device_option.device_serial_disconnect_data[3][0] = 0;
+                    } else {
+                        sprintf(dev_config->device_option.device_serial_disconnect_data[3], "%s", param);
+                    }
+                    break;
+                case SEGCP_YE: // eth connect data
+                    if (param[0] == SEGCP_NULL) {
+                        dev_config->device_option.device_eth_connect_data[3][0] = 0;
+                    } else {
+                        sprintf(dev_config->device_option.device_eth_connect_data[3], "%s", param);
+                    }
+                    break;
+                case SEGCP_YI: // ch3 serial IF (num) — R/W
+                    tmp_byte = is_hex(*param);
+                    if (param_len != 1 || tmp_byte > UART_IF_RS485_REVERSE) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                    } else {
+                        dev_config->serial_option[3].uart_interface = tmp_byte;
+                    }
+                    break;
+#endif
                 case SEGCP_EN:
                 case SEGCP_ST:
                 case SEGCP_QS:
@@ -1688,7 +2259,14 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                 case SEGCP_RT:
                 case SEGCP_FR:
                 case SEGCP_PW:
-                case SEGCP_UI:
+#if (DEVICE_UART_CNT > 2)
+                case SEGCP_GS: // status(R/O twin)
+                case SEGCP_WN: // IF str(R/O twin)
+#endif
+#if (DEVICE_UART_CNT > 3)
+                case SEGCP_CS:
+                case SEGCP_YN:
+#endif
                     ret |= SEGCP_RET_ERR_NOTAVAIL;
                     break;
                 default:
