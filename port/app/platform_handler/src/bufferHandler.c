@@ -42,13 +42,13 @@ void data_buffer_flush(int channel) {
 void put_byte_to_data_buffer(uint8_t ch, int channel) {
     uint32_t saved = spin_lock_blocking(buf_lock);
 
-    if (channel == SEG_DATA0_CH) {
-        BUFFER_IN(data0_buffer_rx) = ch;
-        BUFFER_IN_MOVE(data0_buffer_rx, 1);
-    } else {
-        BUFFER_IN(data1_buffer_rx) = ch;
-        BUFFER_IN_MOVE(data1_buffer_rx, 1);
-    }
+    //  if (channel == SEG_DATA0_CH) {
+    BUFFER_IN(data0_buffer_rx) = ch;
+    BUFFER_IN_MOVE(data0_buffer_rx, 1);
+    // } else {
+    BUFFER_IN(data1_buffer_rx) = ch;
+    BUFFER_IN_MOVE(data1_buffer_rx, 1);
+    // }
     spin_unlock(buf_lock, saved);
 }
 
