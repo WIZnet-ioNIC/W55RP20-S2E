@@ -242,11 +242,14 @@ void load_DevConfig_from_storage(void) {
     }
 
     for (int i = 0; i < DEVICE_UART_CNT; i++) {
-        if ((dev_config.serial_option[i].flow_control == flow_rtsonly) || (dev_config.serial_option[i].flow_control == flow_reverserts)) { // Edit for supporting RTS only in 17/3/28 , recommend adapting to WIZ750SR
-            dev_config.serial_option[i].uart_interface = UART_IF_RS422;    //temporarily set RS422, Actual setting is done in DATA0_UART_Configuration.
-        } else {
-            dev_config.serial_option[i].uart_interface = get_uart_if_sel_pin(i);
-        }
+        // [Disabled 2026-07] Boot-time UART interface selection by HW select pin.
+        // Interface is now chosen via AT command (UI/EI/WI/YI); keep uart_interface loaded from storage.
+        // To restore HW-pin selection, re-enable the block below.
+        // if ((dev_config.serial_option[i].flow_control == flow_rtsonly) || (dev_config.serial_option[i].flow_control == flow_reverserts)) { // Edit for supporting RTS only in 17/3/28 , recommend adapting to WIZ750SR
+        //     dev_config.serial_option[i].uart_interface = UART_IF_RS422;    //temporarily set RS422, Actual setting is done in DATA0_UART_Configuration.
+        // } else {
+        //     dev_config.serial_option[i].uart_interface = get_uart_if_sel_pin(i);
+        // }
         set_device_status(ST_OPEN, i);
     }
 

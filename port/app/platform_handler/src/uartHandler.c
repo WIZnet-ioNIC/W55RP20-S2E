@@ -252,7 +252,9 @@ void DATA_UART_Configuration(void) {
 
             // GPIO configuration (RTS pin -> GPIO: 485SEL)
             if ((serial_option->flow_control != flow_rtsonly) && (serial_option->flow_control != flow_reverserts)) {
-                uart_if_mode[i] = get_uart_rs485_sel(i);
+                // [Disabled 2026-07] HW RTS select-pin read — 422/485 now chosen via AT command (uart_interface).
+                //uart_if_mode[i] = get_uart_rs485_sel(i);
+                uart_if_mode[i] = serial_option->uart_interface; // follow AT-command selected interface
             } else {
                 if (serial_option->flow_control == flow_rtsonly) {
                     uart_if_mode[i] = UART_IF_RS485;
@@ -261,7 +263,8 @@ void DATA_UART_Configuration(void) {
                 }
             }
             uart_rs485_rs422_init(i);
-            serial_option->uart_interface = uart_if_mode[i];
+            // [Disabled 2026-07] write-back of pin-derived mode — keep AT-command value authoritative.
+            //serial_option->uart_interface = uart_if_mode[i];
         }
         // Set our data format
         uart_set_format(uart_id[i], temp_data_bits, temp_stop_bits, temp_parity);
