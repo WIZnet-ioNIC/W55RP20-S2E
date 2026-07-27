@@ -32,6 +32,9 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define __USE_S2E_OVER_TLS__                // Use S2E TCP client over SSL/TLS mode
 #define __USE_UART_485_422__
 //#define __USE_USERS_GPIO__
+#if (DEVICE_BOARD_NAME != W55RP20_S2E)
+#define __USE_BOOTMODE_PIN__                // Boot mode entry pin; the 4-port W55RP20-S2E reuses GP15 as DATA2 RTS
+#endif
 #if (DEVICE_BOARD_NAME == WIZ5XXSR_RP)
 #define DEVICE_ID_DEFAULT                   "WIZ5XXSR-RP"
 #elif (DEVICE_BOARD_NAME == W55RP20_S2E || DEVICE_BOARD_NAME == PLATYPUS_S2E)

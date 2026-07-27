@@ -202,9 +202,14 @@ static void set_W5X00_NetTimeout(void) {
 }
 
 static uint8_t boot_mode_pin_get(void) {
+#ifdef __USE_BOOTMODE_PIN__
     GPIO_Configuration(BOOT_MODE_PIN, IO_INPUT, IO_PULLUP);
     sleep_ms(10);
     return GPIO_Input_Read(BOOT_MODE_PIN);
+#else
+    // Pin removed; boot mode is entered only when no valid application bank exists.
+    return 1;
+#endif
 }
 
 
