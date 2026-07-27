@@ -1,0 +1,33 @@
+# Keep line endings stable across editors/OS.
+# This repo's C/C++/CMake sources use CRLF; enforce it so edits don't
+# flip whole files to LF and pollute diffs.
+
+# Default: let Git decide text vs binary, no autocrlf surprises.
+* text=auto
+
+# Source / build files: normalize to CRLF in the working tree.
+*.c    text eol=crlf
+*.h    text eol=crlf
+*.cpp  text eol=crlf
+*.hpp  text eol=crlf
+*.txt  text eol=crlf
+*.cmake text eol=crlf
+*.pio  text eol=crlf
+*.ld   text eol=crlf
+*.s    text eol=crlf
+*.S    text eol=crlf
+
+# Leave these to native/tooling conventions.
+*.md   text eol=lf
+*.json text eol=lf
+*.yml  text eol=lf
+*.yaml text eol=lf
+*.sh   text eol=lf
+
+# Binary assets: never touch.
+*.bin  binary
+*.uf2  binary
+*.elf  binary
+*.png  binary
+*.jpg  binary
+*.ico  binary
