@@ -119,14 +119,14 @@ void set_DevConfig_to_factory_value(void) {
         dev_config.tcp_option[i].keepalive_wait_time = 7000;
         dev_config.tcp_option[i].keepalive_retry_time = 5000;
 
-        // Default Settings for Data UART: 115200-8-N-1, No flowctrl
+        // Default Settings for Data UART: 460800-8-N-1, RTS/CTS flow control
         dev_config.serial_option[i].uart_interface = UART_IF_RS232_TTL;
         dev_config.serial_option[i].protocol = SEG_SERIAL_PROTOCOL_NONE;
-        dev_config.serial_option[i].baud_rate = baud_115200;
+        dev_config.serial_option[i].baud_rate = baud_460800;
         dev_config.serial_option[i].data_bits = word_len8;
         dev_config.serial_option[i].parity = parity_none;
         dev_config.serial_option[i].stop_bits = stop_bit1;
-        dev_config.serial_option[i].flow_control = flow_none;
+        dev_config.serial_option[i].flow_control = flow_rts_cts;
 
 #ifdef __USE_DSR_DTR_DEFAULT__
         dev_config.serial_option[i].dtr_en = ENABLE;
@@ -336,8 +336,9 @@ void display_Net_Info(void) {
     ctlnetwork(CN_GET_NETINFO, (void*) &gWIZNETINFO);
     PRT_INFO(" # MAC: %02X:%02X:%02X:%02X:%02X:%02X\r\n", gWIZNETINFO.mac[0], gWIZNETINFO.mac[1], gWIZNETINFO.mac[2], gWIZNETINFO.mac[3], gWIZNETINFO.mac[4], gWIZNETINFO.mac[5]);
     PRT_INFO(" # IP : %d.%d.%d.%d / Port : \r\n", gWIZNETINFO.ip[0], gWIZNETINFO.ip[1], gWIZNETINFO.ip[2], gWIZNETINFO.ip[3]);
-    PRT_INFO("0 Port : %d \r\n", dev_config->network_connection[0].local_port);
-    PRT_INFO("1 Port : %d \r\n", dev_config->network_connection[1].local_port);
+    for (int i = 0; i < DEVICE_UART_CNT; i++) {
+        PRT_INFO("%d Port : %d \r\n", i, dev_config->network_connection[i].local_port);
+    }
     PRT_INFO("\r\n");
     PRT_INFO(" # GW : %d.%d.%d.%d\r\n", gWIZNETINFO.gw[0], gWIZNETINFO.gw[1], gWIZNETINFO.gw[2], gWIZNETINFO.gw[3]);
     PRT_INFO(" # SN : %d.%d.%d.%d\r\n", gWIZNETINFO.sn[0], gWIZNETINFO.sn[1], gWIZNETINFO.sn[2], gWIZNETINFO.sn[3]);
@@ -467,5 +468,4 @@ char atonum(char ch) {
     }
     return (ch);
 }
-
 

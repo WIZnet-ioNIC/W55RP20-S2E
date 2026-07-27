@@ -56,7 +56,11 @@ bool repeating_timer_callback(struct repeating_timer *t) {
 
         devtime_sec++;              // device time counter,
         currenttime_sec++;          // Can be updated this counter value by time protocol like NTP.
-        LED_Toggle(LED3);
+#if (DEVICE_UART_CNT <= 2)
+        LED_Toggle(LED3);           // heartbeat blink LED
+#else
+        // LED3 pin (GP19) is DATA2 TCP status on 4-port; no heartbeat blink
+#endif
 #ifdef __USE_WATCHDOG__
         if ((get_wiz_tls_init_state(SEG_DATA0_CH) == ENABLE) && (get_device_status(SEG_DATA0_CH) == ST_OPEN) ||
                 (get_wiz_tls_init_state(SEG_DATA1_CH) == ENABLE) && (get_device_status(SEG_DATA1_CH) == ST_OPEN)) {

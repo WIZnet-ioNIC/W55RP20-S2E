@@ -8,137 +8,115 @@
 #include "port_common.h"
 #include "WIZnet_board.h"
 
-/* Private typedef -----------------------------------------------------------*/
+typedef struct {
+    uint8_t data[SEG_DATA_BUF_SIZE];
+    volatile uint16_t write_index;
+    volatile uint16_t read_index;
+} uart_ring_buffer_t;
 
-/* Private define ------------------------------------------------------------*/
+static uart_ring_buffer_t uart_rx_buffer[DEVICE_UART_CNT];
 
+static uart_ring_buffer_t *get_uart_rx_buffer(int channel) {
+    if ((channel < 0) || (channel >= DEVICE_UART_CNT)) {
+        return NULL;
+    }
+    return &uart_rx_buffer[channel];
+}
 
-/* Private functions prototypes ----------------------------------------------*/
+static uint16_t ring_buffer_used_size(const uart_ring_buffer_t *buffer) {
+    return (SEG_DATA_BUF_SIZE + buffer->write_index - buffer->read_index) % SEG_DATA_BUF_SIZE;
+}
 
-/* Private functions ---------------------------------------------------------*/
-
-/* Private macro -------------------------------------------------------------*/
-
-/* Private variables ---------------------------------------------------------*/
-
-// UART Ring buffer declaration
-BUFFER_DEFINITION(data0_buffer_rx, SEG_DATA_BUF_SIZE);
-BUFFER_DEFINITION(data1_buffer_rx, SEG_DATA_BUF_SIZE);
+static uint16_t ring_buffer_free_size(const uart_ring_buffer_t *buffer) {
+    return (SEG_DATA_BUF_SIZE + buffer->read_index - buffer->write_index - 1) % SEG_DATA_BUF_SIZE;
+}
 
 void data_buffer_flush(int channel) {
-    if (channel == SEG_DATA0_CH) {
-        BUFFER_CLEAR(data0_buffer_rx);
-    } else {
-        BUFFER_CLEAR(data1_buffer_rx);
+    uart_ring_buffer_t *buffer = get_uart_rx_buffer(channel);
+    if (buffer == NULL) {
+        return;
     }
+
+    buffer->write_index = 0;
+    buffer->read_index = 0;
 }
 
 void put_byte_to_data_buffer(uint8_t ch, int channel) {
-    if (channel == SEG_DATA0_CH) {
-        BUFFER_IN(data0_buffer_rx) = ch;
-        BUFFER_IN_MOVE(data0_buffer_rx, 1);
-    } else {
-        BUFFER_IN(data1_buffer_rx) = ch;
-        BUFFER_IN_MOVE(data1_buffer_rx, 1);
+    uart_ring_buffer_t *buffer = get_uart_rx_buffer(channel);
+    if (buffer == NULL) {
+        return;
     }
+
+    buffer->data[buffer->write_index] = ch;
+    buffer->write_index = (buffer->write_index + 1) % SEG_DATA_BUF_SIZE;
 }
 
 uint16_t get_data_buffer_usedsize(int channel) {
-    if (channel == SEG_DATA0_CH) {
-        return BUFFER_USED_SIZE(data0_buffer_rx);
-    } else {
-        return BUFFER_USED_SIZE(data1_buffer_rx);
-    }
+    uart_ring_buffer_t *buffer = get_uart_rx_buffer(channel);
+    return (buffer == NULL) ? 0 : ring_buffer_used_size(buffer);
 }
 
 uint16_t get_data_buffer_freesize(int channel) {
-    if (channel == SEG_DATA0_CH) {
-        return BUFFER_FREE_SIZE(data0_buffer_rx);
-    } else {
-        return BUFFER_FREE_SIZE(data1_buffer_rx);
-    }
+    uart_ring_buffer_t *buffer = get_uart_rx_buffer(channel);
+    return (buffer == NULL) ? 0 : ring_buffer_free_size(buffer);
 }
 
 uint8_t *get_data_buffer_ptr(int channel) {
-    if (channel == SEG_DATA0_CH) {
-        return BUFFER_PTR(data0_buffer_rx);
-    } else {
-        return BUFFER_PTR(data1_buffer_rx);
-    }
+    uart_ring_buffer_t *buffer = get_uart_rx_buffer(channel);
+    return (buffer == NULL) ? NULL : buffer->data;
 }
 
 int8_t is_data_buffer_empty(int channel) {
-    if (channel == SEG_DATA0_CH) {
-        return IS_BUFFER_EMPTY(data0_buffer_rx);
-    } else {
-        return IS_BUFFER_EMPTY(data1_buffer_rx);
-    }
+    uart_ring_buffer_t *buffer = get_uart_rx_buffer(channel);
+    return (buffer == NULL) ? TRUE : (buffer->read_index == buffer->write_index);
 }
 
 int8_t is_data_buffer_full(int channel) {
-    if (channel == SEG_DATA0_CH) {
-        return IS_BUFFER_FULL(data0_buffer_rx);
-    } else {
-        return IS_BUFFER_FULL(data1_buffer_rx);
-    }
+    uart_ring_buffer_t *buffer = get_uart_rx_buffer(channel);
+    return (buffer == NULL) ? TRUE : (ring_buffer_free_size(buffer) == 0);
 }
 
 int32_t data_buffer_getc(int channel) {
-    int32_t ch;
-
-    if (channel == SEG_DATA0_CH) {
-        while (IS_BUFFER_EMPTY(data0_buffer_rx));
-        ch = (int32_t)BUFFER_OUT(data0_buffer_rx);
-        BUFFER_OUT_MOVE(data0_buffer_rx, 1);
-    } else {
-        while (IS_BUFFER_EMPTY(data1_buffer_rx));
-        ch = (int32_t)BUFFER_OUT(data1_buffer_rx);
-        BUFFER_OUT_MOVE(data1_buffer_rx, 1);
+    uart_ring_buffer_t *buffer = get_uart_rx_buffer(channel);
+    if (buffer == NULL) {
+        return RET_NOK;
     }
+
+    while (buffer->read_index == buffer->write_index) {
+        tight_loop_contents();
+    }
+
+    int32_t ch = buffer->data[buffer->read_index];
+    buffer->read_index = (buffer->read_index + 1) % SEG_DATA_BUF_SIZE;
     return ch;
 }
 
 int32_t data_buffer_getc_nonblk(int channel) {
-    int32_t ch;
-
-    if (channel == SEG_DATA0_CH) {
-        if (IS_BUFFER_EMPTY(data0_buffer_rx)) {
-            return RET_NOK;
-        }
-        ch = (int32_t)BUFFER_OUT(data0_buffer_rx);
-        BUFFER_OUT_MOVE(data0_buffer_rx, 1);
-    } else {
-        if (IS_BUFFER_EMPTY(data1_buffer_rx)) {
-            return RET_NOK;
-        }
-        ch = (int32_t)BUFFER_OUT(data1_buffer_rx);
-        BUFFER_OUT_MOVE(data1_buffer_rx, 1);
+    uart_ring_buffer_t *buffer = get_uart_rx_buffer(channel);
+    if ((buffer == NULL) || (buffer->read_index == buffer->write_index)) {
+        return RET_NOK;
     }
+
+    int32_t ch = buffer->data[buffer->read_index];
+    buffer->read_index = (buffer->read_index + 1) % SEG_DATA_BUF_SIZE;
     return ch;
 }
 
 int32_t data_buffer_gets(uint8_t* buf, uint16_t bytes, int channel) {
-    uint16_t lentot = 0, len1st = 0;
-
-    if (channel == SEG_DATA0_CH) {
-        lentot = bytes = MIN(BUFFER_USED_SIZE(data0_buffer_rx), bytes);
-        if (IS_BUFFER_OUT_SEPARATED(data0_buffer_rx) && (len1st = BUFFER_OUT_1ST_SIZE(data0_buffer_rx)) < bytes) {
-            memcpy(buf, &BUFFER_OUT(data0_buffer_rx), len1st);
-            BUFFER_OUT_MOVE(data0_buffer_rx, len1st);
-            bytes -= len1st;
-        }
-        memcpy(buf + len1st, &BUFFER_OUT(data0_buffer_rx), bytes);
-        BUFFER_OUT_MOVE(data0_buffer_rx, bytes);
-    } else {
-        lentot = bytes = MIN(BUFFER_USED_SIZE(data1_buffer_rx), bytes);
-        if (IS_BUFFER_OUT_SEPARATED(data1_buffer_rx) && (len1st = BUFFER_OUT_1ST_SIZE(data1_buffer_rx)) < bytes) {
-            memcpy(buf, &BUFFER_OUT(data1_buffer_rx), len1st);
-            BUFFER_OUT_MOVE(data1_buffer_rx, len1st);
-            bytes -= len1st;
-        }
-        memcpy(buf + len1st, &BUFFER_OUT(data1_buffer_rx), bytes);
-        BUFFER_OUT_MOVE(data1_buffer_rx, bytes);
+    uart_ring_buffer_t *buffer = get_uart_rx_buffer(channel);
+    if ((buffer == NULL) || (buf == NULL)) {
+        return 0;
     }
-    return lentot;
-}
 
+    uint16_t total = MIN(ring_buffer_used_size(buffer), bytes);
+    uint16_t first = MIN(total, SEG_DATA_BUF_SIZE - buffer->read_index);
+    uint16_t second = total - first;
+
+    memcpy(buf, &buffer->data[buffer->read_index], first);
+    if (second > 0) {
+        memcpy(buf + first, buffer->data, second);
+    }
+
+    buffer->read_index = (buffer->read_index + total) % SEG_DATA_BUF_SIZE;
+    return total;
+}

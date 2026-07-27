@@ -19,6 +19,12 @@
 
 #define SEG_DATA0_CH        0
 #define SEG_DATA1_CH        1
+#if (DEVICE_UART_CNT > 2)
+#define SEG_DATA2_CH        2
+#endif
+#if (DEVICE_UART_CNT > 3)
+#define SEG_DATA3_CH        3
+#endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 #define SOCK_TERMINATION_DELAY 10 //ms
@@ -49,6 +55,7 @@ extern uint8_t opmode;
 extern uint8_t flag_process_dhcp_success;
 extern uint8_t flag_process_dns_success[DEVICE_UART_CNT];
 extern char * str_working[];
+extern const uint8_t seg_data_sock[DEVICE_UART_CNT];  // channel -> data socket map
 
 typedef enum {SEG_UART_RX, SEG_UART_TX, SEG_ETHER_RX, SEG_ETHER_TX, SEG_ALL} teDATADIR;
 typedef enum {
@@ -126,17 +133,20 @@ uint16_t debugSerial_dataTransfer(uint8_t * buf, uint16_t size, teDEBUGTYPE type
 // MQTT sub handler
 void mqtt_subscribeMessageHandler0(uint8_t *data, uint32_t data_len);
 void mqtt_subscribeMessageHandler1(uint8_t *data, uint32_t data_len);
+#if (DEVICE_UART_CNT > 2)
+void mqtt_subscribeMessageHandler2(uint8_t *data, uint32_t data_len);
+#endif
+#if (DEVICE_UART_CNT > 3)
+void mqtt_subscribeMessageHandler3(uint8_t *data, uint32_t data_len);
+#endif
 
 int wizchip_mqtt_publish(mqtt_config_t *mqtt_config, uint8_t *pub_topic, uint8_t qos, uint8_t *pub_data, uint32_t pub_data_len);
 
 void seg_task(void *argument);
-void seg0_task(void *argument);
-void seg1_task(void *argument);
-void seg0_u2e_task(void *argument);
-void seg1_u2e_task(void *argument);
+void seg_ch_task(void *argument);       // argument = (void*)(intptr_t)channel
+void seg_ch_u2e_task(void *argument);   // argument = (void*)(intptr_t)channel
+void seg_ch_recv_task(void *argument);  // argument = (void*)(intptr_t)channel
 void seg_recv_task(void *argument);
-void seg0_recv_task(void *argument);
-void seg1_recv_task(void *argument);
 void timers_stop(uint8_t channel);
 void keepalive_timer_callback(TimerHandle_t xTimer);
 void inactivity_timer_callback(TimerHandle_t xTimer);

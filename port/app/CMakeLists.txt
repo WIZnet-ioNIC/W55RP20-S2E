@@ -184,6 +184,9 @@ add_library(APP_PLATFORM_FILES STATIC)
 if(${BOARD_NAME} STREQUAL W55RP20_S2E OR ${BOARD_NAME} STREQUAL W232N OR ${BOARD_NAME} STREQUAL IP20 OR ${BOARD_NAME} STREQUAL PLATYPUS_S2E)
 pico_generate_pio_header(APP_PLATFORM_FILES ${APP_PORT_DIR}/platform_handler/src/uart_tx.pio)
 endif()
+if(${BOARD_NAME} STREQUAL W55RP20_S2E)
+pico_generate_pio_header(APP_PLATFORM_FILES ${APP_PORT_DIR}/platform_handler/src/uart_rx.pio)
+endif()
 
 target_sources(APP_PLATFORM_FILES PUBLIC
         ${APP_PORT_DIR}/platform_handler/src/bufferHandler.c

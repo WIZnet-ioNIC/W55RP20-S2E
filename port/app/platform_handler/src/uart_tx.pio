@@ -17,6 +17,25 @@ bitloop:                   ; This loop will run 8 times (8n1 UART)
     jmp x-- bitloop   [6]  ; Each loop iteration is 8 cycles.
 
 
+.program uart_tx_cts
+.side_set 1 opt
+
+; An 8n1 UART transmit program with CTS handshaking.
+; OUT pin 0 and side-set pin 0 map to the UART TX pin; IN pin 0 maps to CTS.
+; CTS (active low) is sampled immediately before each byte, so a peer that
+; deasserts it stops the stream at the next byte boundary even when bytes are
+; already queued in the TX FIFO - matching the PL011's behaviour.
+; The pull delay is one cycle shorter than in uart_tx to pay for the wait, so
+; a byte still takes 80 cycles (10 bit periods) once CTS is asserted.
+
+    pull       side 1 [6]  ; Assert stop bit, or stall with line in idle state
+    wait 0 pin 0           ; Stall while the peer is not ready (CTS high)
+    set x, 7   side 0 [7]  ; Preload bit counter, assert start bit for 8 clocks
+cts_bitloop:               ; This loop will run 8 times (8n1 UART)
+    out pins, 1            ; Shift 1 bit from OSR to the first OUT pin
+    jmp x-- cts_bitloop [6] ; Each loop iteration is 8 cycles.
+
+
 % c-sdk {
 #include "hardware/clocks.h"
 
@@ -42,6 +61,29 @@ static inline void uart_tx_program_init(PIO pio, uint sm, uint offset, uint pin_
     sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
 
     // SM transmits 1 bit per 8 execution cycles.
+    float div = (float)clock_get_hz(clk_sys) / (8 * baud);
+    sm_config_set_clkdiv(&c, div);
+
+    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_set_enabled(pio, sm, true);
+}
+
+// As uart_tx_program_init, plus a CTS input the state machine waits on before
+// each byte. pin_cts needs no pio_gpio_init: PIO reads pad state regardless of
+// the pin's function select.
+static inline void uart_tx_cts_program_init(PIO pio, uint sm, uint offset, uint pin_tx, uint pin_cts, uint baud) {
+    pio_sm_set_pins_with_mask(pio, sm, 1u << pin_tx, 1u << pin_tx);
+    pio_sm_set_pindirs_with_mask(pio, sm, 1u << pin_tx, 1u << pin_tx);
+    pio_gpio_init(pio, pin_tx);
+
+    pio_sm_config c = uart_tx_cts_program_get_default_config(offset);
+
+    sm_config_set_out_shift(&c, true, false, 32);
+    sm_config_set_out_pins(&c, pin_tx, 1);
+    sm_config_set_sideset_pins(&c, pin_tx);
+    sm_config_set_in_pins(&c, pin_cts);     // for WAIT
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
+
     float div = (float)clock_get_hz(clk_sys) / (8 * baud);
     sm_config_set_clkdiv(&c, div);
 

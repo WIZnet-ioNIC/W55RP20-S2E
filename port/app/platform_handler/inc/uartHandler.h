@@ -43,6 +43,9 @@
 #define DATA0_UART_ID uart1
 #define DATA1_UART_ID uart0
 
+// Number of hardware UART channels (DATA0/DATA1); DATA2/DATA3 are PIO UARTs.
+#define UART_HW_CH_CNT  2
+
 enum baud {
     baud_300 = 0,
     baud_600 = 1,
@@ -113,6 +116,7 @@ void DATA_UART_Interrupt_Enable(void);
 
 // XON/XOFF Software flow control: Check the Buffer usage and Send the start/stop commands
 void check_uart_flow_control(uint8_t flow_ctrl, int channel);
+uint8_t platform_uart_cts_ready(int channel);
 
 // Hardware flow control by GPIOs (RTS/CTS)
 #ifdef __USE_GPIO_HARDWARE_FLOWCONTROL__

@@ -56,10 +56,13 @@ uint8_t get_phylink(void) {
 
 // Hardware mode switch pin, active low
 void init_hw_trig_pin(void) {
+#ifdef __USE_HW_TRIG_MODE_SWITCH__
     GPIO_Configuration(HW_TRIG_PIN, IO_INPUT, IO_PULLUP);
+#endif
 }
 
 uint8_t get_hw_trig_pin(void) {
+#ifdef __USE_HW_TRIG_MODE_SWITCH__
     // HW_TRIG input; Active low
     uint8_t hw_trig, i;
     for (i = 0; i < 5; i++) {
@@ -70,11 +73,16 @@ uint8_t get_hw_trig_pin(void) {
         vTaskDelay(5);
     }
     return 0; // Low
+#else
+    return 1; // No HW trigger pin; AT mode via '+++' only (1 = not triggered)
+#endif
 }
 
 void init_uart_if_sel_pin(void) {
+#ifdef __USE_UART_IF_SELECTOR__
     GPIO_Configuration(DATA0_UART_IF_SEL_PIN, IO_INPUT, IO_PULLDOWN);
     GPIO_Configuration(DATA1_UART_IF_SEL_PIN, IO_INPUT, IO_PULLDOWN);
+#endif
 }
 
 uint8_t get_uart_if_sel_pin(int channel) {
@@ -102,6 +110,14 @@ void init_tcpconnection_status_pin(void) {
     GPIO_Configuration(DATA1_STATUS_TCPCONNECT_PIN, IO_OUTPUT, IO_NOPULL);
     set_connection_status_io(DATA1_STATUS_TCPCONNECT_PIN, OFF);
 
+#if (DEVICE_UART_CNT > 2)
+    GPIO_Configuration(DATA2_STATUS_TCPCONNECT_PIN, IO_OUTPUT, IO_NOPULL);
+    set_connection_status_io(DATA2_STATUS_TCPCONNECT_PIN, OFF);
+#endif
+#if (DEVICE_UART_CNT > 3)
+    GPIO_Configuration(DATA3_STATUS_TCPCONNECT_PIN, IO_OUTPUT, IO_NOPULL);
+    set_connection_status_io(DATA3_STATUS_TCPCONNECT_PIN, OFF);
+#endif
 }
 
 

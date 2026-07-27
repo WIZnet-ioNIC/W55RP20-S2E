@@ -19,26 +19,31 @@
 //////////////////////////////////
 // W5500 HW Socket Definition  //
 //////////////////////////////////
-// 0 ~ 7
+// 0 ~ 7 : DATA0~3 = 0~3, config UDP/TCP = 4/5, DHCP/DNS = 6, socket 7 free.
+// HTTP macros retained (point to 7) only so httpHandler.c compiles; the task is not created.
 #define SOCK_MAX_USED           8
 
 #define SOCK_DATA0              0
 #define SOCK_DATA1              1
-#define SOCK_CONFIG_UDP         2
-#define SOCK_CONFIG_TCP         3
-#define SOCK_DHCP               4
-#define SOCK_DNS                4
-#define SOCK_FWUPDATE           4
-#define SOCK_NETBIOS            4
-#define SOCK_NTP                4
+#define SOCK_DATA2              2
+#define SOCK_DATA3              3
+#define SOCK_CONFIG_UDP         4
+#define SOCK_CONFIG_TCP         5
+#define SOCK_DHCP               6
+#define SOCK_DNS                6
+#define SOCK_FWUPDATE           6
+#define SOCK_NETBIOS            6
+#define SOCK_NTP                6
 
 #define MAX_HTTPSOCK	3
-#define SOCK_HTTPSERVER_1       5
-#define SOCK_HTTPSERVER_2       6
+#define SOCK_HTTPSERVER_1       7
+#define SOCK_HTTPSERVER_2       7
 #define SOCK_HTTPSERVER_3       7
 
 #define SEG_DATA0_SOCK          SOCK_DATA0
 #define SEG_DATA1_SOCK          SOCK_DATA1
+#define SEG_DATA2_SOCK          SOCK_DATA2
+#define SEG_DATA3_SOCK          SOCK_DATA3
 #define SEGCP_UDP_SOCK          SOCK_CONFIG_UDP
 #define SEGCP_TCP_SOCK          SOCK_CONFIG_TCP
 

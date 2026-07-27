@@ -82,47 +82,55 @@ void net_status_task(void *argument) {
             display_Net_Info();
             display_Dev_Info_dhcp();
 
-            if (dev_config->network_connection[SEG_DATA0_CH].working_mode != TCP_SERVER_MODE)  {
-                if (dev_config->network_connection[SEG_DATA0_CH].dns_use) {
-                    //PRT_INFO("DNS waiting 3 seconds...\r\n");
-                    //vTaskDelay(3000); // Wait for 3 seconds before starting DHCP
-                    if (process_dns(SEG_DATA0_CH) == DNS_RET_SUCCESS) {
-                        flag_process_dns_success[SEG_DATA0_CH] = ON;
-                        PRT_INFO("flag_process_dns_success[SEG_DATA0_CH] = ON\r\n");
-                    } else {
-                        PRT_ERR("NET_LINK_CONNECTED DNS CH0 Failed\r\n");
-                        flag_process_dns_success[SEG_DATA0_CH] = OFF;
-                        break;
+            // Per-channel DNS resolution; reuse an earlier channel's result on matching domain
+            {
+                uint8_t dns_failed = 0;
+                for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+                    if (dev_config->network_connection[ch].working_mode == TCP_SERVER_MODE) {
+                        continue;
                     }
-                    display_Dev_Info_dns(SEG_DATA0_CH);
-                }
-            }
+                    if (!dev_config->network_connection[ch].dns_use) {
+                        continue;
+                    }
 
-            if (dev_config->network_connection[SEG_DATA1_CH].working_mode != TCP_SERVER_MODE)  {
-                if (dev_config->network_connection[SEG_DATA1_CH].dns_use) {
-                    if (strcmp(dev_config->network_connection[SEG_DATA0_CH].dns_domain_name, dev_config->network_connection[SEG_DATA1_CH].dns_domain_name) == 0) {
-                        memcpy(dev_config->network_connection[SEG_DATA1_CH].remote_ip, dev_config->network_connection[SEG_DATA0_CH].remote_ip, 4);
-                    } else {
-                        if (process_dns(SEG_DATA1_CH)) {
-                            flag_process_dns_success[SEG_DATA1_CH] = ON;
-                            printf("flag_process_dns_success[SEG_DATA1_CH] = ON\r\n");
-                        } else {
-                            PRT_ERR("NET_LINK_CONNECTED DNS CH1 Failed\r\n");
-                            flag_process_dns_success[SEG_DATA1_CH] = OFF;
+                    uint8_t reused = 0;
+                    for (int j = 0; j < ch; j++) {
+                        if (dev_config->network_connection[j].dns_use &&
+                                dev_config->network_connection[j].working_mode != TCP_SERVER_MODE &&
+                                flag_process_dns_success[j] == ON &&
+                                strcmp(dev_config->network_connection[ch].dns_domain_name, dev_config->network_connection[j].dns_domain_name) == 0) {
+                            memcpy(dev_config->network_connection[ch].remote_ip, dev_config->network_connection[j].remote_ip, 4);
+                            flag_process_dns_success[ch] = ON;
+                            reused = 1;
                             break;
                         }
                     }
-                    display_Dev_Info_dns(SEG_DATA1_CH);
+
+                    if (!reused) {
+                        if (process_dns(ch) == DNS_RET_SUCCESS) {
+                            flag_process_dns_success[ch] = ON;
+                            PRT_INFO("flag_process_dns_success[CH%d] = ON\r\n", ch);
+                        } else {
+                            PRT_ERR("NET_LINK_CONNECTED DNS CH%d Failed\r\n", ch);
+                            flag_process_dns_success[ch] = OFF;
+                            dns_failed = 1;
+                            break;
+                        }
+                    }
+                    display_Dev_Info_dns(ch);
+                }
+                if (dns_failed) {
+                    break;
                 }
             }
 
             g_net_status = NET_IP_UP;
-            xSemaphoreGive(net_seg_sem[SEG_DATA0_CH]);
-            xSemaphoreGive(net_seg_sem[SEG_DATA1_CH]);
+            for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+                xSemaphoreGive(net_seg_sem[ch]);
+                xSemaphoreGive(net_seg_u2e_sem[ch]);
+            }
             xSemaphoreGive(net_segcp_tcp_sem);
             xSemaphoreGive(net_http_webserver_sem);
-            xSemaphoreGive(net_seg_u2e_sem[SEG_DATA0_CH]);
-            xSemaphoreGive(net_seg_u2e_sem[SEG_DATA1_CH]);
             break;
 
         case NET_IP_UP:
@@ -133,8 +141,9 @@ void net_status_task(void *argument) {
                         if (ret == DHCP_FAILED) {
                             PRT_ERR("NET_IP_UP DHCP Failed\r\n");
                             wizchip_recovery();
-                            process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
-                            process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
+                            for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+                                process_socket_termination(seg_data_sock[ch], SOCK_TERMINATION_DELAY, ch, TRUE);
+                            }
                             break;
                         }
                     }
@@ -144,11 +153,12 @@ void net_status_task(void *argument) {
                     PRT_ERR("NET_IP_UP PHY_LINK_OFF\r\n");
                     wizchip_recovery();
                     if (get_device_status(SEG_DATA0_CH) != ST_ATMODE) {
-                        set_device_status(ST_OPEN, SEG_DATA0_CH);
-                        set_device_status(ST_OPEN, SEG_DATA1_CH);
+                        for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+                            set_device_status(ST_OPEN, ch);
+                        }
                     }
-                    //process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
-                    //process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
+                    //for (int ch = 0; ch < DEVICE_UART_CNT; ch++)
+                    //    process_socket_termination(seg_data_sock[ch], SOCK_TERMINATION_DELAY, ch, TRUE);
 #else   //device reset
                     device_raw_reboot();
 #endif
@@ -180,8 +190,9 @@ int8_t process_dhcp(void) {
     DHCP_init(SOCK_DHCP, g_recv_mqtt_buf[SEG_DATA0_CH]);
     reg_dhcp_cbfunc(w5x00_dhcp_assign, w5x00_dhcp_assign, NULL);
     if (get_device_status(SEG_DATA0_CH) != ST_ATMODE) {
-        set_device_status(ST_UPGRADE, SEG_DATA0_CH);
-        set_device_status(ST_UPGRADE, SEG_DATA1_CH);
+        for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+            set_device_status(ST_UPGRADE, ch);
+        }
     }
     while (1) {
         ret = DHCP_run();
@@ -212,8 +223,9 @@ int8_t process_dhcp(void) {
     }
 
     if (get_device_status(SEG_DATA0_CH) != ST_ATMODE) {
-        set_device_status(ST_OPEN, SEG_DATA0_CH);
-        set_device_status(ST_OPEN, SEG_DATA1_CH);
+        for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+            set_device_status(ST_OPEN, ch);
+        }
     }
 
     return ret;
@@ -223,8 +235,9 @@ void wizchip_recovery(void) {
     PRT_INFO("W5500 RESET\r\n");
 
     g_net_status = NET_LINK_DISCONNECTED;
-    flag_process_dns_success[SEG_DATA0_CH] = OFF;
-    flag_process_dns_success[SEG_DATA1_CH] = OFF;
+    for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+        flag_process_dns_success[ch] = OFF;
+    }
     flag_process_dhcp_success = OFF;
 
     wizchip_reset();

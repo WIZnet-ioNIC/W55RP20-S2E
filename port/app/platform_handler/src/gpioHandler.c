@@ -129,6 +129,22 @@ void set_connection_status_io(uint16_t pin, uint8_t set) {
         } else { // OFF
             GPIO_Output_Reset(DATA1_STATUS_TCPCONNECT_PIN);
         }
+#if (DEVICE_UART_CNT > 2)
+    } else if (pin == DATA2_STATUS_TCPCONNECT_PIN) {
+        if (set == ON) {
+            GPIO_Output_Set(DATA2_STATUS_TCPCONNECT_PIN);
+        } else {
+            GPIO_Output_Reset(DATA2_STATUS_TCPCONNECT_PIN);
+        }
+#endif
+#if (DEVICE_UART_CNT > 3)
+    } else if (pin == DATA3_STATUS_TCPCONNECT_PIN) {
+        if (set == ON) {
+            GPIO_Output_Set(DATA3_STATUS_TCPCONNECT_PIN);
+        } else {
+            GPIO_Output_Reset(DATA3_STATUS_TCPCONNECT_PIN);
+        }
+#endif
     }
 
 
@@ -149,6 +165,18 @@ uint8_t get_connection_status_io(uint16_t pin) {
         if (get_device_status(SEG_DATA1_CH) == ST_CONNECT) {
             status = IO_HIGH;
         }
+#if (DEVICE_UART_CNT > 2)
+    } else if (pin == DATA2_STATUS_TCPCONNECT_PIN) {
+        if (get_device_status(SEG_DATA2_CH) == ST_CONNECT) {
+            status = IO_HIGH;
+        }
+#endif
+#if (DEVICE_UART_CNT > 3)
+    } else if (pin == DATA3_STATUS_TCPCONNECT_PIN) {
+        if (get_device_status(SEG_DATA3_CH) == ST_CONNECT) {
+            status = IO_HIGH;
+        }
+#endif
     }
     return status;
 }

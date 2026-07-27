@@ -36,10 +36,6 @@ wiz_tls_context s2e_tlsContext[DEVICE_UART_CNT];
 #include "mbascii.h"
 #include "mbserial.h"
 
-/* Private define ------------------------------------------------------------*/
-// Ring Buffer
-BUFFER_DECLARATION(data0_rx);
-
 /* Private variables ---------------------------------------------------------*/
 uint8_t opmode = DEVICE_GW_MODE;
 uint8_t sw_modeswitch_at_mode_on = SEG_DISABLE;
@@ -94,6 +90,28 @@ extern TimerHandle_t spi_reset_timer;
 uint16_t u2e_size[DEVICE_UART_CNT] = {0, };
 uint16_t e2u_size[DEVICE_UART_CNT] = {0, };
 
+// channel -> W5500 data socket map (also used by netHandler.c)
+const uint8_t seg_data_sock[DEVICE_UART_CNT] = {
+    SEG_DATA0_SOCK, SEG_DATA1_SOCK,
+#if (DEVICE_UART_CNT > 2)
+    SEG_DATA2_SOCK,
+#endif
+#if (DEVICE_UART_CNT > 3)
+    SEG_DATA3_SOCK,
+#endif
+};
+
+// channel -> TCP-connection status LED pin
+static const uint16_t seg_status_pin[DEVICE_UART_CNT] = {
+    DATA0_STATUS_TCPCONNECT_PIN, DATA1_STATUS_TCPCONNECT_PIN,
+#if (DEVICE_UART_CNT > 2)
+    DATA2_STATUS_TCPCONNECT_PIN,
+#endif
+#if (DEVICE_UART_CNT > 3)
+    DATA3_STATUS_TCPCONNECT_PIN,
+#endif
+};
+
 // UDP: Peer netinfo
 uint8_t peerip[4] = {0, };
 uint8_t peerip_tmp[4] = {0xff, };
@@ -133,6 +151,27 @@ uint8_t check_tcp_connect_exception(int channel);
 void reset_SEG_timeflags(uint8_t channel);
 
 uint16_t get_tcp_any_port(void);
+
+static BaseType_t ensure_channel_timer(TimerHandle_t *timer,
+                                       const char *name,
+                                       TickType_t period,
+                                       UBaseType_t auto_reload,
+                                       int channel,
+                                       TimerCallbackFunction_t callback) {
+    if ((timer == NULL) || (channel < 0) || (channel >= DEVICE_UART_CNT)) {
+        return pdFAIL;
+    }
+
+    if (*timer == NULL) {
+        *timer = xTimerCreate(name,
+                              period,
+                              auto_reload,
+                              (void *)(uintptr_t)channel,
+                              callback);
+    }
+
+    return (*timer == NULL) ? pdFAIL : pdPASS;
+}
 
 /* Public & Private functions ------------------------------------------------*/
 
@@ -233,10 +272,12 @@ void set_device_status(teDEVSTATUS status, int channel) {
             }
 #endif
             else {
-                (int16_t)send(SEG_DATA0_SOCK, device_option->device_eth_connect_data[channel], strlen((char *)device_option->device_eth_connect_data[channel]));
+                (int16_t)send(seg_data_sock[channel], device_option->device_eth_connect_data[channel], strlen((char *)device_option->device_eth_connect_data[channel]));
             }
 
-            if (tcp_option->keepalive_en == ENABLE && flag_first_keepalive[channel] == DISABLE) {
+            if ((tcp_option->keepalive_en == ENABLE) &&
+                    (flag_first_keepalive[channel] == DISABLE) &&
+                    (seg_keepalive_timer[channel] != NULL)) {
                 flag_first_keepalive[channel] = ENABLE;
                 xTimerStart(seg_keepalive_timer[channel], 0);
             }
@@ -246,7 +287,7 @@ void set_device_status(teDEVSTATUS status, int channel) {
             platform_uart_puts((const char *)device_option->device_serial_connect_data[channel], strlen((const char *)device_option->device_serial_connect_data[channel]), channel);
         }
 
-        set_connection_status_io(channel ? DATA1_STATUS_TCPCONNECT_PIN : DATA0_STATUS_TCPCONNECT_PIN, ON);    // Status I/O pin to low
+        set_connection_status_io(seg_status_pin[channel], ON);    // Status I/O pin to low
     }
 
     else if (prev_working_state == ST_CONNECT && network_connection->working_state == ST_OPEN) {
@@ -254,9 +295,9 @@ void set_device_status(teDEVSTATUS status, int channel) {
             platform_uart_puts((const char *)device_option->device_serial_disconnect_data[channel], strlen((const char *)device_option->device_serial_disconnect_data[channel]), channel);
         }
         // Status indicator pins
-        set_connection_status_io(channel ? DATA1_STATUS_TCPCONNECT_PIN : DATA0_STATUS_TCPCONNECT_PIN, OFF);    // Status I/O pin to high
+        set_connection_status_io(seg_status_pin[channel], OFF);    // Status I/O pin to high
     } else {
-        set_connection_status_io(channel ? DATA1_STATUS_TCPCONNECT_PIN : DATA0_STATUS_TCPCONNECT_PIN, OFF);    // Status I/O pin to high
+        set_connection_status_io(seg_status_pin[channel], OFF);    // Status I/O pin to high
     }
 }
 
@@ -386,23 +427,24 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
 
             if (tcp_option->inactivity) {
                 flag_inactivity[channel] = SEG_DISABLE;
-                if (seg_inactivity_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_0", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    } else if (channel == 1) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_1", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    }
+                if (ensure_channel_timer(&seg_inactivity_timer[channel],
+                                         "seg_inactivity_timer",
+                                         pdMS_TO_TICKS(tcp_option->inactivity * 1000),
+                                         pdFALSE,
+                                         channel,
+                                         inactivity_timer_callback) == pdPASS) {
+                    xTimerStart(seg_inactivity_timer[channel], 0);
                 }
-                xTimerStart(seg_inactivity_timer[channel], 0);
             }
 
             if (tcp_option->keepalive_en) {
                 if (seg_keepalive_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_0", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    } else if (channel == 1) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_1", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    }
+                    ensure_channel_timer(&seg_keepalive_timer[channel],
+                                         "seg_keepalive_timer",
+                                         pdMS_TO_TICKS(tcp_option->keepalive_wait_time),
+                                         pdFALSE,
+                                         channel,
+                                         keepalive_timer_callback);
                 } else {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
@@ -579,23 +621,24 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
 
             if (tcp_option->inactivity) {
                 flag_inactivity[channel] = SEG_DISABLE;
-                if (seg_inactivity_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_0", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    } else if (channel == 1) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_1", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    }
+                if (ensure_channel_timer(&seg_inactivity_timer[channel],
+                                         "seg_inactivity_timer",
+                                         pdMS_TO_TICKS(tcp_option->inactivity * 1000),
+                                         pdFALSE,
+                                         channel,
+                                         inactivity_timer_callback) == pdPASS) {
+                    xTimerStart(seg_inactivity_timer[channel], 0);
                 }
-                xTimerStart(seg_inactivity_timer[channel], 0);
             }
 
             if (tcp_option->keepalive_en) {
                 if (seg_keepalive_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_0", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    } else if (channel == 1) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_1", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    }
+                    ensure_channel_timer(&seg_keepalive_timer[channel],
+                                         "seg_keepalive_timer",
+                                         pdMS_TO_TICKS(tcp_option->keepalive_wait_time),
+                                         pdFALSE,
+                                         channel,
+                                         keepalive_timer_callback);
                 } else {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
@@ -776,23 +819,24 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
 
             if (tcp_option->inactivity) {
                 flag_inactivity[channel] = SEG_DISABLE;
-                if (seg_inactivity_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_0", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    } else if (channel == 1) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_1", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    }
+                if (ensure_channel_timer(&seg_inactivity_timer[channel],
+                                         "seg_inactivity_timer",
+                                         pdMS_TO_TICKS(tcp_option->inactivity * 1000),
+                                         pdFALSE,
+                                         channel,
+                                         inactivity_timer_callback) == pdPASS) {
+                    xTimerStart(seg_inactivity_timer[channel], 0);
                 }
-                xTimerStart(seg_inactivity_timer[channel], 0);
             }
 
             if (tcp_option->keepalive_en) {
                 if (seg_keepalive_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_0", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    } else if (channel == 1) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_1", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    }
+                    ensure_channel_timer(&seg_keepalive_timer[channel],
+                                         "seg_keepalive_timer",
+                                         pdMS_TO_TICKS(tcp_option->keepalive_wait_time),
+                                         pdFALSE,
+                                         channel,
+                                         keepalive_timer_callback);
                 } else {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
@@ -844,10 +888,17 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
             break;
         }
         void (*sub_callback)(uint8_t *, uint32_t);
-        if (channel == SEG_DATA0_CH) {
-            sub_callback = mqtt_subscribeMessageHandler0;
-        } else {
-            sub_callback = mqtt_subscribeMessageHandler1;
+        // Select per-channel MQTT subscribe callback.
+        switch (channel) {
+        case SEG_DATA0_CH: sub_callback = mqtt_subscribeMessageHandler0; break;
+        case SEG_DATA1_CH: sub_callback = mqtt_subscribeMessageHandler1; break;
+#if (DEVICE_UART_CNT > 2)
+        case SEG_DATA2_CH: sub_callback = mqtt_subscribeMessageHandler2; break;
+#endif
+#if (DEVICE_UART_CNT > 3)
+        case SEG_DATA3_CH: sub_callback = mqtt_subscribeMessageHandler3; break;
+#endif
+        default: sub_callback = mqtt_subscribeMessageHandler0; break;
         }
         ret = mqtt_transport_init(sock, &g_mqtt_config[channel], true, 1, g_recv_mqtt_buf[channel],
                                   DATA_BUF_SIZE, &g_transport_interface[channel], &g_network_context[channel],
@@ -992,23 +1043,24 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
 
             if (tcp_option->inactivity) {
                 flag_inactivity[channel] = SEG_DISABLE;
-                if (seg_inactivity_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_0", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    } else if (channel == 1) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_1", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    }
+                if (ensure_channel_timer(&seg_inactivity_timer[channel],
+                                         "seg_inactivity_timer",
+                                         pdMS_TO_TICKS(tcp_option->inactivity * 1000),
+                                         pdFALSE,
+                                         channel,
+                                         inactivity_timer_callback) == pdPASS) {
+                    xTimerStart(seg_inactivity_timer[channel], 0);
                 }
-                xTimerStart(seg_inactivity_timer[channel], 0);
             }
 
             if (tcp_option->keepalive_en) {
                 if (seg_keepalive_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_0", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    } else if (channel == 1) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_1", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    }
+                    ensure_channel_timer(&seg_keepalive_timer[channel],
+                                         "seg_keepalive_timer",
+                                         pdMS_TO_TICKS(tcp_option->keepalive_wait_time),
+                                         pdFALSE,
+                                         channel,
+                                         keepalive_timer_callback);
                 } else {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
@@ -1064,10 +1116,17 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
             }
 
             void (*sub_callback)(uint8_t *, uint32_t);
-            if (channel == SEG_DATA0_CH) {
-                sub_callback = mqtt_subscribeMessageHandler0;
-            } else {
-                sub_callback = mqtt_subscribeMessageHandler1;
+            // Select per-channel MQTT subscribe callback.
+            switch (channel) {
+            case SEG_DATA0_CH: sub_callback = mqtt_subscribeMessageHandler0; break;
+            case SEG_DATA1_CH: sub_callback = mqtt_subscribeMessageHandler1; break;
+#if (DEVICE_UART_CNT > 2)
+            case SEG_DATA2_CH: sub_callback = mqtt_subscribeMessageHandler2; break;
+#endif
+#if (DEVICE_UART_CNT > 3)
+            case SEG_DATA3_CH: sub_callback = mqtt_subscribeMessageHandler3; break;
+#endif
+            default: sub_callback = mqtt_subscribeMessageHandler0; break;
             }
             ret = mqtt_transport_init(sock, &g_mqtt_config[channel], true, 1, g_recv_mqtt_buf[channel],
                                       DATA_BUF_SIZE, &g_transport_interface[channel], &g_network_context[channel],
@@ -1139,23 +1198,24 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
 
             if (tcp_option->inactivity) {
                 flag_inactivity[channel] = SEG_DISABLE;
-                if (seg_inactivity_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_0", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    } else if (channel == 1) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_1", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    }
+                if (ensure_channel_timer(&seg_inactivity_timer[channel],
+                                         "seg_inactivity_timer",
+                                         pdMS_TO_TICKS(tcp_option->inactivity * 1000),
+                                         pdFALSE,
+                                         channel,
+                                         inactivity_timer_callback) == pdPASS) {
+                    xTimerStart(seg_inactivity_timer[channel], 0);
                 }
-                xTimerStart(seg_inactivity_timer[channel], 0);
             }
 
             if (tcp_option->keepalive_en) {
                 if (seg_keepalive_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_0", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    } else if (channel == 1) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_1", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    }
+                    ensure_channel_timer(&seg_keepalive_timer[channel],
+                                         "seg_keepalive_timer",
+                                         pdMS_TO_TICKS(tcp_option->keepalive_wait_time),
+                                         pdFALSE,
+                                         channel,
+                                         keepalive_timer_callback);
                 } else {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
@@ -1166,14 +1226,14 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
 
             if (tcp_option->pw_connect_en) { // TCP server mode only (+ mixed_server)
                 flag_auth_time[channel] = SEG_DISABLE;
-                if (seg_auth_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_auth_timer[channel] = xTimerCreate("seg_auth_timer_0", pdMS_TO_TICKS(MAX_CONNECTION_AUTH_TIME), pdFALSE, (void *)channel, auth_timer_callback);
-                    } else if (channel == 1) {
-                        seg_auth_timer[channel] = xTimerCreate("seg_auth_timer_1", pdMS_TO_TICKS(MAX_CONNECTION_AUTH_TIME), pdFALSE, (void *)channel, auth_timer_callback);
-                    }
+                if (ensure_channel_timer(&seg_auth_timer[channel],
+                                         "seg_auth_timer",
+                                         pdMS_TO_TICKS(MAX_CONNECTION_AUTH_TIME),
+                                         pdFALSE,
+                                         channel,
+                                         auth_timer_callback) == pdPASS) {
+                    xTimerStart(seg_auth_timer[channel], 0);
                 }
-                xTimerStart(seg_auth_timer[channel], 0);
             }
             set_device_status(ST_CONNECT, channel);
         }
@@ -1315,23 +1375,24 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
 
             if (tcp_option->inactivity) {
                 flag_inactivity[channel] = SEG_DISABLE;
-                if (seg_inactivity_timer[channel] == NULL) {
-                    if (channel == SEG_DATA0_CH) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_0", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    } else if (channel == SEG_DATA1_CH) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_1", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    }
+                if (ensure_channel_timer(&seg_inactivity_timer[channel],
+                                         "seg_inactivity_timer",
+                                         pdMS_TO_TICKS(tcp_option->inactivity * 1000),
+                                         pdFALSE,
+                                         channel,
+                                         inactivity_timer_callback) == pdPASS) {
+                    xTimerStart(seg_inactivity_timer[channel], 0);
                 }
-                xTimerStart(seg_inactivity_timer[channel], 0);
             }
 
             if (tcp_option->keepalive_en) {
                 if (seg_keepalive_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_0", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    } else if (channel == 1) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_1", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    }
+                    ensure_channel_timer(&seg_keepalive_timer[channel],
+                                         "seg_keepalive_timer",
+                                         pdMS_TO_TICKS(tcp_option->keepalive_wait_time),
+                                         pdFALSE,
+                                         channel,
+                                         keepalive_timer_callback);
                 } else {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
@@ -1346,14 +1407,14 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
                 // Connection Password option: TCP server mode only (+ mixed_server)
                 flag_auth_time[channel] = SEG_DISABLE;
                 if (tcp_option->pw_connect_en == SEG_ENABLE) {
-                    if (seg_auth_timer[channel] == NULL) {
-                        if (channel == 0) {
-                            seg_auth_timer[channel] = xTimerCreate("seg_auth_timer_0", pdMS_TO_TICKS(MAX_CONNECTION_AUTH_TIME), pdTRUE, (void *)channel, auth_timer_callback);
-                        } else if (channel == 1) {
-                            seg_auth_timer[channel] = xTimerCreate("seg_auth_timer_1", pdMS_TO_TICKS(MAX_CONNECTION_AUTH_TIME), pdTRUE, (void *)channel, auth_timer_callback);
-                        }
+                    if (ensure_channel_timer(&seg_auth_timer[channel],
+                                             "seg_auth_timer",
+                                             pdMS_TO_TICKS(MAX_CONNECTION_AUTH_TIME),
+                                             pdTRUE,
+                                             channel,
+                                             auth_timer_callback) == pdPASS) {
+                        xTimerStart(seg_auth_timer[channel], 0);
                     }
-                    xTimerStart(seg_auth_timer[channel], 0);
                 }
             } else {
                 if (get_data_buffer_usedsize(channel) || u2e_size) {
@@ -1498,7 +1559,9 @@ void uart_to_ether(uint8_t sock, int channel) {
                 sent_len = (int16_t)send(sock, g_send_buf[channel], len);
             }
 
-            if (tcp_option->keepalive_en == ENABLE && flag_first_keepalive[channel] == DISABLE) {
+            if ((tcp_option->keepalive_en == ENABLE) &&
+                    (flag_first_keepalive[channel] == DISABLE) &&
+                    (seg_keepalive_timer[channel] != NULL)) {
                 flag_first_keepalive[channel] = ENABLE;
                 xTimerStart(seg_keepalive_timer[channel], 0);
             }
@@ -1580,13 +1643,9 @@ void ether_to_uart(uint8_t sock, int channel) {
     uint16_t reg_val;
 
     if (serial_option->flow_control == flow_rts_cts) {
-#ifdef __USE_GPIO_HARDWARE_FLOWCONTROL__
-        if (get_uart_cts_pin() != UART_CTS_LOW) {
-            return;    // DATA0 (RS-232) only
+        if (!platform_uart_cts_ready(channel)) {
+            return;
         }
-#else
-        ; // check the CTS reg
-#endif
     }
 
     do {
@@ -1611,7 +1670,7 @@ void ether_to_uart(uint8_t sock, int channel) {
                             PRT_SEG(" > UDP Peer IP/Port: %d.%d.%d.%d : %d\r\n", peerip[0], peerip[1], peerip[2], peerip[3], peerport);
                         }
                     }
-                //} else if (network_connection->working_state == ST_CONNECT) {
+                    //} else if (network_connection->working_state == ST_CONNECT) {
                 } else {
 #ifdef __USE_S2E_OVER_TLS__
                     if (network_connection->working_mode == SSL_TCP_CLIENT_MODE) {
@@ -1639,7 +1698,9 @@ void ether_to_uart(uint8_t sock, int channel) {
                     }
                     e2u_size[channel] = 0;
 
-                    xTimerStop(seg_auth_timer[channel], 0);
+                    if (seg_auth_timer[channel] != NULL) {
+                        xTimerStop(seg_auth_timer[channel], 0);
+                    }
                     if (flag_connect_pw_auth[channel] == SEG_DISABLE) {
                         disconnect(sock);
                         return;
@@ -1753,7 +1814,9 @@ void ether_to_spi(uint8_t sock) {
                     }
                     e2u_size[SEG_DATA0_CH] = 0;
 
-                    xTimerStop(seg_auth_timer[SEG_DATA0_CH], 0);
+                    if (seg_auth_timer[SEG_DATA0_CH] != NULL) {
+                        xTimerStop(seg_auth_timer[SEG_DATA0_CH], 0);
+                    }
                     if (flag_connect_pw_auth[SEG_DATA0_CH] == SEG_DISABLE) {
                         disconnect(sock);
                         return;
@@ -2134,6 +2197,23 @@ void mqtt_subscribeMessageHandler1(uint8_t *data, uint32_t data_len) {
     ether_to_uart(SEG_DATA1_SOCK, SEG_DATA1_CH);
 }
 
+#if (DEVICE_UART_CNT > 2)
+// MQTT subscribe callback for DATA2 (WIZnet MQTT lib callback carries no channel arg)
+void mqtt_subscribeMessageHandler2(uint8_t *data, uint32_t data_len) {
+    e2u_size[SEG_DATA2_CH] = data_len;
+    memcpy(g_recv_buf[SEG_DATA2_CH], data, data_len);
+    ether_to_uart(SEG_DATA2_SOCK, SEG_DATA2_CH);
+}
+#endif
+#if (DEVICE_UART_CNT > 3)
+// MQTT subscribe callback for DATA3
+void mqtt_subscribeMessageHandler3(uint8_t *data, uint32_t data_len) {
+    e2u_size[SEG_DATA3_CH] = data_len;
+    memcpy(g_recv_buf[SEG_DATA3_CH], data, data_len);
+    ether_to_uart(SEG_DATA3_SOCK, SEG_DATA3_CH);
+}
+#endif
+
 uint16_t debugSerial_dataTransfer(uint8_t * buf, uint16_t size, teDEBUGTYPE type) {
     uint16_t bytecnt = 0;
 
@@ -2245,13 +2325,8 @@ void seg_timer_msec(void) {
                 case UDP_MODE:
                 case MQTT_CLIENT_MODE:
                 case MQTTS_CLIENT_MODE:
-                    if (i == SEG_DATA0_CH) {
-                        xSemaphoreGiveFromISR(seg_u2e_sem[SEG_DATA0_CH], &xHigherPriorityTaskWoken);
-                        portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
-                    } else if (i == SEG_DATA1_CH) {
-                        xSemaphoreGiveFromISR(seg_u2e_sem[SEG_DATA1_CH], &xHigherPriorityTaskWoken);
-                        portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
-                    }
+                    xSemaphoreGiveFromISR(seg_u2e_sem[i], &xHigherPriorityTaskWoken);
+                    portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
                     break;
                 }
 
@@ -2291,74 +2366,64 @@ void seg_task(void *argument)  {
     }
 }
 
-void seg0_task(void *argument)  {
+void seg_ch_task(void *argument)  {
+    int channel = (int)(uintptr_t)argument;
+    uint8_t sock = seg_data_sock[channel];
 
     while (1) {
         if (get_net_status() == NET_LINK_DISCONNECTED) {
             PRT_SEGCP("get_net_status() != NET_LINK_DISCONNECTED\r\n");
-            xSemaphoreTake(net_seg_sem[SEG_DATA0_CH], portMAX_DELAY);
+            xSemaphoreTake(net_seg_sem[channel], portMAX_DELAY);
         }
-        xSemaphoreTake(seg_critical_sem[SEG_DATA0_CH], portMAX_DELAY);
-        do_seg(SEG_DATA0_SOCK, SEG_DATA0_CH);
-        xSemaphoreGive(seg_critical_sem[SEG_DATA0_CH]);
-        xSemaphoreTake(seg_sem[SEG_DATA0_CH], pdMS_TO_TICKS(10));
+        xSemaphoreTake(seg_critical_sem[channel], portMAX_DELAY);
+        do_seg(sock, channel);
+        xSemaphoreGive(seg_critical_sem[channel]);
+        xSemaphoreTake(seg_sem[channel], pdMS_TO_TICKS(10));
     }
 }
 
-void seg1_task(void *argument)  {
+void seg_ch_u2e_task(void *argument)  {
+    int channel = (int)(uintptr_t)argument;
+    uint8_t sock = seg_data_sock[channel];
+    uint8_t serial_mode = get_serial_communation_protocol(channel);
+    struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
 
     while (1) {
         if (get_net_status() == NET_LINK_DISCONNECTED) {
             PRT_SEGCP("get_net_status() != NET_LINK_DISCONNECTED\r\n");
-            xSemaphoreTake(net_seg_sem[SEG_DATA1_CH], portMAX_DELAY);
-        }
-        xSemaphoreTake(seg_critical_sem[SEG_DATA1_CH], portMAX_DELAY);
-        do_seg(SEG_DATA1_SOCK, SEG_DATA1_CH);
-        xSemaphoreGive(seg_critical_sem[SEG_DATA1_CH]);
-        xSemaphoreTake(seg_sem[SEG_DATA1_CH], pdMS_TO_TICKS(10));
-    }
-}
-
-void seg0_u2e_task(void *argument)  {
-    uint8_t serial_mode = get_serial_communation_protocol(SEG_DATA0_CH);
-    struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[SEG_DATA0_CH]);
-
-    while (1) {
-        if (get_net_status() == NET_LINK_DISCONNECTED) {
-            PRT_SEGCP("get_net_status() != NET_LINK_DISCONNECTED\r\n");
-            xSemaphoreTake(net_seg_u2e_sem[SEG_DATA0_CH], portMAX_DELAY);
+            xSemaphoreTake(net_seg_u2e_sem[channel], portMAX_DELAY);
         }
 
-        xSemaphoreTake(seg_u2e_sem[SEG_DATA0_CH], portMAX_DELAY);
+        xSemaphoreTake(seg_u2e_sem[channel], portMAX_DELAY);
         switch (serial_mode) {
         case SEG_SERIAL_PROTOCOL_NONE :
-            xSemaphoreTake(seg_critical_sem[SEG_DATA0_CH], portMAX_DELAY);
-            if (get_data_buffer_usedsize(SEG_DATA0_CH) || u2e_size[SEG_DATA0_CH]) {
-                if ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state[SEG_DATA0_CH] == MIXED_SERVER) && (ST_OPEN == get_device_status(SEG_DATA0_CH))) {
-                    mixed_state[SEG_DATA0_CH] = MIXED_CLIENT;
-                    process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, FALSE);
-                    xSemaphoreGive(seg_sem[SEG_DATA0_CH]);
-                } else if ((ST_CONNECT == get_device_status(SEG_DATA0_CH)) || network_connection->working_mode == UDP_MODE) {
-                    uart_to_ether(SEG_DATA0_SOCK, SEG_DATA0_CH);
+            xSemaphoreTake(seg_critical_sem[channel], portMAX_DELAY);
+            if (get_data_buffer_usedsize(channel) || u2e_size[channel]) {
+                if ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state[channel] == MIXED_SERVER) && (ST_OPEN == get_device_status(channel))) {
+                    mixed_state[channel] = MIXED_CLIENT;
+                    process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
+                    xSemaphoreGive(seg_sem[channel]);
+                } else if ((ST_CONNECT == get_device_status(channel)) || network_connection->working_mode == UDP_MODE) {
+                    uart_to_ether(sock, channel);
                 }
             }
-            xSemaphoreGive(seg_critical_sem[SEG_DATA0_CH]);
+            xSemaphoreGive(seg_critical_sem[channel]);
             break;
 
-        case SEG_SERIAL_MODBUS_RTU :
+        case SEG_SERIAL_MODBUS_RTU : {
             uint8_t mb_finish_flag = 0;
             uint8_t mb_retry_count = 0;
 
             while (1) {
-                RTU_Uart_RX(SEG_DATA0_CH);
-                if (mb_state_rtu_finish[SEG_DATA0_CH] == TRUE) {
-                    mb_state_rtu_finish[SEG_DATA0_CH] = FALSE;
-                    mb_finish_flag = mbRTUtoTCP(SEG_DATA0_SOCK, SEG_DATA0_CH);
+                RTU_Uart_RX(channel);
+                if (mb_state_rtu_finish[channel] == TRUE) {
+                    mb_state_rtu_finish[channel] = FALSE;
+                    mb_finish_flag = mbRTUtoTCP(sock, channel);
 
                     if (mb_finish_flag == FALSE && mb_retry_count < MB_RETRY_MAX) {
                         mb_retry_count++;
                         PRT_INFO("RTU Retry: %d\r\n", mb_retry_count);
-                        mbRTURetransmit(SEG_DATA0_CH);
+                        mbRTURetransmit(channel);
                     } else {
                         mb_retry_count = 0;
                     }
@@ -2366,12 +2431,13 @@ void seg0_u2e_task(void *argument)  {
                 break;
             }
             break;
+        }
 
         case SEG_SERIAL_MODBUS_ASCII :
-            ASCII_Uart_RX(SEG_DATA0_CH);
-            if (mb_state_ascii_finish[SEG_DATA0_CH] == TRUE) {
-                mb_state_ascii_finish[SEG_DATA0_CH] = FALSE;
-                mbASCIItoTCP(SEG_DATA0_SOCK, SEG_DATA0_CH);
+            ASCII_Uart_RX(channel);
+            if (mb_state_ascii_finish[channel] == TRUE) {
+                mb_state_ascii_finish[channel] = FALSE;
+                mbASCIItoTCP(sock, channel);
             }
             break;
         }
@@ -2381,108 +2447,23 @@ void seg0_u2e_task(void *argument)  {
     }
 }
 
-void seg1_u2e_task(void *argument)  {
-    uint8_t serial_mode = get_serial_communation_protocol(SEG_DATA1_CH);
-    struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[SEG_DATA1_CH]);
-
-    while (1) {
-        if (get_net_status() == NET_LINK_DISCONNECTED) {
-            PRT_SEGCP("get_net_status() != NET_LINK_DISCONNECTED\r\n");
-            xSemaphoreTake(net_seg_u2e_sem[SEG_DATA1_CH], portMAX_DELAY);
-        }
-
-        xSemaphoreTake(seg_u2e_sem[SEG_DATA1_CH], portMAX_DELAY);
-
-        switch (serial_mode) {
-        case SEG_SERIAL_PROTOCOL_NONE :
-            xSemaphoreTake(seg_critical_sem[SEG_DATA1_CH], portMAX_DELAY);
-            if (get_data_buffer_usedsize(SEG_DATA1_CH) || u2e_size[SEG_DATA1_CH]) {
-                if ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state[SEG_DATA1_CH] == MIXED_SERVER) && (ST_OPEN == get_device_status(SEG_DATA1_CH))) {
-                    mixed_state[SEG_DATA1_CH] = MIXED_CLIENT;
-                    process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, FALSE);
-                    xSemaphoreGive(seg_sem[SEG_DATA1_CH]);
-                } else if ((ST_CONNECT == get_device_status(SEG_DATA1_CH)) || network_connection->working_mode == UDP_MODE) {
-                    uart_to_ether(SEG_DATA1_SOCK, SEG_DATA1_CH);
-                }
-            }
-            xSemaphoreGive(seg_critical_sem[SEG_DATA1_CH]);
-            break;
-
-        case SEG_SERIAL_MODBUS_RTU :
-            uint8_t mb_finish_flag = 0;
-            uint8_t mb_retry_count = 0;
-
-            while (1) {
-                RTU_Uart_RX(SEG_DATA1_CH);
-                if (mb_state_rtu_finish[SEG_DATA1_CH] == TRUE) {
-                    mb_state_rtu_finish[SEG_DATA1_CH] = FALSE;
-                    mb_finish_flag = mbRTUtoTCP(SEG_DATA1_SOCK, SEG_DATA1_CH);
-
-                    if (mb_finish_flag == FALSE && mb_retry_count < MB_RETRY_MAX) {
-                        mb_retry_count++;
-                        PRT_INFO("RTU Retry: %d\r\n", mb_retry_count);
-                        mbRTURetransmit(SEG_DATA1_CH);
-                    } else {
-                        mb_retry_count = 0;
-                    }
-                }
-                break;
-            }
-            break;
-
-        case SEG_SERIAL_MODBUS_ASCII :
-            ASCII_Uart_RX(SEG_DATA1_CH);
-            if (mb_state_ascii_finish[SEG_DATA1_CH] == TRUE) {
-                mb_state_ascii_finish[SEG_DATA1_CH] = FALSE;
-                mbASCIItoTCP(SEG_DATA1_SOCK, SEG_DATA1_CH);
-            }
-            break;
-        }
-#ifdef __USE_WATCHDOG__
-        device_wdt_reset();
-#endif
-    }
-}
-
-void seg0_recv_task(void *argument)  {
-    uint8_t serial_mode = get_serial_communation_protocol(SEG_DATA0_CH);
+void seg_ch_recv_task(void *argument)  {
+    int channel = (int)(uintptr_t)argument;
+    uint8_t sock = seg_data_sock[channel];
+    uint8_t serial_mode = get_serial_communation_protocol(channel);
 
     while (1) {
         switch (serial_mode) {
         case SEG_SERIAL_PROTOCOL_NONE :
-            ether_to_uart(SEG_DATA0_SOCK, SEG_DATA0_CH);
+            ether_to_uart(sock, channel);
             break;
 
         case SEG_SERIAL_MODBUS_RTU :
-            mbTCPtoRTU(SEG_DATA0_SOCK, SEG_DATA0_CH);
+            mbTCPtoRTU(sock, channel);
             break;
 
         case SEG_SERIAL_MODBUS_ASCII :
-            mbTCPtoASCII(SEG_DATA0_SOCK, SEG_DATA0_CH);
-            break;
-        }
-        vTaskDelay(1);
-#ifdef __USE_WATCHDOG__
-        device_wdt_reset();
-#endif
-    }
-}
-
-void seg1_recv_task(void *argument)  {
-    uint8_t serial_mode = get_serial_communation_protocol(SEG_DATA1_CH);
-
-    while (1) {
-        switch (serial_mode) {
-        case SEG_SERIAL_PROTOCOL_NONE :
-            ether_to_uart(SEG_DATA1_SOCK, SEG_DATA1_CH);
-            break;
-
-        case SEG_SERIAL_MODBUS_RTU :
-            mbTCPtoRTU(SEG_DATA1_SOCK, SEG_DATA1_CH);
-            break;
-
-        case SEG_SERIAL_MODBUS_ASCII :
-            mbTCPtoASCII(SEG_DATA1_SOCK, SEG_DATA1_CH);
+            mbTCPtoASCII(sock, channel);
             break;
         }
         vTaskDelay(1);
@@ -2509,39 +2490,30 @@ void timers_stop(uint8_t channel) {
 void keepalive_timer_callback(TimerHandle_t xTimer) {
     int timer_id = (int)pvTimerGetTimerID(xTimer);
 
-    if (timer_id == SEG_DATA0_CH) {
-        flag_send_keepalive[SEG_DATA0_CH] = SEG_ENABLE;
-    } else if (timer_id == SEG_DATA1_CH) {
-        flag_send_keepalive[SEG_DATA1_CH] = SEG_ENABLE;
-    } else {
+    if ((timer_id < 0) || (timer_id >= DEVICE_UART_CNT)) {
         return;
     }
+    flag_send_keepalive[timer_id] = SEG_ENABLE;
     xSemaphoreGive(seg_timer_sem);
 }
 
 void inactivity_timer_callback(TimerHandle_t xTimer) {
     int timer_id = (int)pvTimerGetTimerID(xTimer);
 
-    if (timer_id == SEG_DATA0_CH) {
-        flag_inactivity[SEG_DATA0_CH] = SEG_ENABLE;
-    } else if (timer_id == SEG_DATA1_CH) {
-        flag_inactivity[SEG_DATA1_CH] = SEG_ENABLE;
-    } else {
+    if ((timer_id < 0) || (timer_id >= DEVICE_UART_CNT)) {
         return;
     }
+    flag_inactivity[timer_id] = SEG_ENABLE;
     xSemaphoreGive(seg_timer_sem);
 }
 
 void auth_timer_callback(TimerHandle_t xTimer) {
     int timer_id = (int)pvTimerGetTimerID(xTimer);
 
-    if (timer_id == SEG_DATA0_CH) {
-        flag_auth_time[SEG_DATA0_CH] = SEG_ENABLE;
-    } else if (timer_id == SEG_DATA1_CH) {
-        flag_auth_time[SEG_DATA1_CH] = SEG_ENABLE;
-    } else {
+    if ((timer_id < 0) || (timer_id >= DEVICE_UART_CNT)) {
         return;
     }
+    flag_auth_time[timer_id] = SEG_ENABLE;
     xSemaphoreGive(seg_timer_sem);
 }
 
@@ -2554,15 +2526,11 @@ void seg_timer_task(void *argument)  {
         for (int i = 0; i < DEVICE_UART_CNT; i++) {
             tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option[i]);
             if ((flag_inactivity[i] == SEG_ENABLE)) {
+                flag_inactivity[i] = SEG_DISABLE;
 #ifdef _SEG_DEBUG_
                 PRT_SEG(" > INACTIVITY TIMER: TIMEOUT\r\n");
-                flag_inactivity[i] = SEG_DISABLE;
 #endif
-                if (i == SEG_DATA0_CH) {
-                    process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
-                } else if (i == SEG_DATA1_CH) {
-                    process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
-                }
+                process_socket_termination(seg_data_sock[i], SOCK_TERMINATION_DELAY, i, TRUE);
             }
 
             if (flag_send_keepalive[i] == SEG_ENABLE) {
@@ -2570,16 +2538,14 @@ void seg_timer_task(void *argument)  {
                 //            PRT_SEG(" >> send_keepalive_packet\r\n");
                 //#endif
                 flag_send_keepalive[i] = SEG_DISABLE;
-                if (i == SEG_DATA0_CH) {
-                    send_keepalive_packet_manual(SEG_DATA0_SOCK);    // <-> send_keepalive_packet_auto()
-                } else if (i == SEG_DATA1_CH) {
-                    send_keepalive_packet_manual(SEG_DATA1_SOCK);    // <-> send_keepalive_packet_auto()
-                }
+                send_keepalive_packet_manual(seg_data_sock[i]);    // <-> send_keepalive_packet_auto()
 
-                if (xTimerGetPeriod(seg_keepalive_timer[i]) != pdMS_TO_TICKS(tcp_option->keepalive_retry_time)) {
-                    xTimerChangePeriod(seg_keepalive_timer[i], pdMS_TO_TICKS(tcp_option->keepalive_retry_time), 0);
+                if (seg_keepalive_timer[i] != NULL) {
+                    if (xTimerGetPeriod(seg_keepalive_timer[i]) != pdMS_TO_TICKS(tcp_option->keepalive_retry_time)) {
+                        xTimerChangePeriod(seg_keepalive_timer[i], pdMS_TO_TICKS(tcp_option->keepalive_retry_time), 0);
+                    }
+                    xTimerStart(seg_keepalive_timer[i], 0);
                 }
-                xTimerStart(seg_keepalive_timer[i], 0);
             }
 
             // Check the connection password auth timer
@@ -2590,11 +2556,7 @@ void seg_timer_task(void *argument)  {
 #ifdef _SEG_DEBUG_
                     printf(" > CONNECTION PW: AUTH TIMEOUT\r\n");
 #endif
-                    if (i == SEG_DATA0_CH) {
-                        process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
-                    } else if (i == SEG_DATA1_CH) {
-                        process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
-                    }
+                    process_socket_termination(seg_data_sock[i], SOCK_TERMINATION_DELAY, i, TRUE);
                 }
             }
         }

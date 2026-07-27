@@ -60,16 +60,16 @@
 #define SEGCP_SERIAL_TASK_STACK_SIZE 512
 #define SEGCP_SERIAL_TASK_PRIORITY 50
 
-#define SEG_TASK_STACK_SIZE (1024 * 8)
+#define SEG_TASK_STACK_SIZE (1024 * 4)
 #define SEG_TASK_PRIORITY 18
 
 #define SEG_TIMER_TASK_STACK_SIZE 256
 #define SEG_TIMER_TASK_PRIORITY 45
 
-#define SEG_U2E_TASK_STACK_SIZE 1024
+#define SEG_U2E_TASK_STACK_SIZE 512
 #define SEG_U2E_TASK_PRIORITY 41
 
-#define SEG_RECV_TASK_STACK_SIZE 1024
+#define SEG_RECV_TASK_STACK_SIZE 512
 #define SEG_RECV_TASK_PRIORITY 40
 
 #define HTTP_WEBSERVER_TASK_STACK_SIZE 2048
@@ -198,58 +198,47 @@ void start_task(void *argument) {
     Timer_Configuration();
     init_connection_status_io();
 
-    serial_mode = get_serial_communation_protocol(SEG_DATA0_CH);
-    if (serial_mode == SEG_SERIAL_MODBUS_RTU) {
-        PRT_INFO(" > CH0 Modbus Mode\r\n");
-        eMBRTUInit(dev_config->serial_option[SEG_DATA0_CH].baud_rate, SEG_DATA0_CH);
-    } else if (serial_mode == SEG_SERIAL_MODBUS_ASCII) {
-        PRT_INFO(" > CH0 Modbus ASCII Mode\r\n");
-        eMBAsciiInit(SEG_DATA0_CH);
-    }
-
-    serial_mode = get_serial_communation_protocol(SEG_DATA1_CH);
-    if (serial_mode == SEG_SERIAL_MODBUS_RTU) {
-        PRT_INFO(" > CH1 Modbus Mode\r\n");
-        eMBRTUInit(dev_config->serial_option[SEG_DATA1_CH].baud_rate, SEG_DATA1_CH);
-    } else if (serial_mode == SEG_SERIAL_MODBUS_ASCII) {
-        PRT_INFO(" > CH1 Modbus ASCII Mode\r\n");
-        eMBAsciiInit(SEG_DATA1_CH);
+    for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+        serial_mode = get_serial_communation_protocol(ch);
+        if (serial_mode == SEG_SERIAL_MODBUS_RTU) {
+            PRT_INFO(" > CH%d Modbus Mode\r\n", ch);
+            eMBRTUInit(dev_config->serial_option[ch].baud_rate, ch);
+        } else if (serial_mode == SEG_SERIAL_MODBUS_ASCII) {
+            PRT_INFO(" > CH%d Modbus ASCII Mode\r\n", ch);
+            eMBAsciiInit(ch);
+        }
     }
 
     net_segcp_udp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     net_segcp_tcp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     net_http_webserver_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    net_seg_sem[SEG_DATA0_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    net_seg_sem[SEG_DATA1_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    net_seg_u2e_sem[SEG_DATA0_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    net_seg_u2e_sem[SEG_DATA1_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     segcp_uart_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_e2s_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    seg_u2e_sem[SEG_DATA0_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    seg_u2e_sem[SEG_DATA1_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_timer_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    seg_sem[SEG_DATA0_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    seg_sem[SEG_DATA1_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
-    seg_critical_sem[SEG_DATA0_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)1);
-    seg_critical_sem[SEG_DATA1_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)1);
+
+    for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+        net_seg_sem[ch]      = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+        net_seg_u2e_sem[ch]  = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+        seg_u2e_sem[ch]      = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+        seg_sem[ch]          = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+        seg_critical_sem[ch] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)1);
+    }
 
     xTaskCreate(net_status_task, "Net_Status_Task", NET_TASK_STACK_SIZE, NULL, NET_TASK_PRIORITY, NULL);
     xTaskCreate(segcp_udp_task, "SEGCP_udp_Task", SEGCP_UDP_TASK_STACK_SIZE, NULL, SEGCP_UDP_TASK_PRIORITY, NULL);
     xTaskCreate(segcp_serial_task, "SEGCP_serial_Task", SEGCP_SERIAL_TASK_STACK_SIZE, NULL, SEGCP_SERIAL_TASK_PRIORITY, NULL);
     xTaskCreate(segcp_tcp_task, "SEGCP_tcp_Task", SEGCP_TCP_TASK_STACK_SIZE, NULL, SEGCP_TCP_TASK_PRIORITY, NULL);
 
-    //xTaskCreate(seg_task, "SEG_Task", SEG_TASK_STACK_SIZE, NULL, SEG_TASK_PRIORITY, NULL);
-    xTaskCreate(seg0_task, "SEG0_Task", SEG_TASK_STACK_SIZE, NULL, SEG_TASK_PRIORITY, NULL);
-    xTaskCreate(seg1_task, "SEG1_Task", SEG_TASK_STACK_SIZE, NULL, SEG_TASK_PRIORITY, NULL);
-    xTaskCreate(seg0_u2e_task, "SEG0_U2E_Task", SEG_U2E_TASK_STACK_SIZE, NULL, SEG_U2E_TASK_PRIORITY, NULL);
-    xTaskCreate(seg1_u2e_task, "SEG1_U2E_Task", SEG_U2E_TASK_STACK_SIZE, NULL, SEG_U2E_TASK_PRIORITY, NULL);
-    //xTaskCreate(seg_recv_task, "SEG1_Recv_Task", SEG_RECV_TASK_STACK_SIZE, NULL, SEG_RECV_TASK_PRIORITY, NULL);
-    xTaskCreate(seg0_recv_task, "SEG0_Recv_Task", SEG_RECV_TASK_STACK_SIZE, NULL, SEG_RECV_TASK_PRIORITY, NULL);
-    xTaskCreate(seg1_recv_task, "SEG1_Recv_Task", SEG_RECV_TASK_STACK_SIZE, NULL, SEG_RECV_TASK_PRIORITY + 1, NULL);
-    xTaskCreate(seg_timer_task, "SEG_Timer_task", SEG_TIMER_TASK_STACK_SIZE, NULL, SEG_TIMER_TASK_PRIORITY, NULL);
-    if (dev_config->config_common.pw_search[0] == 0) {
-        xTaskCreate(http_webserver_task, "http_webserver_task", HTTP_WEBSERVER_TASK_STACK_SIZE, NULL, HTTP_WEBSERVER_TASK_PRIORITY, NULL);
+    for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+        xTaskCreate(seg_ch_task,      "SEG_Task",      SEG_TASK_STACK_SIZE, (void *)(uintptr_t)ch, SEG_TASK_PRIORITY,          NULL);
+        xTaskCreate(seg_ch_u2e_task,  "SEG_U2E_Task",  SEG_U2E_TASK_STACK_SIZE, (void *)(uintptr_t)ch, SEG_U2E_TASK_PRIORITY,      NULL);
+        xTaskCreate(seg_ch_recv_task, "SEG_Recv_Task", SEG_RECV_TASK_STACK_SIZE, (void *)(uintptr_t)ch, SEG_RECV_TASK_PRIORITY + ch, NULL);
     }
+    xTaskCreate(seg_timer_task, "SEG_Timer_task", SEG_TIMER_TASK_STACK_SIZE, NULL, SEG_TIMER_TASK_PRIORITY, NULL);
+    // HTTP web server removed (sockets reassigned to DATA2/DATA3)
+    // if (dev_config->config_common.pw_search[0] == 0) {
+    //     xTaskCreate(http_webserver_task, "http_webserver_task", HTTP_WEBSERVER_TASK_STACK_SIZE, NULL, HTTP_WEBSERVER_TASK_PRIORITY, NULL);
+    // }
 
 #if defined(MBEDTLS_PLATFORM_C) && defined(MBEDTLS_PLATFORM_MEMORY)
     mbedtls_platform_set_calloc_free(pvPortCalloc, vPortFree);
