@@ -32,7 +32,7 @@ uint32_t baud_table[] = {300, 600, 1200, 1800, 2400, 4800, 9600, 14400, 19200, 2
 uint8_t word_len_table[] = {7, 8, 9};
 uint8_t * parity_table[] = {(uint8_t *)"N", (uint8_t *)"ODD", (uint8_t *)"EVEN"};
 uint8_t stop_bit_table[] = {1, 2};
-uint8_t * flow_ctrl_table[] = {(uint8_t *)"NONE", (uint8_t *)"XON/XOFF", (uint8_t *)"RTS/CTS", (uint8_t *)"RTS Only", (uint8_t *)"RTS Only Reverse"};
+uint8_t * flow_ctrl_table[] = {(uint8_t *)"NONE", (uint8_t *)"XON/XOFF", (uint8_t *)"RTS/CTS", (uint8_t *)"RTS Only", (uint8_t *)"RTS Only Reverse", (uint8_t *)"DTR/DSR"};
 uint8_t * uart_if_table[] = {(uint8_t *)UART_IF_STR_TTL, (uint8_t *)UART_IF_STR_RS232, (uint8_t *)UART_IF_STR_RS422, (uint8_t *)UART_IF_STR_RS485, (uint8_t *)UART_IF_STR_RS485};
 //uint8_t * uart_if_table[] = {(uint8_t *)UART_IF_STR_RS232_TTL, (uint8_t *)UART_IF_STR_RS422_485};
 
@@ -185,6 +185,12 @@ void DATA0_UART_Configuration(void) {
 #endif
             break;
         case flow_xon_xoff:
+            uart_set_hw_flow(UART_ID, false, false);
+            break;
+        case flow_dtr_dsr:
+            // The bootloader only drives the config console, so it needs no
+            // DTR/DSR handshaking - but the stored setting belongs to the
+            // application and must not be rewritten here.
             uart_set_hw_flow(UART_ID, false, false);
             break;
         default:

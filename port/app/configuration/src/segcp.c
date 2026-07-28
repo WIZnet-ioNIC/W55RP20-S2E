@@ -1209,7 +1209,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_FL:
                     tmp_byte = is_hex(*param);
-                    if (param_len != 1 || tmp_byte > flow_reverserts) {
+                    if (param_len != 1 || tmp_byte > flow_dtr_dsr) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         if ((dev_config->serial_option[0].uart_interface == UART_IF_RS422) ||
@@ -1226,7 +1226,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_EF:
                     tmp_byte = is_hex(*param);
-                    if (param_len != 1 || tmp_byte > flow_reverserts) {
+                    if (param_len != 1 || tmp_byte > flow_dtr_dsr) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         if ((dev_config->serial_option[1].uart_interface == UART_IF_RS422) ||
@@ -1906,7 +1906,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_WF: // flow control (RS422/485 특례)
                     tmp_byte = is_hex(*param);
-                    if (param_len != 1 || tmp_byte > flow_reverserts) {
+                    if (param_len != 1 || tmp_byte > flow_dtr_dsr) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         if ((dev_config->serial_option[2].uart_interface == UART_IF_RS422) ||
@@ -2120,7 +2120,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_YF: // flow control (RS422/485 특례)
                     tmp_byte = is_hex(*param);
-                    if (param_len != 1 || tmp_byte > flow_reverserts) {
+                    if (param_len != 1 || tmp_byte > flow_dtr_dsr) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         if ((dev_config->serial_option[3].uart_interface == UART_IF_RS422) ||

@@ -98,7 +98,7 @@ struct __serial_option {        // todo: [0] RS-232/TTL, [1] RS-422 [2] RS-485
     uint8_t data_bits;          // 7, 8, 9
     uint8_t parity;             // None, Odd, Even
     uint8_t stop_bits;          // 1, 1.5, 2
-    uint8_t flow_control;       // None, RTS/CTS, XON/XOFF, RTS Only for RS422/485
+    uint8_t flow_control;       // [0] None [1] XON/XOFF [2] RTS/CTS [3] RTS Only [4] RTS Only Reverse (3,4: RS422/485) [5] DTR/DSR
     uint8_t dtr_en;             // DTR/DSR Enable, Pins for these signals are shared with [Connection status pins]
     uint8_t dsr_en;             // DTR/DSR Enable, Pins for these signals are shared with [Connection status pins]
 } __attribute__((packed));

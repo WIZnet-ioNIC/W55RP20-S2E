@@ -92,7 +92,8 @@ enum flow_ctrl {
     flow_xon_xoff = 1,
     flow_rts_cts = 2,
     flow_rtsonly = 3,  // RTS_ONLY
-    flow_reverserts = 4 // Reverse RTS
+    flow_reverserts = 4, // Reverse RTS
+    flow_dtr_dsr = 5   // DTR/DSR handshake on the RTS/CTS pins
 };
 
 enum protocol {
@@ -117,6 +118,7 @@ void DATA_UART_Interrupt_Enable(void);
 // XON/XOFF Software flow control: Check the Buffer usage and Send the start/stop commands
 void check_uart_flow_control(uint8_t flow_ctrl, int channel);
 uint8_t platform_uart_cts_ready(int channel);
+void platform_uart_tx_wait(int channel);
 
 // Hardware flow control by GPIOs (RTS/CTS)
 #ifdef __USE_GPIO_HARDWARE_FLOWCONTROL__

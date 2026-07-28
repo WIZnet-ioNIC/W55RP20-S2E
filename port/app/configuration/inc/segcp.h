@@ -164,6 +164,7 @@ typedef enum {SEGCP_MC, SEGCP_VR, SEGCP_MN, SEGCP_IM, SEGCP_OP, SEGCP_DD, SEGCP_
 
 #define SEGCP_XONOFF    flow_xon_xoff
 #define SEGCP_RTSCTS    flow_rts_cts
+#define SEGCP_DTRDSR    flow_dtr_dsr
 
 #define SEGCP_PRIVILEGE_SET   0x80
 #define SEGCP_PRIVILEGE_CLR   0x00

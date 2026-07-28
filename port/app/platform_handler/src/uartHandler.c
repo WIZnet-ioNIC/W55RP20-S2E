@@ -36,11 +36,11 @@ uint32_t baud_table[] = {300, 600, 1200, 1800, 2400, 4800, 9600, 14400, 19200, 2
 uint8_t word_len_table[] = {7, 8, 9};
 uint8_t * parity_table[] = {(uint8_t *)"N", (uint8_t *)"ODD", (uint8_t *)"EVEN"};
 uint8_t stop_bit_table[] = {1, 2};
-uint8_t * flow_ctrl_table[] = {(uint8_t *)"NONE", (uint8_t *)"XON/XOFF", (uint8_t *)"RTS/CTS", (uint8_t *)"RTS Only", (uint8_t *)"RTS Only Reverse"};
+uint8_t * flow_ctrl_table[] = {(uint8_t *)"NONE", (uint8_t *)"XON/XOFF", (uint8_t *)"RTS/CTS", (uint8_t *)"RTS Only", (uint8_t *)"RTS Only Reverse", (uint8_t *)"DTR/DSR"};
 uint8_t * uart_if_table[] = {(uint8_t *)UART_IF_STR_RS232_TTL, (uint8_t *)UART_IF_STR_RS422, (uint8_t *)UART_IF_STR_RS485, (uint8_t *)UART_IF_STR_RS485};
 
 // XON/XOFF Status;
-static uint8_t xonoff_status = UART_XON;
+static uint8_t xonoff_status[DEVICE_UART_CNT];
 
 // UART Interface selector; RS-422 or RS-485 use only
 static uint8_t uart_if_mode[DEVICE_UART_CNT] = {UART_IF_RS422, UART_IF_RS422};
@@ -62,6 +62,7 @@ static const uint data_uart_rts_pin[DEVICE_UART_CNT] = {
 #endif
 };
 static uint8_t data_uart_rts_status[DEVICE_UART_CNT];
+static uint8_t data_uart_dtr_status[DEVICE_UART_CNT];
 
 #if (DEVICE_UART_CNT > 2)
 /* DATA2/DATA3 PIO UART on pio0 (pio1 is the W5500 SPI).                       */
@@ -110,8 +111,11 @@ static void pio_data_uart_init_sm(void) {
     for (int i = UART_HW_CH_CNT; i < DEVICE_UART_CNT; i++) {
         struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option[i]);
         uint8_t use_cts = (serial_option->flow_control == flow_rts_cts);
+        uint8_t use_dtr_dsr = (serial_option->flow_control == flow_dtr_dsr);
         uint32_t baud = pio_uart_baud(i);
 
+        // The CTS/RTS pins double as DSR/DTR; both are plain GPIO here, so only
+        // the pull and the direction of the input side differ.
         gpio_init(pio_uart_cts_pin[i]);
         gpio_set_dir(pio_uart_cts_pin[i], GPIO_IN);
         gpio_pull_up(pio_uart_cts_pin[i]);
@@ -120,6 +124,7 @@ static void pio_data_uart_init_sm(void) {
         gpio_set_dir(data_uart_rts_pin[i], GPIO_OUT);
         gpio_put(data_uart_rts_pin[i], UART_RTS_LOW);
         data_uart_rts_status[i] = UART_RTS_LOW;
+        data_uart_dtr_status[i] = UART_RTS_LOW;
 
         pio_tx_sm[i] = pio_claim_unused_sm(PIO_DATA_UART, true);
         if (use_cts) {
@@ -134,7 +139,7 @@ static void pio_data_uart_init_sm(void) {
         uart_rx_program_init(PIO_DATA_UART, pio_rx_sm[i], rx_offset, pio_uart_rx_pin[i], baud);
         PRT_INFO("PIO UART ch%d: TX GP%d(sm%d) RX GP%d(sm%d) baud %d flow %s\r\n",
                  i, pio_uart_tx_pin[i], pio_tx_sm[i], pio_uart_rx_pin[i], pio_rx_sm[i], (int)baud,
-                 use_cts ? "rts/cts" : "none");
+                 use_cts ? "rts/cts" : (use_dtr_dsr ? "dtr/dsr" : "none"));
     }
 }
 
@@ -263,6 +268,10 @@ void DATA_UART_Configuration(void) {
     // Only HW UART instances are valid; PIO channels are zero and skipped below.
     uart_inst_t *uart_id[DEVICE_UART_CNT] = {DATA0_UART_ID, DATA1_UART_ID};
 
+    for (int i = 0; i < DEVICE_UART_CNT; i++) {
+        xonoff_status[i] = UART_XON;
+    }
+
     // Set the TX and RX pins by using the function select on the GPIO
     // Set datasheet for more information on function select
 
@@ -377,6 +386,14 @@ void DATA_UART_Configuration(void) {
             case flow_xon_xoff:
                 uart_set_hw_flow(uart_id[i], false, false);
                 break;
+            case flow_dtr_dsr:
+                // DTR/DSR reuse the RTS/CTS pins as plain GPIO. RP2040 has no
+                // hardware DTR/DSR, so both directions are driven in software.
+                uart_set_hw_flow(uart_id[i], false, false);
+                init_flowcontrol_dtr_pin(i);
+                init_flowcontrol_dsr_pin(i);
+                data_uart_dtr_status[i] = UART_RTS_LOW;
+                break;
             default:
                 uart_set_hw_flow(uart_id[i], false, false);
                 serial_option->flow_control = flow_none;
@@ -447,17 +464,17 @@ void DATA_UART_Interrupt_Enable(void) {
 
 void check_uart_flow_control(uint8_t flow_ctrl, int channel) {
     if (flow_ctrl == flow_xon_xoff) {
-        if ((xonoff_status == UART_XON) && (get_data_buffer_usedsize(channel) > UART_OFF_THRESHOLD)) { // Send the transmit stop command to peer - go XOFF
+        if ((xonoff_status[channel] == UART_XON) && (get_data_buffer_usedsize(channel) > UART_OFF_THRESHOLD)) { // Send the transmit stop command to peer - go XOFF
             platform_uart_putc(UART_XOFF, channel);
-            xonoff_status = UART_XOFF;
+            xonoff_status[channel] = UART_XOFF;
 #ifdef _UART_DEBUG_
-            printf(" >> SEND XOFF [%d / %d]\r\n", get_data_buffer_usedsize(), SEG_DATA_BUF_SIZE);
+            printf(" >> SEND XOFF [%d / %d]\r\n", get_data_buffer_usedsize(channel), SEG_DATA_BUF_SIZE);
 #endif
-        } else if ((xonoff_status == UART_XOFF) && (get_data_buffer_usedsize(channel) < UART_ON_THRESHOLD)) { // Send the transmit start command to peer. -go XON
+        } else if ((xonoff_status[channel] == UART_XOFF) && (get_data_buffer_usedsize(channel) < UART_ON_THRESHOLD)) { // Send the transmit start command to peer. -go XON
             platform_uart_putc(UART_XON, channel);
-            xonoff_status = UART_XON;
+            xonoff_status[channel] = UART_XON;
 #ifdef _UART_DEBUG_
-            printf(" >> SEND XON [%d / %d]\r\n", get_data_buffer_usedsize(), SEG_DATA_BUF_SIZE);
+            printf(" >> SEND XON [%d / %d]\r\n", get_data_buffer_usedsize(channel), SEG_DATA_BUF_SIZE);
 #endif
         }
     } else if (flow_ctrl == flow_rts_cts) {
@@ -469,6 +486,17 @@ void check_uart_flow_control(uint8_t flow_ctrl, int channel) {
         } else if ((data_uart_rts_status[channel] == UART_RTS_HIGH) && (used_size <= UART_ON_THRESHOLD)) {
             gpio_put(data_uart_rts_pin[channel], UART_RTS_LOW);
             data_uart_rts_status[channel] = UART_RTS_LOW;
+        }
+    } else if (flow_ctrl == flow_dtr_dsr) {
+        // DTR mirrors RTS: deassert while our receive buffer is filling up.
+        uint16_t used_size = get_data_buffer_usedsize(channel);
+
+        if ((data_uart_dtr_status[channel] == UART_RTS_LOW) && (used_size > UART_OFF_THRESHOLD)) {
+            set_flowcontrol_dtr_pin(ON, channel);
+            data_uart_dtr_status[channel] = UART_RTS_HIGH;
+        } else if ((data_uart_dtr_status[channel] == UART_RTS_HIGH) && (used_size <= UART_ON_THRESHOLD)) {
+            set_flowcontrol_dtr_pin(OFF, channel);
+            data_uart_dtr_status[channel] = UART_RTS_LOW;
         }
     }
 }
@@ -506,6 +534,18 @@ int32_t platform_uart_putc(uint16_t ch, int channel) {
     return RET_OK;
 }
 
+// Block until a channel's TX DMA has finished reading its source buffer.
+// Callers must do this before overwriting the buffer they last handed to
+// platform_uart_puts_dma(), which starts the transfer and returns immediately.
+void platform_uart_tx_wait(int channel) {
+    if (channel >= UART_HW_CH_CNT) {
+        return;     // PIO transmit is synchronous
+    }
+    while (dma_channel_is_busy(dma_uart_tx[channel])) {
+        device_wdt_reset();
+    }
+}
+
 int32_t platform_uart_puts_dma(uint8_t* buf, uint16_t bytes, int channel) {
     uart_inst_t *uart_id[DEVICE_UART_CNT] = {DATA0_UART_ID, DATA1_UART_ID};
 
@@ -513,9 +553,7 @@ int32_t platform_uart_puts_dma(uint8_t* buf, uint16_t bytes, int channel) {
         // PIO UART has no DMA TX path; use the blocking PIO transmit path.
         return platform_uart_puts(buf, bytes, channel);
     }
-    while (dma_channel_is_busy(dma_uart_tx[channel])) {
-        // Wait for the DMA channel to be free
-    }
+    platform_uart_tx_wait(channel);
     dma_channel_configure(dma_uart_tx[channel], &dma_uart_c[channel],
                           &uart_get_hw(uart_id[channel])->dr, // write address
                           buf, // read address
@@ -550,8 +588,8 @@ int32_t platform_uart_puts(uint8_t* buf, uint16_t bytes, int channel) {
 
 #ifdef __USE_UART_485_422__
 uint8_t get_uart_rs485_sel(int channel) {
-    GPIO_Configuration(channel ? DATA1_UART_RTS_PIN : DATA0_UART_RTS_PIN, GPIO_IN, IO_PULLUP);// UART0 RTS pin: GPIO / Input
-    if (GPIO_Input_Read(channel ? DATA1_UART_RTS_PIN : DATA0_UART_RTS_PIN) == IO_LOW) {
+    GPIO_Configuration(data_uart_rts_pin[channel], GPIO_IN, IO_PULLUP);// UART0 RTS pin: GPIO / Input
+    if (GPIO_Input_Read(data_uart_rts_pin[channel]) == IO_LOW) {
         uart_if_mode[channel] = UART_IF_RS422;
     } else {
         uart_if_mode[channel] = UART_IF_RS485;
@@ -561,32 +599,40 @@ uint8_t get_uart_rs485_sel(int channel) {
 }
 
 void uart_rs485_rs422_init(int channel) {
-    GPIO_Configuration(channel ? DATA1_UART_RTS_PIN : DATA0_UART_RTS_PIN, GPIO_OUT, IO_NOPULL); // UART0 RTS pin: GPIO / Output
+    GPIO_Configuration(data_uart_rts_pin[channel], GPIO_OUT, IO_NOPULL); // UART0 RTS pin: GPIO / Output
     if (uart_if_mode[channel] == UART_IF_RS485) {
-        GPIO_Output_Reset(channel ? DATA1_UART_RTS_PIN : DATA0_UART_RTS_PIN);    // UART0 RTS pin init, Set the signal low
+        GPIO_Output_Reset(data_uart_rts_pin[channel]);    // UART0 RTS pin init, Set the signal low
     } else {
-        GPIO_Output_Set(channel ? DATA1_UART_RTS_PIN : DATA0_UART_RTS_PIN);    // UART0 RTS pin init, Set the signal low
+        GPIO_Output_Set(data_uart_rts_pin[channel]);    // UART0 RTS pin init, Set the signal low
     }
 }
 
 void uart_rs485_enable(int channel) {
+    // PIO channels are TTL only; they have no direction control to drive and
+    // must not touch another channel's RTS pin.
+    if (channel >= UART_HW_CH_CNT) {
+        return;
+    }
     if (uart_if_mode[channel] == UART_IF_RS485) {
-        GPIO_Output_Set(channel ? DATA1_UART_RTS_PIN : DATA0_UART_RTS_PIN);
+        GPIO_Output_Set(data_uart_rts_pin[channel]);
     } else if (uart_if_mode[channel] == UART_IF_RS485_REVERSE) {
-        GPIO_Output_Reset(channel ? DATA1_UART_RTS_PIN : DATA0_UART_RTS_PIN);
+        GPIO_Output_Reset(data_uart_rts_pin[channel]);
     }
 }
 
 void uart_rs485_disable(int channel) {
+    if (channel >= UART_HW_CH_CNT) {
+        return;
+    }
     if (uart_if_mode[channel] == UART_IF_RS485) {
         uart_tx_wait_blocking(channel ? DATA1_UART_ID : DATA0_UART_ID);
         // RTS pin -> Low;
-        GPIO_Output_Reset(channel ? DATA1_UART_RTS_PIN : DATA0_UART_RTS_PIN);
+        GPIO_Output_Reset(data_uart_rts_pin[channel]);
 
     } else if (uart_if_mode[channel] == UART_IF_RS485_REVERSE) {
         uart_tx_wait_blocking(channel ? DATA1_UART_ID : DATA0_UART_ID);
         // RTS pin -> High
-        GPIO_Output_Set(channel ? DATA1_UART_RTS_PIN : DATA0_UART_RTS_PIN);
+        GPIO_Output_Set(data_uart_rts_pin[channel]);
     }
     //UART_IF_RS422: None
 }

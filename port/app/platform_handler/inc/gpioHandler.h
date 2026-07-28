@@ -62,8 +62,8 @@ void init_connection_status_io(void);
 
 void init_phylink_status_pin(void);
 void init_tcpconnection_status_pin(void);
-void init_flowcontrol_dtr_pin(void);
-void init_flowcontrol_dsr_pin(void);
+void init_flowcontrol_dtr_pin(int channel);
+void init_flowcontrol_dsr_pin(int channel);
 void init_status_pin(void);
 void set_connection_status_io(uint16_t pin, uint8_t set);
 uint8_t get_connection_status_io(uint16_t pin);

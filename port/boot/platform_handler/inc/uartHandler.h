@@ -84,7 +84,8 @@ enum flow_ctrl {
     flow_xon_xoff = 1,
     flow_rts_cts = 2,
     flow_rtsonly = 3,  // RTS_ONLY
-    flow_reverserts = 4 // Reverse RTS
+    flow_reverserts = 4, // Reverse RTS
+    flow_dtr_dsr = 5   // DTR/DSR handshake; the bootloader treats it as no flow control
 };
 
 enum protocol {

@@ -219,7 +219,9 @@ void do_seg(uint8_t sock, int channel) {
 
         // XON/XOFF Software flow control: Check the Buffer usage and Send the start/stop commands
         // [WIZnet Device] -> [Peer]
-        if ((serial_option->flow_control == flow_xon_xoff) || (serial_option->flow_control == flow_rts_cts)) {
+        if ((serial_option->flow_control == flow_xon_xoff) ||
+                (serial_option->flow_control == flow_rts_cts) ||
+                (serial_option->flow_control == flow_dtr_dsr)) {
             check_uart_flow_control(serial_option->flow_control, channel);
         }
     }
@@ -1646,6 +1648,11 @@ void ether_to_uart(uint8_t sock, int channel) {
         if (!platform_uart_cts_ready(channel)) {
             return;
         }
+    } else if (serial_option->flow_control == flow_dtr_dsr) {
+        // DSR takes CTS's place: the peer is only ready while it is asserted.
+        if (get_flowcontrol_dsr_pin(channel) != IO_LOW) {
+            return;
+        }
     }
 
     do {
@@ -1660,6 +1667,9 @@ void ether_to_uart(uint8_t sock, int channel) {
                 if (seg_inactivity_timer[channel] != NULL) {
                     xTimerReset(seg_inactivity_timer[channel], 0);
                 }
+
+                // The previous transmit may still be reading g_recv_buf by DMA.
+                platform_uart_tx_wait(channel);
 
                 if (network_connection->working_mode == UDP_MODE) {
                     e2u_size[channel] = recvfrom(sock, g_recv_buf[channel], len, peerip, &peerport);
@@ -1710,10 +1720,6 @@ void ether_to_uart(uint8_t sock, int channel) {
         }
         // Ethernet data transfer to DATA UART
         if (e2u_size[channel] != 0) {
-            if (serial_option->dsr_en == SEG_ENABLE) // DTR / DSR handshake (flow control)
-                if (get_flowcontrol_dsr_pin(channel) == IO_HIGH) {
-                    return;
-                }
             //////////////////////////////////////////////////////////////////////
 #ifdef __USE_UART_485_422__
             if ((serial_option->uart_interface == UART_IF_RS422) ||

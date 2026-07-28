@@ -141,6 +141,10 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define DATA0_UART_DSR_PIN           DATA0_UART_CTS_PIN
 #define DATA1_UART_DTR_PIN           DATA1_UART_RTS_PIN
 #define DATA1_UART_DSR_PIN           DATA1_UART_CTS_PIN
+#define DATA2_UART_DTR_PIN           DATA2_UART_RTS_PIN
+#define DATA2_UART_DSR_PIN           DATA2_UART_CTS_PIN
+#define DATA3_UART_DTR_PIN           DATA3_UART_RTS_PIN
+#define DATA3_UART_DSR_PIN           DATA3_UART_CTS_PIN
 
 // Removed for 4-port: BOOT_MODE(GP15)/HW_TRIG(GP14) -> reused by DATA2; UART_IF_SEL(GP12/GP16)
 // -> interface chosen via AT command (GP16 spare); PIO debug UART(GP29) -> USB CDC.

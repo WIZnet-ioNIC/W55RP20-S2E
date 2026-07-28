@@ -95,17 +95,10 @@ static void platform_gpio_interrupt_callback(uint GPIO_Pin, uint32_t events) {
     @brief  Device I/O Initialize Function
 */
 void Device_IO_Init(void) {
-    // Set the DTR pin to high when the DTR signal enabled (== PHY link status disabled)
-
-    init_flowcontrol_dtr_pin();
-
-    for (int i = 0; i < DEVICE_UART_CNT; i++) {
-        struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option[i]);
-        if (serial_option->dtr_en == 0) {
-            set_flowcontrol_dtr_pin(ON, i);
-        }
-    }
-    init_flowcontrol_dsr_pin();
+    // DTR/DSR share the RTS/CTS pins, and this runs before
+    // DATA_UART_Configuration(), which claims those pins for the UART or for
+    // DTR/DSR according to each channel's flow control setting. Configuring
+    // them here would only be overwritten, so leave them to that function.
 }
 
 // This function is intended only for output connection status pins; PHYlink, TCPconnection
@@ -188,33 +181,63 @@ void init_phylink_status_pin(void) {
     GPIO_Output_Reset(STATUS_PHYLINK_PIN);
 }
 
-// DTR pin
-// output
-void init_flowcontrol_dtr_pin(void) {
-    GPIO_Configuration(DATA0_UART_DTR_PIN, IO_OUTPUT, IO_NOPULL);
-    GPIO_Output_Reset(DATA0_UART_DTR_PIN);
+// DTR/DSR share the RTS/CTS pins; the flow control setting selects which
+// function a channel's pins serve.
+static const uint16_t data_uart_dtr_pin[DEVICE_UART_CNT] = {
+    DATA0_UART_DTR_PIN, DATA1_UART_DTR_PIN,
+#if (DEVICE_UART_CNT > 2)
+    DATA2_UART_DTR_PIN,
+#endif
+#if (DEVICE_UART_CNT > 3)
+    DATA3_UART_DTR_PIN,
+#endif
+};
 
-    GPIO_Configuration(DATA1_UART_DTR_PIN, IO_OUTPUT, IO_NOPULL);
-    GPIO_Output_Reset(DATA1_UART_DTR_PIN);
+static const uint16_t data_uart_dsr_pin[DEVICE_UART_CNT] = {
+    DATA0_UART_DSR_PIN, DATA1_UART_DSR_PIN,
+#if (DEVICE_UART_CNT > 2)
+    DATA2_UART_DSR_PIN,
+#endif
+#if (DEVICE_UART_CNT > 3)
+    DATA3_UART_DSR_PIN,
+#endif
+};
+
+// DTR pin
+// output, asserted low (same polarity as RTS)
+void init_flowcontrol_dtr_pin(int channel) {
+    if ((channel < 0) || (channel >= DEVICE_UART_CNT)) {
+        return;
+    }
+    GPIO_Configuration(data_uart_dtr_pin[channel], IO_OUTPUT, IO_NOPULL);
+    GPIO_Output_Reset(data_uart_dtr_pin[channel]);
 }
 
 void set_flowcontrol_dtr_pin(uint8_t set, int channel) {
+    if ((channel < 0) || (channel >= DEVICE_UART_CNT)) {
+        return;
+    }
     if (set == ON) {
-        GPIO_Output_Set(channel ? DATA1_UART_DTR_PIN : DATA0_UART_DTR_PIN);
+        GPIO_Output_Set(data_uart_dtr_pin[channel]);
     } else {
-        GPIO_Output_Reset(channel ? DATA1_UART_DTR_PIN : DATA0_UART_DTR_PIN);
+        GPIO_Output_Reset(data_uart_dtr_pin[channel]);
     }
 }
 
 // DSR pin
-// input, active high
-void init_flowcontrol_dsr_pin(void) {
-    GPIO_Configuration(DATA0_UART_DSR_PIN, IO_INPUT, IO_NOPULL);
-    GPIO_Configuration(DATA1_UART_DSR_PIN, IO_INPUT, IO_NOPULL);
+// input, asserted low (same polarity as CTS)
+void init_flowcontrol_dsr_pin(int channel) {
+    if ((channel < 0) || (channel >= DEVICE_UART_CNT)) {
+        return;
+    }
+    GPIO_Configuration(data_uart_dsr_pin[channel], IO_INPUT, IO_PULLUP);
 }
 
 uint8_t get_flowcontrol_dsr_pin(int channel) {
-    return GPIO_Input_Read(channel ? DATA1_UART_DSR_PIN : DATA0_UART_DSR_PIN);
+    if ((channel < 0) || (channel >= DEVICE_UART_CNT)) {
+        return IO_HIGH;
+    }
+    return GPIO_Input_Read(data_uart_dsr_pin[channel]);
 }
 
 void init_connection_status_io(void) {
