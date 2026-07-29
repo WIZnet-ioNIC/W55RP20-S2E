@@ -47,6 +47,7 @@
 
 void data_buffer_flush(int channel);
 void put_byte_to_data_buffer(uint8_t ch, int channel);
+uint32_t get_data_buffer_overflow_count(int channel);
 uint16_t get_data_buffer_usedsize(int channel);
 uint16_t get_data_buffer_freesize(int channel);
 uint8_t *get_data_buffer_ptr(int channel);

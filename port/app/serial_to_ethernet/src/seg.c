@@ -1258,7 +1258,15 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
         u2e_size[channel] = 0;
         e2u_size[channel] = 0;
 
-        int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, 0x00);
+        // Opened blocking, send() had no exit from its TX-free-space wait loop
+        // (socket.c only returns SOCK_BUSY there when SF_IO_NONBLOCK is set), so
+        // the task spun on the SPI bus and starved the other channels. With
+        // non-blocking, send() returns SOCK_BUSY and uart_to_ether() retries on
+        // the next pass; u2e_size and g_send_buf are left intact for that.
+        //
+        // Original:
+        //     int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, 0x00);
+        int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
 
         if (s == sock) {
             // Replace the command mode switch code GAP time (default: 500ms)
@@ -1634,6 +1642,12 @@ uint16_t get_serial_data(int channel) {
     return 0;
 }
 
+// Transmit unit for DTR/DSR flow control. The RP2040 has no DTR/DSR hardware, so
+// DSR can only be sampled between transmits; this bounds how much data can still
+// be in flight after the peer deasserts it. 256 byte is about 5.5 ms at 460800 bps,
+// against 44 ms when the whole DATA_BUF_SIZE block was sent at once.
+#define E2S_DSR_CHUNK   256
+
 void ether_to_uart(uint8_t sock, int channel) {
     struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option[channel]);
     struct __serial_common *serial_common = (struct __serial_common *) & (get_DevConfig_pointer()->serial_common);
@@ -1657,7 +1671,12 @@ void ether_to_uart(uint8_t sock, int channel) {
 
     do {
         // H/W Socket buffer -> User's buffer
-        if (!(network_connection->working_mode == MQTT_CLIENT_MODE || network_connection->working_mode == MQTTS_CLIENT_MODE)) {
+        //
+        // A previous pass may have left data the peer was not ready to accept
+        // (see the flow_dtr_dsr branch below). Send that first: recv() assigns
+        // rather than appends, so fetching now would overwrite it.
+        if ((e2u_size[channel] == 0) &&
+                !(network_connection->working_mode == MQTT_CLIENT_MODE || network_connection->working_mode == MQTTS_CLIENT_MODE)) {
             len = getSn_RX_RSR(sock);
             if (len > DATA_BUF_SIZE) {
                 len = DATA_BUF_SIZE;    // avoiding buffer overflow
@@ -1751,6 +1770,49 @@ void ether_to_uart(uint8_t sock, int channel) {
                     }
                     e2u_size[channel] = 0;
                 }
+            } else if (serial_option->flow_control == flow_dtr_dsr) {
+                if ((serial_common->serial_debug_en == SEG_DEBUG_E2S) || (serial_common->serial_debug_en == SEG_DEBUG_ALL)) {
+                    debugSerial_dataTransfer(g_recv_buf[channel], e2u_size[channel], SEG_DEBUG_E2S);
+                }
+
+                // Sending the whole block in one transfer left up to DATA_BUF_SIZE
+                // (44 ms at 460800 bps) in flight after the peer deasserted DSR,
+                // which overran it under full load. Send in chunks and re-check DSR
+                // between them.
+                //
+                // If the peer stops mid-block, return and keep the remainder for
+                // the next pass rather than waiting here. Blocking would hold the
+                // seg loop, which also has to service check_uart_flow_control()
+                // (releases DTR) and uart_to_ether() (drains the ring buffer) -
+                // starving both deadlocks the S2E direction. This matches how the
+                // RTS/CTS path returns when CTS is deasserted.
+                //
+                // Original (shared with the branch below):
+                //     platform_uart_puts_dma(g_recv_buf[channel], e2u_size[channel], channel);
+                //     e2u_size[channel] = 0;
+                uint16_t sent = 0;
+                while (sent < e2u_size[channel]) {
+                    if (get_flowcontrol_dsr_pin(channel) != IO_LOW) {
+                        break;
+                    }
+
+                    uint16_t chunk = e2u_size[channel] - sent;
+                    if (chunk > E2S_DSR_CHUNK) {
+                        chunk = E2S_DSR_CHUNK;
+                    }
+                    platform_uart_puts_dma(&g_recv_buf[channel][sent], chunk, channel);
+                    sent += chunk;
+                }
+
+                if (sent < e2u_size[channel]) {
+                    // Move the untransmitted remainder to the head of the buffer.
+                    // The transmit DMA reads from that buffer, so let it finish first.
+                    platform_uart_tx_wait(channel);
+                    e2u_size[channel] -= sent;
+                    memmove(g_recv_buf[channel], &g_recv_buf[channel][sent], e2u_size[channel]);
+                    return;
+                }
+                e2u_size[channel] = 0;
             } else {
                 if ((serial_common->serial_debug_en == SEG_DEBUG_E2S) || (serial_common->serial_debug_en == SEG_DEBUG_ALL)) {
                     debugSerial_dataTransfer(g_recv_buf[channel], e2u_size[channel], SEG_DEBUG_E2S);

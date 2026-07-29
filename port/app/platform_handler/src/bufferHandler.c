@@ -15,6 +15,7 @@ typedef struct {
 } uart_ring_buffer_t;
 
 static uart_ring_buffer_t uart_rx_buffer[DEVICE_UART_CNT];
+static volatile uint32_t uart_rx_overflow[DEVICE_UART_CNT];
 
 static uart_ring_buffer_t *get_uart_rx_buffer(int channel) {
     if ((channel < 0) || (channel >= DEVICE_UART_CNT)) {
@@ -41,14 +42,34 @@ void data_buffer_flush(int channel) {
     buffer->read_index = 0;
 }
 
+// Drop the incoming byte when the buffer is full instead of advancing the write
+// index past unread data. The original write always stored the byte, so a full
+// buffer silently overwrote data the seg task had not read yet - a loss that
+// left no trace in any counter. The overflow counter now makes it visible.
+//
+// Original body (after the NULL check):
+//     buffer->data[buffer->write_index] = ch;
+//     buffer->write_index = (buffer->write_index + 1) % SEG_DATA_BUF_SIZE;
 void put_byte_to_data_buffer(uint8_t ch, int channel) {
     uart_ring_buffer_t *buffer = get_uart_rx_buffer(channel);
     if (buffer == NULL) {
         return;
     }
 
+    if (ring_buffer_free_size(buffer) == 0) {
+        uart_rx_overflow[channel]++;
+        return;
+    }
+
     buffer->data[buffer->write_index] = ch;
     buffer->write_index = (buffer->write_index + 1) % SEG_DATA_BUF_SIZE;
+}
+
+uint32_t get_data_buffer_overflow_count(int channel) {
+    if ((channel < 0) || (channel >= DEVICE_UART_CNT)) {
+        return 0;
+    }
+    return uart_rx_overflow[channel];
 }
 
 uint16_t get_data_buffer_usedsize(int channel) {

@@ -64,6 +64,46 @@ static const uint data_uart_rts_pin[DEVICE_UART_CNT] = {
 static uint8_t data_uart_rts_status[DEVICE_UART_CNT];
 static uint8_t data_uart_dtr_status[DEVICE_UART_CNT];
 
+// Yield while spinning on a transmit path so the other channels' seg tasks can
+// run. Without this a channel waiting on flow control burns its whole time
+// slice, and under four-channel load that starved the S2E direction of the
+// other channels (one channel took 43 kB/s while the rest got under 4 kB/s).
+// Guarded because these paths also run before the scheduler starts.
+static inline void uart_tx_spin_wait(void) {
+    device_wdt_reset();
+    if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
+        taskYIELD();
+    }
+}
+
+// Stop the peer from the RX ISR as soon as the ring buffer crosses its
+// high-water mark. check_uart_flow_control() runs only from the seg task, which
+// leaves just SEG_DATA_BUF_SIZE - UART_OFF_THRESHOLD bytes of slack (409 B, about
+// 8.9 ms at 460800 bps). A task busy in the E2S path overruns that easily, and
+// the overflow used to be discarded silently. Reassertion stays in
+// check_uart_flow_control(): only the task drains the buffer, so only the task
+// needs to decide when it is safe to resume.
+// XON/XOFF is not handled here because it has to transmit a byte.
+static void uart_rx_flow_gate(int channel) {
+    struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option[channel]);
+
+    if (get_data_buffer_usedsize(channel) <= UART_OFF_THRESHOLD) {
+        return;
+    }
+
+    if (serial_option->flow_control == flow_rts_cts) {
+        if (data_uart_rts_status[channel] == UART_RTS_LOW) {
+            gpio_put(data_uart_rts_pin[channel], UART_RTS_HIGH);
+            data_uart_rts_status[channel] = UART_RTS_HIGH;
+        }
+    } else if (serial_option->flow_control == flow_dtr_dsr) {
+        if (data_uart_dtr_status[channel] == UART_RTS_LOW) {
+            set_flowcontrol_dtr_pin(ON, channel);
+            data_uart_dtr_status[channel] = UART_RTS_HIGH;
+        }
+    }
+}
+
 #if (DEVICE_UART_CNT > 2)
 /* DATA2/DATA3 PIO UART on pio0 (pio1 is the W5500 SPI).                       */
 /* Fixed 8N1 (data/stop/parity config ignored); TTL only (no RS-485 yet).      */
@@ -135,6 +175,17 @@ static void pio_data_uart_init_sm(void) {
         } else {
             uart_tx_program_init(PIO_DATA_UART, pio_tx_sm[i], tx_offset, pio_uart_tx_pin[i], baud);
         }
+        // TX DMA, paced by the SM's TX-FIFO DREQ. Byte-sized transfers land in
+        // the low byte of TXF, which is what the program consumes (OUT shifts
+        // right, so the low 8 bits of the 32-bit OSR are the ones sent).
+        // With CTS handshaking a stalled SM stops draining its FIFO, the DREQ
+        // stops asserting and the DMA halts on its own - back-pressure reaches
+        // the DMA in hardware, without the CPU spinning for it.
+        dma_uart_tx[i] = dma_claim_unused_channel(true);
+        dma_uart_c[i] = dma_channel_get_default_config(dma_uart_tx[i]);
+        channel_config_set_transfer_data_size(&dma_uart_c[i], DMA_SIZE_8);
+        channel_config_set_dreq(&dma_uart_c[i], pio_get_dreq(PIO_DATA_UART, pio_tx_sm[i], true));
+
         pio_rx_sm[i] = pio_claim_unused_sm(PIO_DATA_UART, true);
         uart_rx_program_init(PIO_DATA_UART, pio_rx_sm[i], rx_offset, pio_uart_rx_pin[i], baud);
         PRT_INFO("PIO UART ch%d: TX GP%d(sm%d) RX GP%d(sm%d) baud %d flow %s\r\n",
@@ -152,15 +203,22 @@ static void pio_data_uart_rx_isr(void) {
         uint8_t input_flag = 0;
         while (!pio_sm_is_rx_fifo_empty(PIO_DATA_UART, pio_rx_sm[i])) {
             uint8_t ch = (uint8_t)(*((io_rw_8 *)&PIO_DATA_UART->rxf[pio_rx_sm[i]] + 3));
-            if (is_data_buffer_full(i) == TRUE) {
-                data_buffer_flush(i);
-            }
+            // A full buffer used to be flushed here, discarding all
+            // SEG_DATA_BUF_SIZE bytes to make room for one - 16 frames at a time
+            // in the stress test. put_byte_to_data_buffer() now drops only the
+            // incoming byte and counts it.
+            //
+            // Original:
+            //     if (is_data_buffer_full(i) == TRUE) {
+            //         data_buffer_flush(i);
+            //     }
             if (check_serial_store_permitted(ch, i)) {
                 put_byte_to_data_buffer(ch, i);
                 input_flag = 1;
             }
         }
         if (input_flag) {
+            uart_rx_flow_gate(i);
             init_time_delimiter_timer(i);
             if (opmode == DEVICE_GW_MODE) {
                 xSemaphoreGiveFromISR(seg_u2e_sem[i], &xHigherPriorityTaskWoken);
@@ -183,8 +241,16 @@ static void pio_data_uart_irq_enable(void) {
 // With CTS handshaking the SM stalls until the peer is ready, so the FIFO can
 // stay full indefinitely; feed the watchdog while waiting for room.
 static void pio_data_uart_putc(int channel, uint8_t c) {
+    // A DMA transfer may still be feeding this SM's FIFO; writing directly into
+    // it now would interleave this byte into the middle of that stream.
+    platform_uart_tx_wait(channel);
+
+    // Original:
+    //     while (pio_sm_is_tx_fifo_full(PIO_DATA_UART, pio_tx_sm[channel])) {
+    //         device_wdt_reset();
+    //     }
     while (pio_sm_is_tx_fifo_full(PIO_DATA_UART, pio_tx_sm[channel])) {
-        device_wdt_reset();
+        uart_tx_spin_wait();
     }
     uart_tx_program_putc(PIO_DATA_UART, pio_tx_sm[channel], (char)c);
 }
@@ -211,9 +277,14 @@ void data0_uart_rx(void) {
         ch = uart_getc(DATA0_UART_ID);
 
         if (!(check_modeswitch_trigger(ch))) { // ret: [0] data / [!0] trigger code
-            if (is_data_buffer_full(SEG_DATA0_CH) == TRUE) {
-                data_buffer_flush(SEG_DATA0_CH);
-            }
+            // A full buffer used to be flushed here, discarding all
+            // SEG_DATA_BUF_SIZE bytes to make room for one. See the note in
+            // put_byte_to_data_buffer().
+            //
+            // Original:
+            //     if (is_data_buffer_full(SEG_DATA0_CH) == TRUE) {
+            //         data_buffer_flush(SEG_DATA0_CH);
+            //     }
 
             if (check_serial_store_permitted(ch, SEG_DATA0_CH)) { // ret: [0] not permitted / [1] permitted
                 put_byte_to_data_buffer(ch, SEG_DATA0_CH);
@@ -223,6 +294,7 @@ void data0_uart_rx(void) {
     }
 
     if (input_flag) {
+        uart_rx_flow_gate(SEG_DATA0_CH);
         init_time_delimiter_timer(SEG_DATA0_CH);
         if (opmode == DEVICE_GW_MODE) {
             xSemaphoreGiveFromISR(seg_u2e_sem[SEG_DATA0_CH], &xHigherPriorityTaskWoken);
@@ -241,9 +313,14 @@ void data1_uart_rx(void) {
     while (uart_is_readable(DATA1_UART_ID)) {
         ch = uart_getc(DATA1_UART_ID);
 
-        if (is_data_buffer_full(SEG_DATA1_CH) == TRUE) {
-            data_buffer_flush(SEG_DATA1_CH);
-        }
+        // A full buffer used to be flushed here, discarding all
+        // SEG_DATA_BUF_SIZE bytes to make room for one. See the note in
+        // put_byte_to_data_buffer().
+        //
+        // Original:
+        //     if (is_data_buffer_full(SEG_DATA1_CH) == TRUE) {
+        //         data_buffer_flush(SEG_DATA1_CH);
+        //     }
 
         if (check_serial_store_permitted(ch, SEG_DATA1_CH)) { // ret: [0] not permitted / [1] permitted
             put_byte_to_data_buffer(ch, SEG_DATA1_CH);
@@ -252,6 +329,7 @@ void data1_uart_rx(void) {
     }
 
     if (input_flag) {
+        uart_rx_flow_gate(SEG_DATA1_CH);
         init_time_delimiter_timer(SEG_DATA1_CH);
         if (opmode == DEVICE_GW_MODE) {
             xSemaphoreGiveFromISR(seg_u2e_sem[SEG_DATA1_CH], &xHigherPriorityTaskWoken);
@@ -538,22 +616,48 @@ int32_t platform_uart_putc(uint16_t ch, int channel) {
 // Callers must do this before overwriting the buffer they last handed to
 // platform_uart_puts_dma(), which starts the transfer and returns immediately.
 void platform_uart_tx_wait(int channel) {
-    if (channel >= UART_HW_CH_CNT) {
-        return;     // PIO transmit is synchronous
-    }
+    // The PIO channels used to transmit synchronously, so there was nothing to
+    // wait for. They now have a DMA path of their own and need the same wait.
+    //
+    // Original:
+    //     if (channel >= UART_HW_CH_CNT) {
+    //         return;     // PIO transmit is synchronous
+    //     }
+    //
+    // Original:
+    //     while (dma_channel_is_busy(dma_uart_tx[channel])) {
+    //         device_wdt_reset();
+    //     }
     while (dma_channel_is_busy(dma_uart_tx[channel])) {
-        device_wdt_reset();
+        uart_tx_spin_wait();
     }
 }
 
 int32_t platform_uart_puts_dma(uint8_t* buf, uint16_t bytes, int channel) {
     uart_inst_t *uart_id[DEVICE_UART_CNT] = {DATA0_UART_ID, DATA1_UART_ID};
 
-    if (channel >= UART_HW_CH_CNT) {
-        // PIO UART has no DMA TX path; use the blocking PIO transmit path.
-        return platform_uart_puts(buf, bytes, channel);
-    }
     platform_uart_tx_wait(channel);
+
+    // The PIO channels used to fall back to the byte-at-a-time blocking path,
+    // which held the CPU for the whole transfer and capped them at roughly half
+    // the HW channels' throughput. They now use DMA like the HW channels.
+    //
+    // Original:
+    //     if (channel >= UART_HW_CH_CNT) {
+    //         // PIO UART has no DMA TX path; use the blocking PIO transmit path.
+    //         return platform_uart_puts(buf, bytes, channel);
+    //     }
+    //     platform_uart_tx_wait(channel);
+    if (channel >= UART_HW_CH_CNT) {
+#if (DEVICE_UART_CNT > 2)
+        dma_channel_configure(dma_uart_tx[channel], &dma_uart_c[channel],
+                              (io_rw_8 *)&PIO_DATA_UART->txf[pio_tx_sm[channel]], // write address
+                              buf, // read address
+                              bytes, // element count (each element is of size transfer_data_size)
+                              true); // start now
+#endif
+        return RET_OK;
+    }
     dma_channel_configure(dma_uart_tx[channel], &dma_uart_c[channel],
                           &uart_get_hw(uart_id[channel])->dr, // write address
                           buf, // read address
