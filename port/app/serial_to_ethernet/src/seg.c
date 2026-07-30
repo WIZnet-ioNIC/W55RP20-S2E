@@ -173,6 +173,35 @@ static BaseType_t ensure_channel_timer(TimerHandle_t *timer,
     return (*timer == NULL) ? pdFAIL : pdPASS;
 }
 
+// The RX ISR is the only producer of seg_u2e_sem while packing_time is 0, which
+// leaves the time delimiter timer disarmed, and flow control silences that ISR
+// as soon as the ring buffer crosses UART_OFF_THRESHOLD. seg_ch_u2e_task takes
+// the semaphore before it knows whether it can drain, so a pass that finds
+// send() short of TX space, or the channel not yet ST_CONNECT, consumes a
+// wake-up for good. Once the count reaches zero with the ring buffer above the
+// threshold there is no producer left: RTS stays deasserted, no byte arrives, no
+// wake-up is generated, and the channel never resumes.
+//
+// Hand the wake-up back from the seg task, which keeps running at its own
+// priority every 10 ms and already holds seg_critical_sem here. Only when the
+// count is zero, so a channel whose send() keeps failing does not accumulate a
+// backlog of wake-ups to burn through once it recovers. Restricted to
+// SEG_SERIAL_PROTOCOL_NONE because the Modbus branches of seg_ch_u2e_task act on
+// every wake-up without checking for buffered data.
+static void restore_u2e_wakeup(int channel) {
+    if (get_serial_communation_protocol(channel) != SEG_SERIAL_PROTOCOL_NONE) {
+        return;
+    }
+
+    if (uxSemaphoreGetCount(seg_u2e_sem[channel]) != 0) {
+        return;
+    }
+
+    if (get_data_buffer_usedsize(channel) || u2e_size[channel]) {
+        xSemaphoreGive(seg_u2e_sem[channel]);
+    }
+}
+
 /* Public & Private functions ------------------------------------------------*/
 
 void do_seg(uint8_t sock, int channel) {
@@ -224,6 +253,8 @@ void do_seg(uint8_t sock, int channel) {
                 (serial_option->flow_control == flow_dtr_dsr)) {
             check_uart_flow_control(serial_option->flow_control, channel);
         }
+
+        restore_u2e_wakeup(channel);
     }
 }
 
