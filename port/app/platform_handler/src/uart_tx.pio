@@ -4,15 +4,29 @@
 ; SPDX-License-Identifier: BSD-3-Clause
 ;
 
+; Payload width and stop-bit count are per-state-machine, so DATA2 and DATA3 share
+; one copy of each program while running different serial parameters:
+;
+;   width      y holds (payload bits - 1), loaded once per SM with pio_sm_exec().
+;              Payload = data bits, plus one appended parity bit when parity is
+;              enabled - the CPU computes that bit, the state machine only shifts.
+;   stop bits  the SM's wrap target decides whether extra_stop is in the loop.
+;
+; mov x, y costs the same single cycle set x, 7 did, so 8N1 frame timing is
+; unchanged from the fixed-width version.
+
 .program uart_tx
 .side_set 1 opt
 
-; An 8n1 UART transmit program.
+; A UART transmit program with runtime payload width and stop-bit count.
 ; OUT pin 0 and side-set pin 0 are both mapped to UART TX pin.
 
+public extra_stop:
+    nop        side 1 [7]  ; Second stop bit; in the loop only when stop bits > 1
+public entry:
     pull       side 1 [7]  ; Assert stop bit, or stall with line in idle state
-    set x, 7   side 0 [7]  ; Preload bit counter, assert start bit for 8 clocks
-bitloop:                   ; This loop will run 8 times (8n1 UART)
+    mov x, y   side 0 [7]  ; Load bit counter from y, assert start bit for 8 clocks
+bitloop:                   ; Runs (y + 1) times
     out pins, 1            ; Shift 1 bit from OSR to the first OUT pin
     jmp x-- bitloop   [6]  ; Each loop iteration is 8 cycles.
 
@@ -20,7 +34,7 @@ bitloop:                   ; This loop will run 8 times (8n1 UART)
 .program uart_tx_cts
 .side_set 1 opt
 
-; An 8n1 UART transmit program with CTS handshaking.
+; As uart_tx, plus CTS handshaking.
 ; OUT pin 0 and side-set pin 0 map to the UART TX pin; IN pin 0 maps to CTS.
 ; CTS (active low) is sampled immediately before each byte, so a peer that
 ; deasserts it stops the stream at the next byte boundary even when bytes are
@@ -28,10 +42,13 @@ bitloop:                   ; This loop will run 8 times (8n1 UART)
 ; The pull delay is one cycle shorter than in uart_tx to pay for the wait, so
 ; a byte still takes 80 cycles (10 bit periods) once CTS is asserted.
 
+public extra_stop:
+    nop        side 1 [7]  ; Second stop bit; in the loop only when stop bits > 1
+public entry:
     pull       side 1 [6]  ; Assert stop bit, or stall with line in idle state
     wait 0 pin 0           ; Stall while the peer is not ready (CTS high)
-    set x, 7   side 0 [7]  ; Preload bit counter, assert start bit for 8 clocks
-cts_bitloop:               ; This loop will run 8 times (8n1 UART)
+    mov x, y   side 0 [7]  ; Load bit counter from y, assert start bit for 8 clocks
+cts_bitloop:               ; Runs (y + 1) times
     out pins, 1            ; Shift 1 bit from OSR to the first OUT pin
     jmp x-- cts_bitloop [6] ; Each loop iteration is 8 cycles.
 
@@ -39,7 +56,28 @@ cts_bitloop:               ; This loop will run 8 times (8n1 UART)
 % c-sdk {
 #include "hardware/clocks.h"
 
-static inline void uart_tx_program_init(PIO pio, uint sm, uint offset, uint pin_tx, uint baud) {
+// Bits the state machine shifts out per frame: data bits plus the appended parity
+// bit when parity is in use. The CPU supplies that bit as the top payload bit.
+static inline uint uart_pio_payload_bits(uint data_bits, bool parity) {
+    return data_bits + (parity ? 1u : 0u);
+}
+
+// Shared by both TX programs: pick the wrap target that sets the stop-bit count,
+// then load the per-SM bit counter.
+static inline void uart_tx_apply_format(PIO pio, uint sm, pio_sm_config *c, uint offset,
+                                        uint entry_offset, uint extra_stop_offset,
+                                        uint program_length,
+                                        uint payload_bits, uint stop_bits) {
+    uint start = offset + ((stop_bits > 1) ? extra_stop_offset : entry_offset);
+
+    sm_config_set_wrap(c, start, offset + program_length - 1);
+    pio_sm_init(pio, sm, start, c);
+    // y survives the frame loop - only x is consumed by jmp x-- - so this runs once.
+    pio_sm_exec(pio, sm, pio_encode_set(pio_y, payload_bits - 1));
+}
+
+static inline void uart_tx_program_init_fmt(PIO pio, uint sm, uint offset, uint pin_tx, uint baud,
+                                            uint data_bits, bool parity, uint stop_bits) {
     // Tell PIO to initially drive output-high on the selected pin, then map PIO
     // onto that pin with the IO muxes.
     pio_sm_set_pins_with_mask(pio, sm, 1u << pin_tx, 1u << pin_tx);
@@ -64,14 +102,18 @@ static inline void uart_tx_program_init(PIO pio, uint sm, uint offset, uint pin_
     float div = (float)clock_get_hz(clk_sys) / (8 * baud);
     sm_config_set_clkdiv(&c, div);
 
-    pio_sm_init(pio, sm, offset, &c);
+    uart_tx_apply_format(pio, sm, &c, offset,
+                         uart_tx_offset_entry, uart_tx_offset_extra_stop,
+                         uart_tx_program.length,
+                         uart_pio_payload_bits(data_bits, parity), stop_bits);
     pio_sm_set_enabled(pio, sm, true);
 }
 
-// As uart_tx_program_init, plus a CTS input the state machine waits on before
+// As uart_tx_program_init_fmt, plus a CTS input the state machine waits on before
 // each byte. pin_cts needs no pio_gpio_init: PIO reads pad state regardless of
 // the pin's function select.
-static inline void uart_tx_cts_program_init(PIO pio, uint sm, uint offset, uint pin_tx, uint pin_cts, uint baud) {
+static inline void uart_tx_cts_program_init_fmt(PIO pio, uint sm, uint offset, uint pin_tx, uint pin_cts,
+        uint baud, uint data_bits, bool parity, uint stop_bits) {
     pio_sm_set_pins_with_mask(pio, sm, 1u << pin_tx, 1u << pin_tx);
     pio_sm_set_pindirs_with_mask(pio, sm, 1u << pin_tx, 1u << pin_tx);
     pio_gpio_init(pio, pin_tx);
@@ -87,8 +129,21 @@ static inline void uart_tx_cts_program_init(PIO pio, uint sm, uint offset, uint 
     float div = (float)clock_get_hz(clk_sys) / (8 * baud);
     sm_config_set_clkdiv(&c, div);
 
-    pio_sm_init(pio, sm, offset, &c);
+    uart_tx_apply_format(pio, sm, &c, offset,
+                         uart_tx_cts_offset_entry, uart_tx_cts_offset_extra_stop,
+                         uart_tx_cts_program.length,
+                         uart_pio_payload_bits(data_bits, parity), stop_bits);
     pio_sm_set_enabled(pio, sm, true);
+}
+
+// 8N1 wrappers so callers with no serial-parameter handling (the debug UART) stay
+// unchanged.
+static inline void uart_tx_program_init(PIO pio, uint sm, uint offset, uint pin_tx, uint baud) {
+    uart_tx_program_init_fmt(pio, sm, offset, pin_tx, baud, 8, false, 1);
+}
+
+static inline void uart_tx_cts_program_init(PIO pio, uint sm, uint offset, uint pin_tx, uint pin_cts, uint baud) {
+    uart_tx_cts_program_init_fmt(pio, sm, offset, pin_tx, pin_cts, baud, 8, false, 1);
 }
 
 static inline void uart_tx_program_putc(PIO pio, uint sm, char c) {

@@ -61,6 +61,21 @@
 #define SEGCP_SERIAL_TASK_PRIORITY 50
 
 #define SEG_TASK_STACK_SIZE (1024 * 4)
+// Left at 18, which is below everything it shares the data path with.
+//
+// configMAX_PRIORITIES is 32, so xTaskCreate silently clamps every priority above 31
+// to 31 - that is all of the seg and segcp tasks. This one is therefore alone at 18
+// while eight data-path tasks share 31, and it holds seg_critical_sem across the whole
+// of do_seg(), so anything that keeps it off the CPU stops the channel outright.
+//
+// Two things used to do exactly that, both since fixed: the drain task retook
+// seg_critical_sem without ever yielding, and the transmit wait spun on taskYIELD()
+// through an entire DMA. Raising this to 31 instead was tried and reverted - it
+// removed the stall but caused ring overflow and lost frames, because the task then
+// contends for the semaphore with the drain task it was waiting on, and silent loss is
+// worse than a detectable stall. The structural fix is to stop holding
+// seg_critical_sem across all of do_seg(); until then this task is only as safe as the
+// priority 31 tasks are willing to block.
 #define SEG_TASK_PRIORITY 18
 
 #define SEG_TIMER_TASK_STACK_SIZE 256
@@ -170,7 +185,6 @@ static void set_W5X00_NetTimeout(void) {
     wizchip_gettimeout(&net_timeout); // TCP timeout settings
     PRT_INFO(" - Network Timeout Settings - RCR: %d, RTR: %d\r\n", net_timeout.retry_cnt, net_timeout.time_100us);
 }
-
 
 void start_task(void *argument) {
     DevConfig *dev_config = get_DevConfig_pointer();

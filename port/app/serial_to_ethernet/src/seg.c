@@ -81,6 +81,7 @@ extern xSemaphoreHandle seg_timer_sem;
 extern xSemaphoreHandle segcp_uart_sem;
 extern xSemaphoreHandle seg_critical_sem[DEVICE_UART_CNT];
 extern xSemaphoreHandle seg_sem[DEVICE_UART_CNT];
+extern xSemaphoreHandle wizchip_critical_sem;
 
 extern TimerHandle_t seg_inactivity_timer[DEVICE_UART_CNT];
 extern TimerHandle_t seg_keepalive_timer[DEVICE_UART_CNT];
@@ -89,6 +90,11 @@ extern TimerHandle_t spi_reset_timer;
 
 uint16_t u2e_size[DEVICE_UART_CNT] = {0, };
 uint16_t e2u_size[DEVICE_UART_CNT] = {0, };
+
+// Stamped by seg_ch_task once per loop and read by seg_ch_u2e_task, which runs at a
+// higher priority and otherwise has no way to tell that it is starving the task it
+// shares seg_critical_sem with.
+static volatile uint32_t seg_task_heartbeat_ms[DEVICE_UART_CNT];
 
 // channel -> W5500 data socket map (also used by netHandler.c)
 const uint8_t seg_data_sock[DEVICE_UART_CNT] = {
@@ -171,6 +177,42 @@ static BaseType_t ensure_channel_timer(TimerHandle_t *timer,
     }
 
     return (*timer == NULL) ? pdFAIL : pdPASS;
+}
+
+// Drain what the peer sent before its FIN out to the UART, then let the caller
+// disconnect. Bounded, because the loop it replaces was not:
+//
+//     while (getSn_RX_RSR(sock) || e2u_size[channel]) {
+//         ether_to_uart(sock, channel);
+//     }
+//
+// That runs inside do_seg(), which holds seg_critical_sem, and ether_to_uart()
+// waits on the TX DMA with no timeout of its own. A peer that stops accepting
+// serial data therefore parks do_seg() for good: seg_ch_u2e_task never gets the
+// semaphore, the ring buffer is never drained, RTS is never reasserted - and
+// check_uart_flow_control() sits at the end of do_seg(), so it is never reached
+// either. Observed as a permanently stalled channel with a full ring buffer and
+// hundreds of unconsumed seg_u2e_sem wake-ups.
+//
+// This is the connection teardown path, so bounding it cannot slow the steady
+// state. Data still in flight when the budget runs out is dropped, which is what
+// already happened to it when the channel stalled - except the channel now
+// recovers.
+#define SEG_CLOSE_WAIT_DRAIN_MS 500U
+
+static void drain_socket_to_uart(uint8_t sock, int channel) {
+    uint32_t started = millis();
+
+    while (getSn_RX_RSR(sock) || e2u_size[channel]) {
+        ether_to_uart(sock, channel);    // receive remaining packets
+
+        if ((uint32_t)(millis() - started) >= SEG_CLOSE_WAIT_DRAIN_MS) {
+            PRT_SEG(" > SEG:CLOSE_WAIT drain gave up ch%d rx=%d e2u=%d\r\n",
+                    channel, (int)getSn_RX_RSR(sock), (int)e2u_size[channel]);
+            break;
+        }
+    }
+
 }
 
 // The RX ISR is the only producer of seg_u2e_sem while packing_time is 0, which
@@ -256,6 +298,7 @@ void do_seg(uint8_t sock, int channel) {
 
         restore_u2e_wakeup(channel);
     }
+
 }
 
 void set_device_status(teDEVSTATUS status, int channel) {
@@ -339,7 +382,6 @@ uint8_t get_device_status(int channel) {
     return network_connection->working_state;
 }
 
-
 void proc_SEG_udp(uint8_t sock, int channel) {
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
     struct __serial_common *serial_common = (struct __serial_common *) & (get_DevConfig_pointer()->serial_common);
@@ -380,8 +422,17 @@ void proc_SEG_udp(uint8_t sock, int channel) {
             setSn_DHAR(sock, multicast_mac);
             flag |= SF_MULTI_ENABLE;
         }
-        flag |= SOCK_IO_NONBLOCK;
-        int8_t s = socket(sock, Sn_MR_UDP, network_connection->local_port, 0);
+        // flag was assembled above and then thrown away: socket() got a literal 0,
+        // so multicast was never enabled and the socket opened blocking - sendto()
+        // then sits in ioLibrary's SENDOK polling loop instead of returning SOCK_BUSY.
+        // SOCK_IO_NONBLOCK is also the wrong name here; it belongs to setsockopt().
+        // Both constants happen to be 1, so only the discarded flag changed behaviour.
+        //
+        // Original:
+        //     flag |= SOCK_IO_NONBLOCK;
+        //     int8_t s = socket(sock, Sn_MR_UDP, network_connection->local_port, 0);
+        flag |= SF_IO_NONBLOCK;
+        int8_t s = socket(sock, Sn_MR_UDP, network_connection->local_port, flag);
 
         if (s == sock) {
             set_device_status(ST_UDP, channel);
@@ -491,9 +542,7 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
 
     case SOCK_CLOSE_WAIT:
         if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
-            while (getSn_RX_RSR(sock) || e2u_size[channel]) {
-                ether_to_uart(sock, channel); // receive remaining packets
-            }
+            drain_socket_to_uart(sock, channel);
         }
         disconnect(sock);
         break;
@@ -511,7 +560,6 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
         } else {
             source_port = get_tcp_any_port();
         }
-
 
 #ifdef _SEG_DEBUG_
         PRT_SEG(" > TCP CLIENT: client_any_port = %d\r\n", client_any_port);
@@ -687,9 +735,7 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
 
     case SOCK_CLOSE_WAIT:
         if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
-            while (getSn_RX_RSR(sock) || e2u_size[channel]) {
-                ether_to_uart(sock, channel);    // receive remaining packets
-            }
+            drain_socket_to_uart(sock, channel);
         }
         disconnect(sock);
         break;
@@ -739,7 +785,6 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
 }
 
 #endif
-
 
 void proc_SEG_mqtt_client(uint8_t sock, int channel) {
     struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option);
@@ -1274,9 +1319,7 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
 
     case SOCK_CLOSE_WAIT:
         if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
-            while (getSn_RX_RSR(sock) || e2u_size[channel]) {
-                ether_to_uart(sock, channel);    // receive remaining packets
-            }
+            drain_socket_to_uart(sock, channel);
         }
         disconnect(sock);
         break;
@@ -1323,7 +1366,6 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
         break;
     }
 }
-
 
 void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
     struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option[channel]);
@@ -1473,9 +1515,7 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
     case SOCK_CLOSE_WAIT:
         PRT_SEG("case SOCK_CLOSE_WAIT\r\n");
         if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
-            while (getSn_RX_RSR(sock) || e2u_size[channel]) {
-                ether_to_uart(sock, channel);    // receive remaining packets
-            }
+            drain_socket_to_uart(sock, channel);
         }
         disconnect(sock);
         break;
@@ -1597,7 +1637,27 @@ void uart_to_ether(uint8_t sock, int channel) {
             }
 #endif
             else {
-                sent_len = (int16_t)send(sock, g_send_buf[channel], len);
+                // send() is all or nothing: it clamps the request to getSn_TxMAX() and
+                // then, on a non-blocking socket, returns SOCK_BUSY until that whole
+                // amount is free. DATA_BUF_SIZE equals the 2 KB socket transmit buffer,
+                // so a saturated u2e_size asks for every byte of it and only succeeds
+                // once nothing is left unacknowledged. get_serial_data() cannot grow the
+                // request past that cap to make it fit either, so under sustained
+                // traffic - where something is always in flight - the channel stops
+                // sending for good: the ring buffer fills behind it and the peer is
+                // never released. Offer what the socket has room for and keep the rest.
+                //
+                // Original:
+                //     sent_len = (int16_t)send(sock, g_send_buf[channel], len);
+                uint16_t freesize = getSn_TX_FSR(sock);
+
+                if (len > freesize) {
+                    len = freesize;
+                }
+
+                if (len > 0) {
+                    sent_len = (int16_t)send(sock, g_send_buf[channel], len);
+                }
             }
 
             if ((tcp_option->keepalive_en == ENABLE) &&
@@ -1609,6 +1669,10 @@ void uart_to_ether(uint8_t sock, int channel) {
         }
         if (sent_len > 0) {
             u2e_size[channel] -= sent_len;
+            // A short send leaves a tail, which has to lead the next request.
+            if (u2e_size[channel]) {
+                memmove(g_send_buf[channel], &g_send_buf[channel][sent_len], u2e_size[channel]);
+            }
         }
     }
 }
@@ -1689,6 +1753,19 @@ void ether_to_uart(uint8_t sock, int channel) {
     uint16_t i;
     uint16_t reg_val;
 
+    // The E2S stall lives here: platform_uart_cts_ready() reports ready
+    // unconditionally on the HW channels because the PL011 gates CTS itself, so a
+    // peer holding CTS off stops the wire, the transmit DMA never completes, and the
+    // platform_uart_tx_wait() below never returns - taking the whole receive task
+    // with it. Every observed E2S stall was DATA0 or DATA1 for that reason; the PIO
+    // channels read their CTS pin and do return early here.
+    //
+    // Returning early on a busy DMA was tried and reverted: it fixed the wedge but
+    // cost about 12 % of E2S throughput on every channel, because the task then
+    // waits a whole tick between chunks instead of queueing the next one the moment
+    // the DMA frees up. A working fix has to keep the pipe full - poll at finer
+    // granularity, or bound the wait without letting recv() overwrite a buffer the
+    // DMA is still reading.
     if (serial_option->flow_control == flow_rts_cts) {
         if (!platform_uart_cts_ready(channel)) {
             return;
@@ -1949,7 +2026,6 @@ uint16_t get_tcp_any_port(void) {
     return client_any_port;
 }
 
-
 uint8_t get_serial_communation_protocol(int channel) {
     struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option[channel]);
 
@@ -1960,11 +2036,9 @@ uint8_t get_serial_communation_protocol(int channel) {
     return serial_option->protocol;
 }
 
-
 void send_keepalive_packet_manual(uint8_t sock) {
     setsockopt(sock, SO_KEEPALIVESEND, 0);
 }
-
 
 uint8_t process_socket_termination(uint8_t sock, uint32_t timeout, int channel, uint8_t mutex) {
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
@@ -2035,7 +2109,6 @@ uint8_t check_connect_pw_auth(uint8_t * buf, uint16_t len) {
 
     return ret;
 }
-
 
 void init_trigger_modeswitch(uint8_t mode) {
     struct __serial_common *serial_common = (struct __serial_common *) & (get_DevConfig_pointer()->serial_common);
@@ -2333,7 +2406,6 @@ uint16_t debugSerial_dataTransfer(uint8_t * buf, uint16_t size, teDEBUGTYPE type
     return bytecnt;
 }
 
-
 void send_sid(uint8_t sock, uint8_t link_message) {
     DevConfig *dev_config = get_DevConfig_pointer();
 
@@ -2376,7 +2448,6 @@ void send_sid(uint8_t sock, uint8_t link_message) {
                        dev_config->network_common.mac[4],
                        dev_config->network_common.mac[5]);
         break;
-
 
     case SEG_LINK_MSG_DEVALIAS:
         len = snprintf((char *)buf, sizeof(buf), "%s", dev_config->device_option.device_alias);
@@ -2470,6 +2541,7 @@ void seg_ch_task(void *argument)  {
     uint8_t sock = seg_data_sock[channel];
 
     while (1) {
+        seg_task_heartbeat_ms[channel] = (uint32_t)millis();
         if (get_net_status() == NET_LINK_DISCONNECTED) {
             PRT_SEGCP("get_net_status() != NET_LINK_DISCONNECTED\r\n");
             xSemaphoreTake(net_seg_sem[channel], portMAX_DELAY);
@@ -2481,11 +2553,31 @@ void seg_ch_task(void *argument)  {
     }
 }
 
+// seg_ch_task sits at SEG_TASK_PRIORITY while this task runs at the clamped ceiling,
+// so releasing seg_critical_sem below does not hand over the CPU: this loop comes back
+// around and retakes it before the lower priority task is ever scheduled. A 12 hour
+// soak left one channel that way for ten hours.
+//
+// Two consequences, handled at the end of the drain. check_uart_flow_control() used to
+// run only from do_seg(), so the peer stayed blocked for as long as seg_ch_task was
+// kept out - the ring buffer drained to empty with RTS still asserted and no producer
+// left to restart the channel. The buffer level changes here, so the deassert belongs
+// here too, inside the critical section so it cannot race the do_seg() call. Hardware
+// handshakes only: XON/XOFF writes a byte to the UART, which that call already owns.
+//
+// Flow control does not cover the rest of do_seg() though - seg_ch_task also drives
+// socket state, so a channel that never yields stops noticing disconnects. taskYIELD()
+// is no help, it only reaches equal or higher priority, so a tick of blocking is the
+// only way down. Spent only once seg_ch_task is visibly behind, which costs nothing
+// while it is keeping up.
+#define SEG_U2E_YIELD_WINDOW_MS 50U
+
 void seg_ch_u2e_task(void *argument)  {
     int channel = (int)(uintptr_t)argument;
     uint8_t sock = seg_data_sock[channel];
     uint8_t serial_mode = get_serial_communation_protocol(channel);
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
+    struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option[channel]);
 
     while (1) {
         if (get_net_status() == NET_LINK_DISCONNECTED) {
@@ -2506,7 +2598,14 @@ void seg_ch_u2e_task(void *argument)  {
                     uart_to_ether(sock, channel);
                 }
             }
+            if ((serial_option->flow_control == flow_rts_cts) ||
+                    (serial_option->flow_control == flow_dtr_dsr)) {
+                check_uart_flow_control(serial_option->flow_control, channel);
+            }
             xSemaphoreGive(seg_critical_sem[channel]);
+            if ((uint32_t)((uint32_t)millis() - seg_task_heartbeat_ms[channel]) >= SEG_U2E_YIELD_WINDOW_MS) {
+                vTaskDelay(1);
+            }
             break;
 
         case SEG_SERIAL_MODBUS_RTU : {

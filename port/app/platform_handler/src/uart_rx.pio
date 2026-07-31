@@ -3,40 +3,103 @@
 ;
 ; SPDX-License-Identifier: BSD-3-Clause
 ;
-; Minimal 8n1 UART receive program for DATA2/DATA3 PIO UARTs.
-; IN pin 0 is mapped to the UART RX pin. Autopush after 8 bits; the received
-; byte lands in the top byte of the RX FIFO word (shift-right), read via
-; ((io_rw_8*)&pio->rxf[sm] + 3), matching the TX helper's conventions.
+; UART receive program for DATA2/DATA3 PIO UARTs. IN pin 0 is mapped to the UART
+; RX pin.
+;
+; Payload width is per-state-machine: y holds (payload bits - 1), loaded once with
+; pio_sm_exec(), so DATA2 and DATA3 share one copy of the program while running
+; different serial parameters. Payload = data bits plus the parity bit when parity
+; is enabled; the CPU splits it off and verifies it.
+;
+; mov x, y costs the same single cycle set x, 7 did, so every data sample point is
+; unchanged from the fixed-width version.
+;
+; Framing-error detection is selected per state machine by the wrap target, the same
+; way uart_tx picks its stop-bit count - pioasm has no conditional assembly, so the
+; instructions are always resident and the wrap decides whether they run.
+;
+; It is off by default because it costs resynchronisation margin. Cycle budget for
+; one 8N1 frame, from the start bit's falling edge:
+;
+;   start bit      cycles  0..7
+;   data bit 0     cycles  8..15   sampled at 11
+;   data bit 7     cycles 64..71   sampled at 67
+;   loop exit                      cycle 75
+;   stop bit       cycles 72..79   centre 75.5
+;   next start bit cycle  80
+;
+; The loop already exits at the stop bit's centre. Wrapping there leaves 5 cycles of
+; slack before the next start bit, and the clock divider is fractional
+; (200 MHz / (8 * 460800) = 54.25), so cycles jitter and that slack absorbs it.
+;
+; The check spends 1 more cycle on a good frame and 2 on a bad one, cutting the slack
+; to 4 or 3. An earlier version also delayed 3 cycles before sampling, leaving 1 - at
+; 460,800 bps the receiver then lost frame sync continuously and every frame arrived
+; as unrecognisable bytes. Keep that budget in mind before touching this loop.
 
 .program uart_rx
 
+public start:
     wait 0 pin 0        ; Stall until start bit is asserted
-    set x, 7    [10]    ; Preload bit counter, delay until eye of first data bit
-bitloop:                ; This loop will run 8 times (8n1 UART)
+    mov x, y    [10]    ; Load bit counter, delay until eye of first data bit
+bitloop:                ; Runs (y + 1) times
     in pins, 1          ; Shift 1 bit from the RX pin into the ISR
+public plain_end:
     jmp x-- bitloop [6] ; Each loop iteration is 8 cycles
+    jmp pin start       ; Stop bit high at its centre: frame is well formed
+    irq 0 rel           ; Stop bit low: framing error. Flag it, then wrap to start
 
 % c-sdk {
 #include "hardware/clocks.h"
 #include "hardware/gpio.h"
 
-static inline void uart_rx_program_init(PIO pio, uint sm, uint offset, uint pin, uint baud) {
+// Framing-error detection costs receive margin (see the cycle budget above), so it
+// stays off unless a test needs the counter.
+#ifndef SEG_PIO_RX_FRAMING_CHECK
+#define SEG_PIO_RX_FRAMING_CHECK 0
+#endif
+
+static inline void uart_rx_program_init_fmt(PIO pio, uint sm, uint offset, uint pin, uint baud,
+                                            uint data_bits, bool parity) {
+    uint payload_bits = data_bits + (parity ? 1u : 0u);
+    uint start = offset + uart_rx_offset_start;
+    // Wrapping at the jmp x-- skips the stop-bit test entirely; wrapping at the irq
+    // includes it.
+    uint wrap = offset + (SEG_PIO_RX_FRAMING_CHECK ? (uart_rx_program.length - 1)
+                          : uart_rx_offset_plain_end);
+
     pio_sm_set_consecutive_pindirs(pio, sm, pin, 1, false);
     pio_gpio_init(pio, pin);
     gpio_pull_up(pin);
 
     pio_sm_config c = uart_rx_program_get_default_config(offset);
     sm_config_set_in_pins(&c, pin); // for WAIT, IN
-    sm_config_set_jmp_pin(&c, pin); // for JMP (not used by the minimal program)
-    // Shift to the right, autopush enabled with a threshold of 8 bits
-    sm_config_set_in_shift(&c, true, true, 8);
+    sm_config_set_jmp_pin(&c, pin); // for the stop-bit test
+    // Shift to the right, autopush at the payload width
+    sm_config_set_in_shift(&c, true, true, payload_bits);
     sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_RX);
     // SM receives 1 bit per 8 execution cycles (same timing as uart_tx)
     float div = (float)clock_get_hz(clk_sys) / (8 * baud);
     sm_config_set_clkdiv(&c, div);
+    sm_config_set_wrap(&c, start, wrap);
 
-    pio_sm_init(pio, sm, offset, &c);
+    pio_sm_init(pio, sm, start, &c);
+    // y survives the frame loop - only x is consumed by jmp x-- - so this runs once.
+    pio_sm_exec(pio, sm, pio_encode_set(pio_y, payload_bits - 1));
     pio_sm_set_enabled(pio, sm, true);
+}
+
+static inline void uart_rx_program_init(PIO pio, uint sm, uint offset, uint pin, uint baud) {
+    uart_rx_program_init_fmt(pio, sm, offset, pin, baud, 8, false);
+}
+
+// Right-shifted autopush leaves the payload in the top bits of the FIFO word, so
+// where it sits depends on the width. The 8-bit case is the original top-byte read.
+static inline uint32_t uart_rx_program_extract(uint32_t fifo_word, uint payload_bits) {
+    if (payload_bits == 8) {
+        return (fifo_word >> 24) & 0xFFu;
+    }
+    return (fifo_word >> (32u - payload_bits)) & ((1u << payload_bits) - 1u);
 }
 
 static inline char uart_rx_program_getc(PIO pio, uint sm) {

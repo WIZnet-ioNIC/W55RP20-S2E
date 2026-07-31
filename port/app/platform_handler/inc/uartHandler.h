@@ -117,6 +117,13 @@ void DATA_UART_Interrupt_Enable(void);
 
 // XON/XOFF Software flow control: Check the Buffer usage and Send the start/stop commands
 void check_uart_flow_control(uint8_t flow_ctrl, int channel);
+
+#if (DEVICE_UART_CNT > 2)
+// PIO channels only; HW channels return 0 because their PL011 error flags are not
+// read yet.
+uint32_t get_uart_framing_error_count(int channel);
+uint32_t get_uart_parity_error_count(int channel);
+#endif
 uint8_t platform_uart_cts_ready(int channel);
 void platform_uart_tx_wait(int channel);
 

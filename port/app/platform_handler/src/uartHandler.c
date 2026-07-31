@@ -19,7 +19,6 @@
 
 /* Private define ------------------------------------------------------------*/
 
-
 /* Private functions prototypes ----------------------------------------------*/
 
 /* Private functions ---------------------------------------------------------*/
@@ -43,7 +42,20 @@ uint8_t * uart_if_table[] = {(uint8_t *)UART_IF_STR_RS232_TTL, (uint8_t *)UART_I
 static uint8_t xonoff_status[DEVICE_UART_CNT];
 
 // UART Interface selector; RS-422 or RS-485 use only
-static uint8_t uart_if_mode[DEVICE_UART_CNT] = {UART_IF_RS422, UART_IF_RS422};
+// Had only two initialisers while the array was DEVICE_UART_CNT long, so DATA2 and
+// DATA3 silently defaulted to 0 (TTL) instead of the intended RS-422.
+//
+// Original:
+//     static uint8_t uart_if_mode[DEVICE_UART_CNT] = {UART_IF_RS422, UART_IF_RS422};
+static uint8_t uart_if_mode[DEVICE_UART_CNT] = {
+    UART_IF_RS422, UART_IF_RS422,
+#if (DEVICE_UART_CNT > 2)
+    UART_IF_RS422,
+#endif
+#if (DEVICE_UART_CNT > 3)
+    UART_IF_RS422,
+#endif
+};
 
 extern xSemaphoreHandle seg_u2e_sem[DEVICE_UART_CNT];
 extern xSemaphoreHandle segcp_uart_sem;
@@ -64,16 +76,71 @@ static const uint data_uart_rts_pin[DEVICE_UART_CNT] = {
 static uint8_t data_uart_rts_status[DEVICE_UART_CNT];
 static uint8_t data_uart_dtr_status[DEVICE_UART_CNT];
 
-// Yield while spinning on a transmit path so the other channels' seg tasks can
-// run. Without this a channel waiting on flow control burns its whole time
-// slice, and under four-channel load that starved the S2E direction of the
-// other channels (one channel took 43 kB/s while the rest got under 4 kB/s).
-// Guarded because these paths also run before the scheduler starts.
-static inline void uart_tx_spin_wait(void) {
+// Yield while spinning on a transmit path so the other channels' tasks can run.
+// Without any yield a channel waiting on flow control burns its whole time slice,
+// and under four-channel load that starved the S2E direction of the other channels
+// (one channel took 43 kB/s while the rest got under 4 kB/s).
+//
+// A plain taskYIELD() is not enough on its own, though: it only ever hands the CPU
+// to tasks of equal or higher priority. Every
+// data-path task ends up at priority 31 (configMAX_PRIORITIES is 32, so xTaskCreate
+// clamps the 40..52 values down), while seg_ch_task sits alone at 18 - so a channel
+// spinning here can keep eight peers fed and never let 18 run again. seg_ch_task
+// holds seg_critical_sem across do_seg() and is what reasserts RTS at the end of it,
+// so the channel wedges: ring buffer full, RTS deasserted for good, S2E dead.
+//
+// Yield cheaply while a transfer is merely in progress, and once the wait has
+// clearly stopped being transient, sleep a tick so lower priorities get in.
+//
+// The bound is elapsed time, not a spin count: a full 2 kB chunk at 460,800 bps
+// takes about 44 ms, and a spin count large enough to cover that is impossible to
+// pick (each taskYIELD() costs microseconds, so a healthy transfer easily runs to
+// thousands of iterations). 200 ms clears any legitimate chunk at this baud while
+// still being reached almost immediately by a transfer the peer has frozen with CTS.
+//
+// This is preferred over raising seg_ch_task's priority - that removed the stall but
+// made it contend for seg_critical_sem with the drain task, causing ring overflow and
+// lost frames - and over returning early from ether_to_uart(), which emptied the
+// transmit pipe and cost about 12 % of E2S throughput.
+#define UART_TX_SPIN_YIELD_MS 200U
+
+// Waiting out a transmit DMA is different from waiting for FIFO space. The DMA is
+// pure hardware time - up to 44 ms for a 2 kB chunk at 460,800 bps - and the task has
+// nothing to do until it lands, so yielding through all of it keeps a priority 31 task
+// runnable for the whole transfer. Four channels doing that fill both cores, and
+// seg_ch_task at 18 stops being scheduled; because it holds seg_critical_sem across
+// do_seg(), the drain task blocks behind it and the channel stops outright. Sleeping
+// costs at most one tick per chunk against 44 ms of wire time, and the wire is the
+// limit here, not the task. The short window keeps small transfers, which finish well
+// inside a tick, from paying that tick.
+#define UART_TX_DMA_YIELD_MS 2U
+
+static inline void uart_tx_spin_wait_bounded(uint32_t *started_ms, uint32_t yield_ms) {
     device_wdt_reset();
-    if (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING) {
-        taskYIELD();
+
+    // These paths also run before the scheduler starts.
+    if (xTaskGetSchedulerState() != taskSCHEDULER_RUNNING) {
+        return;
     }
+
+    if (*started_ms == 0) {
+        *started_ms = (uint32_t)millis();
+        // millis() can legitimately be 0 at boot; 1 is close enough and keeps the
+        // "not started yet" sentinel usable.
+        if (*started_ms == 0) {
+            *started_ms = 1;
+        }
+    }
+
+    if (((uint32_t)millis() - *started_ms) < yield_ms) {
+        taskYIELD();
+    } else {
+        vTaskDelay(1);
+    }
+}
+
+static inline void uart_tx_spin_wait_until(uint32_t *started_ms) {
+    uart_tx_spin_wait_bounded(started_ms, UART_TX_SPIN_YIELD_MS);
 }
 
 // Stop the peer from the RX ISR as soon as the ring buffer crosses its
@@ -134,6 +201,62 @@ static const uint pio_uart_cts_pin[DEVICE_UART_CNT] = {
 static uint pio_tx_sm[DEVICE_UART_CNT];
 static uint pio_rx_sm[DEVICE_UART_CNT];
 
+// Serial parameters, resolved once at init and cached for the TX/RX paths.
+// PIO has no parity hardware, so parity is split across CPU and state machine:
+// the CPU appends the parity bit as the top payload bit on TX, and strips and
+// verifies it on RX. The state machine only ever shifts payload_bits.
+static uint8_t pio_uart_data_bits[DEVICE_UART_CNT];
+static uint8_t pio_uart_parity[DEVICE_UART_CNT];
+static uint8_t pio_uart_payload_bits[DEVICE_UART_CNT];
+static uint8_t pio_uart_stop_bits[DEVICE_UART_CNT];
+static uint8_t pio_uart_de_mode[DEVICE_UART_CNT];   // RS-422/485 owns the RTS pin
+static volatile uint32_t pio_uart_framing_err[DEVICE_UART_CNT];
+static volatile uint32_t pio_uart_parity_err[DEVICE_UART_CNT];
+
+static uint8_t pio_uart_resolve_data_bits(uint8_t cfg) {
+    switch (cfg) {
+    case word_len7:
+        return 7;
+    case word_len9:
+        return 9;
+    case word_len8:
+    default:
+        return 8;
+    }
+}
+
+// stop_bit1 / stop_bit2 are the only values the enum carries; 1.5 stop bits are
+// named in the config comment but have no encoding, so anything else means 1.
+static uint8_t pio_uart_resolve_stop_bits(uint8_t cfg) {
+    return (cfg == stop_bit2) ? 2 : 1;
+}
+
+// Parity over the data bits only. Even parity makes the count of ones even; odd
+// parity inverts that.
+static uint32_t pio_uart_parity_bit(int channel, uint32_t data) {
+    uint32_t v = data & ((1u << pio_uart_data_bits[channel]) - 1u);
+    uint32_t p = 0;
+
+    while (v) {
+        p ^= (v & 1u);
+        v >>= 1;
+    }
+
+    return (pio_uart_parity[channel] == parity_odd) ? (p ^ 1u) : p;
+}
+
+// Time for one complete frame to leave the wire, used before dropping the RS-485
+// driver enable. Start bit + payload + stop bits, rounded up.
+static uint32_t pio_uart_frame_us(int channel, uint32_t baud) {
+    uint32_t bits = 1u + pio_uart_payload_bits[channel] + pio_uart_stop_bits[channel];
+
+    if (baud == 0) {
+        return 0;
+    }
+
+    return ((bits * 1000000u) + baud - 1u) / baud;
+}
+
 static uint32_t pio_uart_baud(int channel) {
     struct __serial_option *so = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option[channel]);
     if (so->baud_rate < (sizeof(baud_table) / sizeof(baud_table[0]))) {
@@ -150,9 +273,26 @@ static void pio_data_uart_init_sm(void) {
 
     for (int i = UART_HW_CH_CNT; i < DEVICE_UART_CNT; i++) {
         struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option[i]);
-        uint8_t use_cts = (serial_option->flow_control == flow_rts_cts);
-        uint8_t use_dtr_dsr = (serial_option->flow_control == flow_dtr_dsr);
         uint32_t baud = pio_uart_baud(i);
+        uint8_t data_bits = pio_uart_resolve_data_bits(serial_option->data_bits);
+        uint8_t stop_bits = pio_uart_resolve_stop_bits(serial_option->stop_bits);
+        uint8_t parity = serial_option->parity;
+        // RS-422/485 drives the direction control on the RTS pin, so RTS/CTS flow
+        // control cannot coexist with it - the same trade-off the HW channels make.
+        uint8_t use_de = (serial_option->uart_interface != UART_IF_RS232_TTL);
+        uint8_t use_cts = (serial_option->flow_control == flow_rts_cts) && !use_de;
+        uint8_t use_dtr_dsr = (serial_option->flow_control == flow_dtr_dsr) && !use_de;
+
+        pio_uart_data_bits[i] = data_bits;
+        pio_uart_parity[i] = parity;
+        pio_uart_payload_bits[i] = data_bits + ((parity != parity_none) ? 1 : 0);
+        pio_uart_stop_bits[i] = stop_bits;
+        pio_uart_de_mode[i] = use_de;
+
+        // DATA_UART_Configuration() only resolves uart_if_mode for the HW channels,
+        // so without this the PIO channels would keep the array's default and never
+        // toggle direction however the interface is configured.
+        uart_if_mode[i] = serial_option->uart_interface;
 
         // The CTS/RTS pins double as DSR/DTR; both are plain GPIO here, so only
         // the pull and the direction of the input side differ.
@@ -160,20 +300,30 @@ static void pio_data_uart_init_sm(void) {
         gpio_set_dir(pio_uart_cts_pin[i], GPIO_IN);
         gpio_pull_up(pio_uart_cts_pin[i]);
 
-        gpio_init(data_uart_rts_pin[i]);
-        gpio_set_dir(data_uart_rts_pin[i], GPIO_OUT);
-        gpio_put(data_uart_rts_pin[i], UART_RTS_LOW);
-        data_uart_rts_status[i] = UART_RTS_LOW;
-        data_uart_dtr_status[i] = UART_RTS_LOW;
+        if (use_de) {
+            // Direction control instead of RTS. Idle level per interface, same as
+            // the HW channels.
+            uart_rs485_rs422_init(i);
+            data_uart_rts_status[i] = UART_RTS_LOW;
+            data_uart_dtr_status[i] = UART_RTS_LOW;
+        } else {
+            gpio_init(data_uart_rts_pin[i]);
+            gpio_set_dir(data_uart_rts_pin[i], GPIO_OUT);
+            gpio_put(data_uart_rts_pin[i], UART_RTS_LOW);
+            data_uart_rts_status[i] = UART_RTS_LOW;
+            data_uart_dtr_status[i] = UART_RTS_LOW;
+        }
 
         pio_tx_sm[i] = pio_claim_unused_sm(PIO_DATA_UART, true);
         if (use_cts) {
             // The SM samples CTS before each byte, so queued bytes stop at the
             // next byte boundary just as the HW UART's CTS gating does.
-            uart_tx_cts_program_init(PIO_DATA_UART, pio_tx_sm[i], tx_cts_offset,
-                                     pio_uart_tx_pin[i], pio_uart_cts_pin[i], baud);
+            uart_tx_cts_program_init_fmt(PIO_DATA_UART, pio_tx_sm[i], tx_cts_offset,
+                                         pio_uart_tx_pin[i], pio_uart_cts_pin[i], baud,
+                                         data_bits, parity != parity_none, stop_bits);
         } else {
-            uart_tx_program_init(PIO_DATA_UART, pio_tx_sm[i], tx_offset, pio_uart_tx_pin[i], baud);
+            uart_tx_program_init_fmt(PIO_DATA_UART, pio_tx_sm[i], tx_offset, pio_uart_tx_pin[i], baud,
+                                     data_bits, parity != parity_none, stop_bits);
         }
         // TX DMA, paced by the SM's TX-FIFO DREQ. Byte-sized transfers land in
         // the low byte of TXF, which is what the program consumes (OUT shifts
@@ -187,10 +337,15 @@ static void pio_data_uart_init_sm(void) {
         channel_config_set_dreq(&dma_uart_c[i], pio_get_dreq(PIO_DATA_UART, pio_tx_sm[i], true));
 
         pio_rx_sm[i] = pio_claim_unused_sm(PIO_DATA_UART, true);
-        uart_rx_program_init(PIO_DATA_UART, pio_rx_sm[i], rx_offset, pio_uart_rx_pin[i], baud);
-        PRT_INFO("PIO UART ch%d: TX GP%d(sm%d) RX GP%d(sm%d) baud %d flow %s\r\n",
+        uart_rx_program_init_fmt(PIO_DATA_UART, pio_rx_sm[i], rx_offset, pio_uart_rx_pin[i], baud,
+                                 data_bits, parity != parity_none);
+        PRT_INFO("PIO UART ch%d: TX GP%d(sm%d) RX GP%d(sm%d) baud %d %d%c%d flow %s%s\r\n",
                  i, pio_uart_tx_pin[i], pio_tx_sm[i], pio_uart_rx_pin[i], pio_rx_sm[i], (int)baud,
-                 use_cts ? "rts/cts" : (use_dtr_dsr ? "dtr/dsr" : "none"));
+                 data_bits,
+                 (parity == parity_odd) ? 'O' : ((parity == parity_even) ? 'E' : 'N'),
+                 stop_bits,
+                 use_cts ? "rts/cts" : (use_dtr_dsr ? "dtr/dsr" : "none"),
+                 use_de ? " (RS-422/485 DE on RTS pin)" : "");
     }
 }
 
@@ -201,8 +356,33 @@ static void pio_data_uart_rx_isr(void) {
 
     for (int i = UART_HW_CH_CNT; i < DEVICE_UART_CNT; i++) {
         uint8_t input_flag = 0;
+        uint8_t payload_bits = pio_uart_payload_bits[i];
+        uint8_t parity_mode = pio_uart_parity[i];
+
+        // The RX program raises its relative IRQ 0 on a low stop bit. Count and
+        // clear it here; the byte itself is still delivered, as the PL011 does.
+        if (pio_interrupt_get(PIO_DATA_UART, pio_rx_sm[i])) {
+            pio_interrupt_clear(PIO_DATA_UART, pio_rx_sm[i]);
+            pio_uart_framing_err[i]++;
+        }
+
         while (!pio_sm_is_rx_fifo_empty(PIO_DATA_UART, pio_rx_sm[i])) {
-            uint8_t ch = (uint8_t)(*((io_rw_8 *)&PIO_DATA_UART->rxf[pio_rx_sm[i]] + 3));
+            uint8_t ch;
+
+            if (parity_mode == parity_none) {
+                // 8N1 and friends: the payload is byte-aligned in the FIFO word,
+                // so this stays the original top-byte read.
+                ch = (uint8_t)(*((io_rw_8 *)&PIO_DATA_UART->rxf[pio_rx_sm[i]] + 3));
+            } else {
+                uint32_t payload = uart_rx_program_extract(PIO_DATA_UART->rxf[pio_rx_sm[i]], payload_bits);
+                uint8_t data_bits = pio_uart_data_bits[i];
+                uint32_t received_parity = (payload >> data_bits) & 1u;
+
+                ch = (uint8_t)(payload & ((1u << data_bits) - 1u));
+                if (received_parity != pio_uart_parity_bit(i, ch)) {
+                    pio_uart_parity_err[i]++;
+                }
+            }
             // A full buffer used to be flushed here, discarding all
             // SEG_DATA_BUF_SIZE bytes to make room for one - 16 frames at a time
             // in the stress test. put_byte_to_data_buffer() now drops only the
@@ -249,10 +429,45 @@ static void pio_data_uart_putc(int channel, uint8_t c) {
     //     while (pio_sm_is_tx_fifo_full(PIO_DATA_UART, pio_tx_sm[channel])) {
     //         device_wdt_reset();
     //     }
-    while (pio_sm_is_tx_fifo_full(PIO_DATA_UART, pio_tx_sm[channel])) {
-        uart_tx_spin_wait();
+    {
+        uint32_t waited_since = 0;
+
+        while (pio_sm_is_tx_fifo_full(PIO_DATA_UART, pio_tx_sm[channel])) {
+            uart_tx_spin_wait_until(&waited_since);
+        }
     }
-    uart_tx_program_putc(PIO_DATA_UART, pio_tx_sm[channel], (char)c);
+
+    if (pio_uart_parity[channel] == parity_none) {
+        uart_tx_program_putc(PIO_DATA_UART, pio_tx_sm[channel], (char)c);
+        return;
+    }
+
+    // The state machine shifts payload_bits and knows nothing about parity, so the
+    // parity bit rides above the data bits and a full word has to be written -
+    // a byte write could not carry it.
+    {
+        uint8_t data_bits = pio_uart_data_bits[channel];
+        uint32_t payload = (uint32_t)c & ((1u << data_bits) - 1u);
+
+        payload |= pio_uart_parity_bit(channel, payload) << data_bits;
+        pio_sm_put(PIO_DATA_UART, pio_tx_sm[channel], payload);
+    }
+}
+
+// Wait for a frame that is still in the TX FIFO or the shift register to finish
+// leaving the wire. FIFO-empty alone is not enough: the state machine is still
+// clocking out the byte it already pulled.
+static void pio_uart_tx_drain(int channel) {
+    uint32_t baud = pio_uart_baud(channel);
+
+    {
+        uint32_t waited_since = 0;
+
+        while (!pio_sm_is_tx_fifo_empty(PIO_DATA_UART, pio_tx_sm[channel])) {
+            uart_tx_spin_wait_until(&waited_since);
+        }
+    }
+    busy_wait_us_32(pio_uart_frame_us(channel, baud));
 }
 #endif  // DEVICE_UART_CNT > 2
 
@@ -261,7 +476,6 @@ static void pio_data_uart_putc(int channel, uint8_t c) {
 ////////////////////////////////////////////////////////////////////////////////
 // Data UART Configuration
 ////////////////////////////////////////////////////////////////////////////////
-
 
 ////////////////////////////////////////////////////////////////////////////////
 // Data UART Configuration & IRQ handler
@@ -337,7 +551,6 @@ void data1_uart_rx(void) {
         portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
     }
 }
-
 
 void DATA_UART_Configuration(void) {
     struct __serial_option *serial_option;
@@ -579,6 +792,25 @@ void check_uart_flow_control(uint8_t flow_ctrl, int channel) {
     }
 }
 
+#if (DEVICE_UART_CNT > 2)
+// PIO receive errors, counted from the RX ISR. HW channels return 0: the PL011
+// latches its own framing/parity flags but nothing reads them yet, so a count here
+// would be misleading.
+uint32_t get_uart_framing_error_count(int channel) {
+    if ((channel < UART_HW_CH_CNT) || (channel >= DEVICE_UART_CNT)) {
+        return 0;
+    }
+    return pio_uart_framing_err[channel];
+}
+
+uint32_t get_uart_parity_error_count(int channel) {
+    if ((channel < UART_HW_CH_CNT) || (channel >= DEVICE_UART_CNT)) {
+        return 0;
+    }
+    return pio_uart_parity_err[channel];
+}
+#endif
+
 uint8_t platform_uart_cts_ready(int channel) {
 #if (DEVICE_UART_CNT > 2)
     if (channel >= UART_HW_CH_CNT) {
@@ -588,7 +820,6 @@ uint8_t platform_uart_cts_ready(int channel) {
     // DATA0/DATA1 CTS gating is handled by the RP2040 UART peripheral.
     return 1;
 }
-
 
 int32_t platform_uart_putc(uint16_t ch, int channel) {
     if (channel >= UART_HW_CH_CNT) {
@@ -628,8 +859,12 @@ void platform_uart_tx_wait(int channel) {
     //     while (dma_channel_is_busy(dma_uart_tx[channel])) {
     //         device_wdt_reset();
     //     }
-    while (dma_channel_is_busy(dma_uart_tx[channel])) {
-        uart_tx_spin_wait();
+    {
+        uint32_t waited_since = 0;
+
+        while (dma_channel_is_busy(dma_uart_tx[channel])) {
+            uart_tx_spin_wait_bounded(&waited_since, UART_TX_DMA_YIELD_MS);
+        }
     }
 }
 
@@ -650,6 +885,13 @@ int32_t platform_uart_puts_dma(uint8_t* buf, uint16_t bytes, int channel) {
     //     platform_uart_tx_wait(channel);
     if (channel >= UART_HW_CH_CNT) {
 #if (DEVICE_UART_CNT > 2)
+        // The DMA writes bytes into the low byte of TXF, so it can only carry an
+        // 8-bit-or-narrower payload and cannot toggle a direction pin around the
+        // transfer. Parity needs a 9th bit and RS-422/485 needs the driver released
+        // after the last frame, so both fall back to the byte-at-a-time path.
+        if ((pio_uart_parity[channel] != parity_none) || pio_uart_de_mode[channel]) {
+            return platform_uart_puts(buf, bytes, channel);
+        }
         dma_channel_configure(dma_uart_tx[channel], &dma_uart_c[channel],
                               (io_rw_8 *)&PIO_DATA_UART->txf[pio_tx_sm[channel]], // write address
                               buf, // read address
@@ -673,10 +915,18 @@ int32_t platform_uart_puts(uint8_t* buf, uint16_t bytes, int channel) {
 
     if (channel >= UART_HW_CH_CNT) {
 #if (DEVICE_UART_CNT > 2)
-        for (i = 0; i < bytes; i++) {   // PIO UART TX (TTL 8N1; RS-485 direction TODO)
+        // Original: the loop ran without direction control ("RS-485 direction TODO").
+        uart_rs485_enable(channel);
+        for (i = 0; i < bytes; i++) {
             pio_data_uart_putc(channel, buf[i]);
             device_wdt_reset();
         }
+        // Unlike the HW path this waits for the last frame to clear the wire before
+        // releasing the driver, so the closing bits are not cut off.
+        if (pio_uart_de_mode[channel]) {
+            pio_uart_tx_drain(channel);
+        }
+        uart_rs485_disable(channel);
 #endif
         return bytes;
     }
@@ -712,11 +962,23 @@ void uart_rs485_rs422_init(int channel) {
 }
 
 void uart_rs485_enable(int channel) {
-    // PIO channels are TTL only; they have no direction control to drive and
-    // must not touch another channel's RTS pin.
+    // PIO channels used to be TTL only and had no direction control to drive.
+    // They now use their own RTS pin as the driver enable, which is why RTS/CTS
+    // flow control is refused in RS-422/485 mode (see pio_data_uart_init_sm).
+    //
+    // Original:
+    //     if (channel >= UART_HW_CH_CNT) {
+    //         return;
+    //     }
+#if (DEVICE_UART_CNT > 2)
+    if ((channel >= UART_HW_CH_CNT) && !pio_uart_de_mode[channel]) {
+        return;
+    }
+#else
     if (channel >= UART_HW_CH_CNT) {
         return;
     }
+#endif
     if (uart_if_mode[channel] == UART_IF_RS485) {
         GPIO_Output_Set(data_uart_rts_pin[channel]);
     } else if (uart_if_mode[channel] == UART_IF_RS485_REVERSE) {
@@ -725,20 +987,45 @@ void uart_rs485_enable(int channel) {
 }
 
 void uart_rs485_disable(int channel) {
+    uint8_t is_pio = 0;
+
+    // Original:
+    //     if (channel >= UART_HW_CH_CNT) {
+    //         return;
+    //     }
+#if (DEVICE_UART_CNT > 2)
+    if (channel >= UART_HW_CH_CNT) {
+        if (!pio_uart_de_mode[channel]) {
+            return;
+        }
+        is_pio = 1;
+    }
+#else
     if (channel >= UART_HW_CH_CNT) {
         return;
     }
-    if (uart_if_mode[channel] == UART_IF_RS485) {
+#endif
+
+    if ((uart_if_mode[channel] != UART_IF_RS485) &&
+            (uart_if_mode[channel] != UART_IF_RS485_REVERSE)) {
+        return;     // UART_IF_RS422: full duplex, the driver stays enabled
+    }
+
+    // The transmitter has to be idle before the driver is released, or the closing
+    // bits never reach the wire. PIO channels are already drained by their caller
+    // (pio_uart_tx_drain) because FIFO-empty alone does not mean the shift register
+    // has finished.
+    if (!is_pio) {
         uart_tx_wait_blocking(channel ? DATA1_UART_ID : DATA0_UART_ID);
+    }
+
+    if (uart_if_mode[channel] == UART_IF_RS485) {
         // RTS pin -> Low;
         GPIO_Output_Reset(data_uart_rts_pin[channel]);
-
-    } else if (uart_if_mode[channel] == UART_IF_RS485_REVERSE) {
-        uart_tx_wait_blocking(channel ? DATA1_UART_ID : DATA0_UART_ID);
+    } else {
         // RTS pin -> High
         GPIO_Output_Set(data_uart_rts_pin[channel]);
     }
-    //UART_IF_RS422: None
 }
 #endif
 
@@ -751,7 +1038,6 @@ uint8_t get_uart_cts_pin(void) {
     static uint8_t prev_cts_pin;
 #endif
     cts_pin = GPIO_Input_Read(DATA0_UART_CTS_PIN);
-
 
 #ifdef _UART_DEBUG_
     if (cts_pin != prev_cts_pin) {
