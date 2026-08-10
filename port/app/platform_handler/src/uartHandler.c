@@ -1139,13 +1139,17 @@ uint8_t uart_rts_pin_is_blocked(int channel) {
 }
 
 uint8_t platform_uart_cts_ready(int channel) {
-#if (DEVICE_UART_CNT > 2)
-    if (channel >= UART_HW_CH_CNT) {
-        return gpio_get(pio_uart_cts_pin[channel]) == UART_CTS_LOW;
-    }
-#endif
-    // DATA0/DATA1 CTS gating is handled by the RP2040 UART peripheral.
-    return 1;
+    /*
+        Check the physical CTS input for every channel, including the PL011
+        DATA0/DATA1 UARTs.  Hardware flow control stops a PL011 transfer when
+        CTS is high, but a DMA channel feeding that UART remains busy.  Starting
+        or waiting on that DMA then wedges ether_to_uart() indefinitely.
+
+        Returning not-ready before the socket buffer is consumed leaves the TCP
+        data in place and lets the channel resume without loss when CTS goes low.
+        PIO and hardware UART channels now follow the same rule.
+    */
+    return uart_cts_level(channel) == UART_CTS_LOW;
 }
 
 
