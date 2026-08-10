@@ -137,7 +137,9 @@ void net_status_task(void *argument) {
             while (1) {
                 if (flag_process_dhcp_success == ON) {
                     if (get_stop_dhcp_flag() == 0) {
+                        seg_wizchip_api_lock();
                         ret = DHCP_run();
+                        seg_wizchip_api_unlock();
                         if (ret == DHCP_FAILED) {
                             PRT_ERR("NET_IP_UP DHCP Failed\r\n");
                             wizchip_recovery();
@@ -186,7 +188,9 @@ int8_t process_dhcp(void) {
 
     PRT_DHCP(" - DHCP Client running\r\n");
 
+    seg_wizchip_api_lock();
     close(SOCK_DHCP);
+    seg_wizchip_api_unlock();
     DHCP_init(SOCK_DHCP, g_recv_mqtt_buf[SEG_DATA0_CH]);
     reg_dhcp_cbfunc(w5x00_dhcp_assign, w5x00_dhcp_assign, NULL);
     if (get_device_status(SEG_DATA0_CH) != ST_ATMODE) {
@@ -195,7 +199,9 @@ int8_t process_dhcp(void) {
         }
     }
     while (1) {
+        seg_wizchip_api_lock();
         ret = DHCP_run();
+        seg_wizchip_api_unlock();
         vTaskDelay(10);
 
         if (ret == DHCP_IP_LEASED) {

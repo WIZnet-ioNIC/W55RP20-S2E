@@ -33,6 +33,139 @@
 /* Private functions ---------------------------------------------------------*/
 uint16_t uart_get_commandline(uint8_t* buf, uint16_t maxSize);
 
+/*
+    The ioLibrary protects individual SPI transfers, but socket.c also updates
+    process-wide software state (sock_is_sending and sock_io_mode).  SEGCP runs
+    in its own UDP/TCP tasks, so every complete ioLibrary operation must share
+    the same application-level mutex as the four data sockets.
+
+    Keep these wrappers local to SEGCP.  The lock is deliberately not held while
+    parsing a command or waiting for more input; only one ioLibrary call is
+    serialized at a time.
+*/
+static uint8_t segcp_socket_status(uint8_t sock) {
+    uint8_t status;
+
+    seg_wizchip_api_lock();
+    status = getSn_SR(sock);
+    seg_wizchip_api_unlock();
+
+    return status;
+}
+
+static uint8_t segcp_socket_interrupt(uint8_t sock) {
+    uint8_t interrupt;
+
+    seg_wizchip_api_lock();
+    interrupt = getSn_IR(sock);
+    seg_wizchip_api_unlock();
+
+    return interrupt;
+}
+
+static uint16_t segcp_socket_rx_available(uint8_t sock) {
+    uint16_t available;
+
+    seg_wizchip_api_lock();
+    available = getSn_RX_RSR(sock);
+    seg_wizchip_api_unlock();
+
+    return available;
+}
+
+static int32_t segcp_socket_recv(uint8_t sock, uint8_t *buf, uint16_t len) {
+    int32_t received;
+
+    seg_wizchip_api_lock();
+    received = recv(sock, buf, len);
+    seg_wizchip_api_unlock();
+
+    return received;
+}
+
+static int32_t segcp_socket_recvfrom(uint8_t sock, uint8_t *buf, uint16_t len,
+                                     uint8_t *addr, uint16_t *port) {
+    int32_t received;
+
+    seg_wizchip_api_lock();
+    received = recvfrom(sock, buf, len, addr, port);
+    seg_wizchip_api_unlock();
+
+    return received;
+}
+
+static int32_t segcp_socket_send(uint8_t sock, uint8_t *buf, uint16_t len) {
+    int32_t sent;
+
+    seg_wizchip_api_lock();
+    sent = send(sock, buf, len);
+    seg_wizchip_api_unlock();
+
+    return sent;
+}
+
+static int32_t segcp_socket_sendto(uint8_t sock, uint8_t *buf, uint16_t len,
+                                   uint8_t *addr, uint16_t port) {
+    int32_t sent;
+
+    seg_wizchip_api_lock();
+    sent = sendto(sock, buf, len, addr, port);
+    seg_wizchip_api_unlock();
+
+    return sent;
+}
+
+static int8_t segcp_socket_open(uint8_t sock, uint8_t protocol,
+                                uint16_t port, uint8_t flag) {
+    int8_t result;
+
+    seg_wizchip_api_lock();
+    result = socket(sock, protocol, port, flag);
+    seg_wizchip_api_unlock();
+
+    return result;
+}
+
+static int8_t segcp_socket_listen(uint8_t sock) {
+    int8_t result;
+
+    seg_wizchip_api_lock();
+    result = listen(sock);
+    seg_wizchip_api_unlock();
+
+    return result;
+}
+
+static int8_t segcp_socket_disconnect(uint8_t sock) {
+    int8_t result;
+
+    seg_wizchip_api_lock();
+    result = disconnect(sock);
+    seg_wizchip_api_unlock();
+
+    return result;
+}
+
+static int8_t segcp_socket_close(uint8_t sock) {
+    int8_t result;
+
+    seg_wizchip_api_lock();
+    result = close(sock);
+    seg_wizchip_api_unlock();
+
+    return result;
+}
+
+static int8_t segcp_socket_clear_interrupt(uint8_t sock, uint16_t interrupt) {
+    int8_t result;
+
+    seg_wizchip_api_lock();
+    result = ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&interrupt);
+    seg_wizchip_api_unlock();
+
+    return result;
+}
+
 /* Private variables ---------------------------------------------------------*/
 uint8_t gSEGCPREQ[CONFIG_BUF_SIZE];
 uint8_t gSEGCPREP[CONFIG_BUF_SIZE];
@@ -194,7 +327,9 @@ void segcp_ret_handler(uint16_t segcp_ret) {
                 dev_config->firmware_update.fwup_server_flag = SEGCP_DISABLE;
                 set_device_status(status_bak0, SEG_DATA0_CH);
                 set_device_status(status_bak1, SEG_DATA1_CH);
+                seg_wizchip_api_lock();
                 close(SOCK_FWUPDATE);
+                seg_wizchip_api_unlock();
 
                 if (dev_config->serial_common.serial_debug_en) {
                     printf(" > SEGCP:UPDATE:FAILED\r\n");
@@ -1539,8 +1674,8 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     sprintf(tmp_ptr, "%s", treq + SEGCP_CMD_MAX);
                     tmp_ptr += strlen(tmp_ptr);
 
-                    while ((len = getSn_RX_RSR(SEGCP_UDP_SOCK)) > 0) {
-                        len = recvfrom(SEGCP_UDP_SOCK, tmp_ptr, len, tmp_ip, &tmp_port);
+                    while ((len = segcp_socket_rx_available(SEGCP_UDP_SOCK)) > 0) {
+                        len = segcp_socket_recvfrom(SEGCP_UDP_SOCK, tmp_ptr, len, tmp_ip, &tmp_port);
                         tmp_ptr += len;
                         if ((tmp_ptr - temp_buf) > ROOTCA_BUF_SIZE) {
                             ret |= SEGCP_RET_ERR_INVALIDPARAM;
@@ -1595,9 +1730,9 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     sprintf(tmp_ptr, "%s", treq + SEGCP_CMD_MAX);
 
                     tmp_ptr += strlen(tmp_ptr);
-                    while ((len = getSn_RX_RSR(SEGCP_UDP_SOCK)) > 0) {
+                    while ((len = segcp_socket_rx_available(SEGCP_UDP_SOCK)) > 0) {
                         PRT_SEGCP("while((len = getSn_RX_RSR(SEGCP_UDP_SOCK)) > 0)\r\n");
-                        len = recvfrom(SEGCP_UDP_SOCK, tmp_ptr, len, tmp_ip, &tmp_port);
+                        len = segcp_socket_recvfrom(SEGCP_UDP_SOCK, tmp_ptr, len, tmp_ip, &tmp_port);
                         tmp_ptr += len;
                         if ((tmp_ptr - temp_buf) > CLICA_BUF_SIZE) {
                             ret |= SEGCP_RET_ERR_INVALIDPARAM;
@@ -1650,9 +1785,9 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     sprintf(tmp_ptr, "%s", treq + SEGCP_CMD_MAX);
 
                     tmp_ptr += strlen(tmp_ptr);
-                    while ((len = getSn_RX_RSR(SEGCP_UDP_SOCK)) > 0) {
+                    while ((len = segcp_socket_rx_available(SEGCP_UDP_SOCK)) > 0) {
                         PRT_SEGCP("while((len = getSn_RX_RSR(SEGCP_UDP_SOCK)) > 0)\r\n");
-                        len = recvfrom(SEGCP_UDP_SOCK, tmp_ptr, len, tmp_ip, &tmp_port);
+                        len = segcp_socket_recvfrom(SEGCP_UDP_SOCK, tmp_ptr, len, tmp_ip, &tmp_port);
                         tmp_ptr += len;
                         if ((tmp_ptr - temp_buf) > PKEY_BUF_SIZE) {
                             ret |= SEGCP_RET_ERR_INVALIDPARAM;
@@ -2315,13 +2450,13 @@ uint16_t proc_SEGCP_udp(uint8_t* segcp_req, uint8_t* segcp_rep) {
     uint8_t* trep;
     uint8_t segcp_privilege = SEGCP_PRIVILEGE_CLR;
 
-    switch (getSn_SR(SEGCP_UDP_SOCK)) {
+    switch (segcp_socket_status(SEGCP_UDP_SOCK)) {
     case SOCK_UDP:
-        getsockopt(SEGCP_UDP_SOCK, SO_RECVBUF, (void *)&len);
+        len = segcp_socket_rx_available(SEGCP_UDP_SOCK);
         if (len > 0) {
             treq = segcp_req;
             trep = segcp_rep;
-            len = recvfrom(SEGCP_UDP_SOCK, treq, len, destip, &destport);
+            len = segcp_socket_recvfrom(SEGCP_UDP_SOCK, treq, len, destip, &destport);
             //reg_val = (SIK_RECEIVED) & 0x00FF;
             //ctlsocket(SEGCP_UDP_SOCK, CS_CLR_INTERRUPT, (void *)&reg_val);
 
@@ -2355,7 +2490,9 @@ uint16_t proc_SEGCP_udp(uint8_t* segcp_req, uint8_t* segcp_rep) {
                             trep += (strlen(tpar) + 4);
                             ret = proc_SEGCP(treq, trep, segcp_privilege);
 
-                            sendto(SEGCP_UDP_SOCK, segcp_rep, 14 + strlen(tpar) + strlen(trep), "\xFF\xFF\xFF\xFF", destport);
+                            segcp_socket_sendto(SEGCP_UDP_SOCK, segcp_rep,
+                                                14 + strlen(tpar) + strlen(trep),
+                                                (uint8_t *)"\xFF\xFF\xFF\xFF", destport);
 
                             //PRT_SEGCP("tpar_len = %d, trep_len = %d\r\n", strlen(tpar), strlen(trep));
 
@@ -2375,7 +2512,7 @@ uint16_t proc_SEGCP_udp(uint8_t* segcp_req, uint8_t* segcp_rep) {
         //            ctlsocket(SEGCP_UDP_SOCK, CS_CLR_INTERRUPT, (void *)&reg_val);
         break;
     case SOCK_CLOSED:
-        socket(SEGCP_UDP_SOCK, Sn_MR_UDP, DEVICE_SEGCP_PORT, 0x00);
+        segcp_socket_open(SEGCP_UDP_SOCK, Sn_MR_UDP, DEVICE_SEGCP_PORT, 0x00);
         break;
     }
     return ret;
@@ -2392,7 +2529,7 @@ uint16_t proc_SEGCP_tcp(uint8_t* segcp_req, uint8_t* segcp_rep) {
     uint16_t reg_val;
     uint8_t segcp_privilege = SEGCP_PRIVILEGE_CLR;
 
-    switch (getSn_SR(SEGCP_TCP_SOCK)) {
+    switch (segcp_socket_status(SEGCP_TCP_SOCK)) {
     case SOCK_INIT:
         break;
 
@@ -2403,23 +2540,23 @@ uint16_t proc_SEGCP_tcp(uint8_t* segcp_req, uint8_t* segcp_rep) {
         break;
 
     case SOCK_ESTABLISHED:
-        if (getSn_IR(SEGCP_TCP_SOCK) & Sn_IR_CON) {
+        if (segcp_socket_interrupt(SEGCP_TCP_SOCK) & Sn_IR_CON) {
             // TCP unicast search: Keep-alive timer enable
             enable_configtool_keepalive_timer = ENABLE;
             configtool_keepalive_time = 0;
             reg_val = SIK_CONNECTED & 0x00FF; // except SIK_SENT(send OK) interrupt
-            ctlsocket(SEGCP_TCP_SOCK, CS_CLR_INTERRUPT, (void *)&reg_val);
+            segcp_socket_clear_interrupt(SEGCP_TCP_SOCK, reg_val);
         }
 
         if (flag_send_configtool_keepalive == SEGCP_ENABLE) { // default: 15sec
             flag_send_configtool_keepalive = SEGCP_DISABLE;    // flag clear
         }
 
-        getsockopt(SEGCP_TCP_SOCK, SO_RECVBUF, (void *)&len);
+        len = segcp_socket_rx_available(SEGCP_TCP_SOCK);
         if (len > 0) {
             treq = segcp_req;
             trep = segcp_rep;
-            len = recv(SEGCP_TCP_SOCK, treq, len);
+            len = segcp_socket_recv(SEGCP_TCP_SOCK, treq, len);
             treq[len - 1] = 0x00;
 
             if (SEGCP_MA == parse_SEGCP(treq, tpar)) {
@@ -2449,7 +2586,8 @@ uint16_t proc_SEGCP_tcp(uint8_t* segcp_req, uint8_t* segcp_rep) {
                             treq += (strlen(tpar) + 4);
                             trep += (strlen(tpar) + 4);
                             ret = proc_SEGCP(treq, trep, segcp_privilege);
-                            send(SEGCP_TCP_SOCK, segcp_rep, 14 + strlen(tpar) + strlen(trep));
+                            segcp_socket_send(SEGCP_TCP_SOCK, segcp_rep,
+                                              14 + strlen(tpar) + strlen(trep));
                         }
                     }
                 } else {
@@ -2462,16 +2600,18 @@ uint16_t proc_SEGCP_tcp(uint8_t* segcp_req, uint8_t* segcp_rep) {
         break;
 
     case SOCK_CLOSE_WAIT:
-        disconnect(SEGCP_TCP_SOCK);
+        segcp_socket_disconnect(SEGCP_TCP_SOCK);
 
     case SOCK_CLOSED:
     case SOCK_FIN_WAIT:
-        close(SEGCP_TCP_SOCK);
+        segcp_socket_close(SEGCP_TCP_SOCK);
 
-        if (socket(SEGCP_TCP_SOCK, Sn_MR_TCP, DEVICE_SEGCP_PORT, SF_TCP_NODELAY) == SEGCP_TCP_SOCK) {
+        int8_t socket_rc = segcp_socket_open(SEGCP_TCP_SOCK, Sn_MR_TCP,
+                                             DEVICE_SEGCP_PORT, SF_TCP_NODELAY);
+        if (socket_rc == SEGCP_TCP_SOCK) {
             //Keep-alive timer keep disabled until TCP connection established.
             enable_configtool_keepalive_timer = DISABLE;
-            listen(SEGCP_TCP_SOCK);
+            segcp_socket_listen(SEGCP_TCP_SOCK);
         }
         break;
     }

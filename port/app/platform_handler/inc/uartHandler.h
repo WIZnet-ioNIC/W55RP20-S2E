@@ -117,12 +117,19 @@ void DATA_UART_Interrupt_Enable(void);
 
 // XON/XOFF Software flow control: Check the Buffer usage and Send the start/stop commands
 void check_uart_flow_control(uint8_t flow_ctrl, int channel);
+uint8_t uart_rts_is_blocked(int channel);
+uint8_t uart_rts_pin_is_blocked(int channel);
+uint8_t uart_cts_level(int channel);    // 0 = peer ready (active low)
+uint8_t uart_tx_dma_busy(int channel);
 
 #if (DEVICE_UART_CNT > 2)
 // PIO channels only; HW channels return 0 because their PL011 error flags are not
 // read yet.
 uint32_t get_uart_framing_error_count(int channel);
 uint32_t get_uart_parity_error_count(int channel);
+// Long-soak diagnostics for the DATA2/DATA3 shared PIO RX consumer task.
+// Silent unless it detects a persistent PIO RX fault.
+void pio_uart_rx_diag_poll(void);
 #endif
 uint8_t platform_uart_cts_ready(int channel);
 void platform_uart_tx_wait(int channel);

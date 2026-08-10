@@ -9,6 +9,21 @@
 
 #define _SEG_DEBUG_
 
+// TEMPORARY - S2E stall investigation. Set to 0 to remove all instrumentation.
+// Defined here rather than in seg.c so App.c evaluates the same value and creates
+// seg_flow_diag_task; with it visible only inside seg.c the task was never started.
+#ifndef SEG_FLOW_STALL_DIAG_ENABLE
+#define SEG_FLOW_STALL_DIAG_ENABLE 1
+#endif
+
+// Recover a raw-TCP S2E channel whose W5500 transmit operation remains stuck
+// after normal RTS/CTS backpressure has had ample time to drain.  This is kept
+// separate from diagnostics so the safety path remains available when verbose
+// instrumentation is disabled for a release build.
+#ifndef SEG_S2E_STALL_RECOVERY_ENABLE
+#define SEG_S2E_STALL_RECOVERY_ENABLE 1
+#endif
+
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -56,6 +71,12 @@ extern uint8_t flag_process_dhcp_success;
 extern uint8_t flag_process_dns_success[DEVICE_UART_CNT];
 extern char * str_working[];
 extern const uint8_t seg_data_sock[DEVICE_UART_CNT];  // channel -> data socket map
+
+// Serialize complete ioLibrary API calls across data, configuration and
+// network-service sockets.  The ioLibrary keeps cross-socket state in shared
+// non-atomic bitmaps, so SPI transaction locking alone is not sufficient.
+void seg_wizchip_api_lock(void);
+void seg_wizchip_api_unlock(void);
 
 typedef enum {SEG_UART_RX, SEG_UART_TX, SEG_ETHER_RX, SEG_ETHER_TX, SEG_ALL} teDATADIR;
 typedef enum {
@@ -152,6 +173,7 @@ void keepalive_timer_callback(TimerHandle_t xTimer);
 void inactivity_timer_callback(TimerHandle_t xTimer);
 void auth_timer_callback(TimerHandle_t xTimer);
 void seg_timer_task(void *argument);
+void seg_flow_diag_task(void *argument);    // S2E stall diagnostics / bounded recovery
 
 void ether_to_spi(uint8_t sock);
 void seg_spi_data_transfer_task(void);

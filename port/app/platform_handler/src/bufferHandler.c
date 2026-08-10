@@ -65,6 +65,32 @@ void put_byte_to_data_buffer(uint8_t ch, int channel) {
     buffer->write_index = (buffer->write_index + 1) % SEG_DATA_BUF_SIZE;
 }
 
+// Commit an ISR/DMA receive batch with a single free-space calculation and a
+// single write-index publication.  The UART ring is single-producer,
+// single-consumer: copying the bytes before advancing write_index prevents the
+// SEG task from observing a partially committed batch.
+uint16_t put_bytes_to_data_buffer(const uint8_t *data, uint16_t size, int channel) {
+    uart_ring_buffer_t *buffer = get_uart_rx_buffer(channel);
+    if ((buffer == NULL) || (data == NULL) || (size == 0)) {
+        return 0;
+    }
+
+    uint16_t accepted = MIN(size, ring_buffer_free_size(buffer));
+    uint16_t first = MIN(accepted, SEG_DATA_BUF_SIZE - buffer->write_index);
+    uint16_t second = accepted - first;
+
+    memcpy(&buffer->data[buffer->write_index], data, first);
+    if (second > 0) {
+        memcpy(buffer->data, data + first, second);
+    }
+    buffer->write_index = (buffer->write_index + accepted) % SEG_DATA_BUF_SIZE;
+
+    if (accepted < size) {
+        uart_rx_overflow[channel] += (uint32_t)(size - accepted);
+    }
+    return accepted;
+}
+
 uint32_t get_data_buffer_overflow_count(int channel) {
     if ((channel < 0) || (channel >= DEVICE_UART_CNT)) {
         return 0;

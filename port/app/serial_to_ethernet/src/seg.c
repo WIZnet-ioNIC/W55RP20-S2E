@@ -63,6 +63,19 @@ uint8_t flag_send_keepalive[DEVICE_UART_CNT] = {SEG_DISABLE, };
 uint8_t flag_first_keepalive[DEVICE_UART_CNT] = {SEG_DISABLE, };
 uint8_t flag_inactivity[DEVICE_UART_CNT] = {SEG_DISABLE, };
 
+/*
+    A TCP server normally moves CLOSED -> INIT -> LISTEN and then completes a
+    SYN_RECV transition in milliseconds.  The old state machine silently ignored
+    every other W5500 state.  If a handshake or close transition got stranded,
+    that channel therefore stopped accepting connections until the whole chip was
+    reset.  Track those transient states per channel and recycle only the affected
+    socket after a bounded interval.
+*/
+#define SEG_TCP_SERVER_STUCK_TIMEOUT_MS 5000U
+static uint8_t seg_tcp_server_transient_active[DEVICE_UART_CNT] = {SEG_DISABLE, };
+static uint8_t seg_tcp_server_transient_state[DEVICE_UART_CNT] = {SOCK_CLOSED, };
+static uint32_t seg_tcp_server_transient_since[DEVICE_UART_CNT] = {0, };
+
 // User's buffer / size idx
 extern uint8_t g_send_buf[DEVICE_UART_CNT][DATA_BUF_SIZE];
 extern uint8_t g_recv_buf[DEVICE_UART_CNT][DATA_BUF_SIZE];
@@ -80,8 +93,29 @@ extern xSemaphoreHandle net_seg_u2e_sem[DEVICE_UART_CNT];
 extern xSemaphoreHandle seg_timer_sem;
 extern xSemaphoreHandle segcp_uart_sem;
 extern xSemaphoreHandle seg_critical_sem[DEVICE_UART_CNT];
+extern xSemaphoreHandle seg_socket_sem;
 extern xSemaphoreHandle seg_sem[DEVICE_UART_CNT];
 extern xSemaphoreHandle wizchip_critical_sem;
+
+void seg_wizchip_api_lock(void) {
+    if (seg_socket_sem != NULL) {
+        xSemaphoreTake(seg_socket_sem, portMAX_DELAY);
+    }
+}
+
+void seg_wizchip_api_unlock(void) {
+    if (seg_socket_sem != NULL) {
+        xSemaphoreGive(seg_socket_sem);
+    }
+}
+
+static void seg_socket_lock(void) {
+    seg_wizchip_api_lock();
+}
+
+static void seg_socket_unlock(void) {
+    seg_wizchip_api_unlock();
+}
 
 extern TimerHandle_t seg_inactivity_timer[DEVICE_UART_CNT];
 extern TimerHandle_t seg_keepalive_timer[DEVICE_UART_CNT];
@@ -91,10 +125,376 @@ extern TimerHandle_t spi_reset_timer;
 uint16_t u2e_size[DEVICE_UART_CNT] = {0, };
 uint16_t e2u_size[DEVICE_UART_CNT] = {0, };
 
+// Raw-TCP send progress is tracked independently from verbose diagnostics.  A
+// successful return is the only safe proof that this connection is draining;
+// task heartbeats can keep advancing while send() returns SOCK_BUSY forever.
+static volatile uint16_t seg_s2e_last_send_len[DEVICE_UART_CNT];
+static volatile int16_t seg_s2e_last_send_rc[DEVICE_UART_CNT];
+static volatile uint32_t seg_s2e_tx_progress[DEVICE_UART_CNT];
+
+/*
+    One-shot stall recorder for the long-run RTS/CTS S2E failure.
+
+    Purely observational: it never gives or takes a semaphore and never changes
+    flow-control state. It records the state of a channel once RTS has been
+    blocking that channel's peer for three seconds.
+
+    It runs in seg_flow_diag_task, not in any channel task. An earlier version
+    polled from seg_ch_recv_task and went silent whenever that task was stuck too -
+    which is exactly the case worth reporting. The switch is in seg.h so App.c sees
+    the same value and actually creates the task.
+*/
 // Stamped by seg_ch_task once per loop and read by seg_ch_u2e_task, which runs at a
 // higher priority and otherwise has no way to tell that it is starving the task it
-// shares seg_critical_sem with.
+// shares seg_critical_sem with. Not diagnostics - seg_ch_u2e_task acts on it.
 static volatile uint32_t seg_task_heartbeat_ms[DEVICE_UART_CNT];
+
+#if SEG_FLOW_STALL_DIAG_ENABLE
+#define SEG_FLOW_STALL_DIAG_MS 3000U
+
+typedef enum {
+    SEG_FLOW_DIAG_SEG_WAIT_NET = 1,
+    SEG_FLOW_DIAG_SEG_WAIT_CRITICAL,
+    SEG_FLOW_DIAG_SEG_SOCKET,
+    SEG_FLOW_DIAG_SEG_FLOW_CONTROL,
+    SEG_FLOW_DIAG_SEG_DELAY,
+    SEG_FLOW_DIAG_SEG_CLOSE_DRAIN,      // inside drain_socket_to_uart()
+} seg_flow_diag_seg_phase_t;
+
+// Sub-steps within do_seg(), recorded in seg_flow_diag_seg_step.
+typedef enum {
+    SEG_STEP_ENTER = 1,         // do_seg() entered, mode not dispatched yet
+    SEG_STEP_MODE_PROC,         // inside proc_SEG_*(), socket state read
+    SEG_STEP_SOCK_HANDLED,      // returned from proc_SEG_*()
+    SEG_STEP_FLOW_CONTROL,      // inside check_uart_flow_control()
+    SEG_STEP_WAKEUP_RESTORE,    // inside restore_u2e_wakeup()
+    SEG_STEP_DONE,              // do_seg() about to return
+} seg_flow_diag_step_t;
+
+typedef enum {
+    SEG_FLOW_DIAG_U2E_WAIT_NET = 1,
+    SEG_FLOW_DIAG_U2E_WAIT_WAKEUP,
+    SEG_FLOW_DIAG_U2E_WAIT_CRITICAL,
+    SEG_FLOW_DIAG_U2E_DRAIN,
+    SEG_FLOW_DIAG_U2E_RELEASE,
+} seg_flow_diag_u2e_phase_t;
+
+static volatile uint32_t seg_flow_diag_seg_beat[DEVICE_UART_CNT];
+static volatile uint32_t seg_flow_diag_u2e_beat[DEVICE_UART_CNT];
+static volatile uint32_t seg_flow_diag_recv_beat[DEVICE_UART_CNT];
+// Sub-step inside do_seg(). seg_phase only says "somewhere in do_seg()", which is as
+// far as the captures got: the SPI lock turned out to cycle normally and the
+// CLOSE_WAIT drain was never entered, so the remaining candidates are the calls
+// do_seg() makes on the way through.
+static volatile uint8_t seg_flow_diag_seg_step[DEVICE_UART_CNT];
+static volatile uint8_t seg_flow_diag_sock_state[DEVICE_UART_CNT];
+static volatile uint8_t seg_flow_diag_seg_phase[DEVICE_UART_CNT];
+static volatile uint8_t seg_flow_diag_u2e_phase[DEVICE_UART_CNT];
+static uint32_t seg_flow_diag_rts_high_since[DEVICE_UART_CNT];
+static uint32_t seg_flow_diag_seg_beat_at_rts_high[DEVICE_UART_CNT];
+static uint32_t seg_flow_diag_u2e_beat_at_rts_high[DEVICE_UART_CNT];
+static uint32_t seg_flow_diag_recv_beat_at_rts_high[DEVICE_UART_CNT];
+// One report per continuous RTS assertion.  Repeated CDC output can itself trigger
+// the stdio spin-lock/watchdog issue, so the host-side snapshot carries the
+// longitudinal part of this investigation.
+static uint8_t seg_flow_diag_reported[DEVICE_UART_CNT];
+
+// Every capture so far showed wizchip_critical_sem held at the sampling instant, so
+// record who took it and when. Done by re-registering ioLibrary's critical-section
+// callbacks instead of editing the driver port: wizchip_cris_initialize() runs once
+// at startup (App.c) and nothing re-registers after this, so the swap sticks.
+static const char *volatile seg_wiz_lock_owner;
+static volatile uint32_t seg_wiz_lock_since;
+
+static void seg_wiz_cris_enter(void) {
+    xSemaphoreTake(wizchip_critical_sem, portMAX_DELAY);
+    seg_wiz_lock_since = (uint32_t)millis();
+    // Also reached before the scheduler starts, where there is no task to name.
+    seg_wiz_lock_owner = (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
+                         ? pcTaskGetName(NULL) : "init";
+}
+
+static void seg_wiz_cris_exit(void) {
+    seg_wiz_lock_owner = NULL;
+    xSemaphoreGive(wizchip_critical_sem);
+}
+
+static uint32_t seg_wiz_lock_held_ms(void) {
+    if (seg_wiz_lock_owner == NULL) {
+        return 0;
+    }
+    return (uint32_t)millis() - seg_wiz_lock_since;
+}
+
+// Second trigger, for the transmit direction. [FLOW_DIAG] fires on RTS being held
+// deasserted, which only ever reflects the receive buffer - an E2S stall leaves RTS
+// alone, so that trigger is blind to it. Observed repeatedly as the host getting
+// ~268 frames into a channel over TCP, nothing reaching the wire, and the host then
+// blocking; the channel it hits varies between runs.
+#define SEG_E2S_STALL_DIAG_MS 3000U
+
+static uint32_t seg_e2s_diag_recv_beat[DEVICE_UART_CNT];
+static uint32_t seg_e2s_diag_since[DEVICE_UART_CNT];
+static uint8_t seg_e2s_diag_reported[DEVICE_UART_CNT];
+
+static void seg_e2s_diag_poll(int channel) {
+    uint32_t now = millis();
+    uint32_t beat = seg_flow_diag_recv_beat[channel];
+
+    if (beat != seg_e2s_diag_recv_beat[channel]) {
+        // Still looping, so nothing to report.
+        seg_e2s_diag_recv_beat[channel] = beat;
+        seg_e2s_diag_since[channel] = now;
+        seg_e2s_diag_reported[channel] = 0;
+        return;
+    }
+
+    if (seg_e2s_diag_since[channel] == 0) {
+        seg_e2s_diag_since[channel] = now;
+        return;
+    }
+
+    if (seg_e2s_diag_reported[channel] ||
+            ((uint32_t)(now - seg_e2s_diag_since[channel]) < SEG_E2S_STALL_DIAG_MS)) {
+        return;
+    }
+
+    seg_e2s_diag_reported[channel] = 1;
+    // cts=1 means the peer is holding the transmitter off (active low); with the
+    // PL011 doing CTS in hardware that also stops the TX DMA from ever completing,
+    // which is what seg_ch_recv_task waits on.
+    printf("[E2S_DIAG] ch=%d stalled_ms=%lu recv_beat=%lu cts=%u tx_dma_busy=%u "
+           "e2u=%u ring=%u sock_rsr=%u sock_sr=0x%02x state=%u\r\n",
+           channel,
+           (unsigned long)(now - seg_e2s_diag_since[channel]),
+           (unsigned long)beat,
+           (unsigned int)uart_cts_level(channel),
+           (unsigned int)uart_tx_dma_busy(channel),
+           (unsigned int)e2u_size[channel],
+           (unsigned int)get_data_buffer_usedsize(channel),
+           (unsigned int)getSn_RX_RSR(seg_data_sock[channel]),
+           (unsigned int)seg_flow_diag_sock_state[channel],
+           (unsigned int)get_device_status(channel));
+}
+
+static void seg_flow_diag_poll(int channel) {
+    struct __serial_option *serial_option =
+        (struct __serial_option *)&get_DevConfig_pointer()->serial_option[channel];
+    uint32_t now = millis();
+
+    if ((serial_option->flow_control != flow_rts_cts) ||
+            (!uart_rts_is_blocked(channel) && !uart_rts_pin_is_blocked(channel))) {
+        seg_flow_diag_rts_high_since[channel] = 0;
+        seg_flow_diag_reported[channel] = 0;
+        return;
+    }
+
+    if (seg_flow_diag_rts_high_since[channel] == 0) {
+        seg_flow_diag_rts_high_since[channel] = now;
+        seg_flow_diag_seg_beat_at_rts_high[channel] = seg_flow_diag_seg_beat[channel];
+        seg_flow_diag_u2e_beat_at_rts_high[channel] = seg_flow_diag_u2e_beat[channel];
+        seg_flow_diag_recv_beat_at_rts_high[channel] = seg_flow_diag_recv_beat[channel];
+        return;
+    }
+
+    if (((uint32_t)(now - seg_flow_diag_rts_high_since[channel]) < SEG_FLOW_STALL_DIAG_MS) ||
+            seg_flow_diag_reported[channel]) {
+        return;
+    }
+
+    seg_flow_diag_reported[channel] = 1;
+    // Read the socket state as a single ordered sample.  The two free-space reads
+    // distinguish a stable zero from a value that changes while the diagnostic is
+    // collecting it; the former points below uart_to_ether().
+    uint8_t sock = seg_data_sock[channel];
+    seg_socket_lock();
+    uint16_t tx_fsr_first = getSn_TX_FSR(sock);
+    uint16_t tx_fsr_second = getSn_TX_FSR(sock);
+    uint16_t tx_rd = getSn_TX_RD(sock);
+    uint16_t tx_wr = getSn_TX_WR(sock);
+    uint16_t rx_rsr = getSn_RX_RSR(sock);
+    uint8_t sn_ir = getSn_IR(sock);
+    uint8_t sn_sr = getSn_SR(sock);
+    seg_socket_unlock();
+
+    // Beat deltas of 0 mean that task has not looped since RTS was deasserted.
+    // recv_beat matters most: the poll used to live in seg_ch_recv_task, so a
+    // channel whose E2S path was also stuck reported nothing at all - the fault
+    // silenced its own reporter. That is why this runs in its own task now.
+    printf("[FLOW_DIAG] ch=%d rts_high_ms=%lu shadow=%u pin=%u ring=%u u2e=%u e2u=%u "
+           "tx_fsr=%u/%u tx_rd=%u tx_wr=%u rx_rsr=%u "
+           "sn_ir=0x%02x(sendok=%u timeout=%u discon=%u) sn_sr=0x%02x send_len=%u send_rc=%d "
+           "seg_beat=%lu(+%lu) seg_phase=%u seg_step=%u cached_sr=0x%02x "
+           "u2e_beat=%lu(+%lu) u2e_phase=%u "
+           "recv_beat=%lu(+%lu) "
+           "seg_critical=%lu u2e_wakeup=%lu wiz_critical=%lu wiz_owner=%s wiz_held_ms=%lu "
+           "state=%u\r\n",
+           channel,
+           (unsigned long)(now - seg_flow_diag_rts_high_since[channel]),
+           (unsigned int)uart_rts_is_blocked(channel),
+           (unsigned int)uart_rts_pin_is_blocked(channel),
+           (unsigned int)get_data_buffer_usedsize(channel),
+           (unsigned int)u2e_size[channel],
+           (unsigned int)e2u_size[channel],
+           (unsigned int)tx_fsr_first,
+           (unsigned int)tx_fsr_second,
+           (unsigned int)tx_rd,
+           (unsigned int)tx_wr,
+           (unsigned int)rx_rsr,
+           (unsigned int)sn_ir,
+           (unsigned int)((sn_ir & Sn_IR_SENDOK) != 0),
+           (unsigned int)((sn_ir & Sn_IR_TIMEOUT) != 0),
+           (unsigned int)((sn_ir & Sn_IR_DISCON) != 0),
+           (unsigned int)sn_sr,
+           (unsigned int)seg_s2e_last_send_len[channel],
+           (int)seg_s2e_last_send_rc[channel],
+           (unsigned long)seg_flow_diag_seg_beat[channel],
+           (unsigned long)(seg_flow_diag_seg_beat[channel] - seg_flow_diag_seg_beat_at_rts_high[channel]),
+           (unsigned int)seg_flow_diag_seg_phase[channel],
+           (unsigned int)seg_flow_diag_seg_step[channel],
+           (unsigned int)seg_flow_diag_sock_state[channel],
+           (unsigned long)seg_flow_diag_u2e_beat[channel],
+           (unsigned long)(seg_flow_diag_u2e_beat[channel] - seg_flow_diag_u2e_beat_at_rts_high[channel]),
+           (unsigned int)seg_flow_diag_u2e_phase[channel],
+           (unsigned long)seg_flow_diag_recv_beat[channel],
+           (unsigned long)(seg_flow_diag_recv_beat[channel] - seg_flow_diag_recv_beat_at_rts_high[channel]),
+           (unsigned long)uxSemaphoreGetCount(seg_critical_sem[channel]),
+           (unsigned long)uxSemaphoreGetCount(seg_u2e_sem[channel]),
+           (unsigned long)uxSemaphoreGetCount(wizchip_critical_sem),
+           seg_wiz_lock_owner ? seg_wiz_lock_owner : "-",
+           (unsigned long)seg_wiz_lock_held_ms(),
+           (unsigned int)get_device_status(channel));
+}
+#endif
+
+#if SEG_S2E_STALL_RECOVERY_ENABLE
+// A full-duplex 44 kB/s soak intentionally creates short periods of legitimate
+// RTS backpressure, some lasting more than ten seconds.  Recovery therefore
+// requires thirty seconds with no successful raw-TCP send as well as the exact
+// W5500 state captured in the permanent failure.  Recycling a socket loses that
+// connection, so false positives are worse than a delayed recovery.
+#define SEG_S2E_STALL_RECOVERY_MS 30000U
+
+static uint32_t seg_s2e_recovery_progress_mark[DEVICE_UART_CNT];
+static uint32_t seg_s2e_recovery_stall_since[DEVICE_UART_CNT];
+
+static uint8_t seg_s2e_recovery_mode_supported(uint8_t mode) {
+    return ((mode == TCP_CLIENT_MODE) ||
+            (mode == TCP_SERVER_MODE) ||
+            (mode == TCP_MIXED_MODE)) ? TRUE : FALSE;
+}
+
+static void seg_s2e_recovery_reset(int channel, uint32_t progress) {
+    seg_s2e_recovery_progress_mark[channel] = progress;
+    seg_s2e_recovery_stall_since[channel] = 0;
+}
+
+static void seg_s2e_recovery_poll(int channel) {
+    struct __network_connection *network_connection =
+        (struct __network_connection *)&get_DevConfig_pointer()->network_connection[channel];
+    struct __serial_option *serial_option =
+        (struct __serial_option *)&get_DevConfig_pointer()->serial_option[channel];
+    uint32_t now = (uint32_t)millis();
+    uint32_t progress = seg_s2e_tx_progress[channel];
+    uint16_t ring_used = get_data_buffer_usedsize(channel);
+    uint8_t sock = seg_data_sock[channel];
+
+    if (progress != seg_s2e_recovery_progress_mark[channel]) {
+        seg_s2e_recovery_reset(channel, progress);
+        return;
+    }
+
+    if ((opmode != DEVICE_GW_MODE) ||
+            (get_serial_communation_protocol(channel) != SEG_SERIAL_PROTOCOL_NONE) ||
+            !seg_s2e_recovery_mode_supported(network_connection->working_mode) ||
+            (network_connection->working_state != ST_CONNECT) ||
+            (serial_option->flow_control != flow_rts_cts) ||
+            !uart_rts_is_blocked(channel) ||
+            (ring_used == 0) ||
+            (u2e_size[channel] == 0) ||
+            (seg_s2e_last_send_len[channel] == 0) ||
+            (seg_s2e_last_send_rc[channel] != SOCK_BUSY)) {
+        seg_s2e_recovery_reset(channel, progress);
+        return;
+    }
+
+    seg_socket_lock();
+    uint16_t tx_fsr_first = getSn_TX_FSR(sock);
+    uint16_t tx_fsr_second = getSn_TX_FSR(sock);
+    uint8_t sn_ir = getSn_IR(sock);
+    uint8_t sn_sr = getSn_SR(sock);
+    seg_socket_unlock();
+
+    if ((sn_sr != SOCK_ESTABLISHED) ||
+            (tx_fsr_first != 0) || (tx_fsr_second != 0) ||
+            (sn_ir & (Sn_IR_SENDOK | Sn_IR_TIMEOUT | Sn_IR_DISCON))) {
+        seg_s2e_recovery_reset(channel, progress);
+        return;
+    }
+
+    if (seg_s2e_recovery_stall_since[channel] == 0) {
+        seg_s2e_recovery_stall_since[channel] = now;
+        return;
+    }
+
+    uint32_t stalled_ms = (uint32_t)(now - seg_s2e_recovery_stall_since[channel]);
+    if (stalled_ms < SEG_S2E_STALL_RECOVERY_MS) {
+        return;
+    }
+
+    // Close only the affected channel. Take seg_critical_sem ourselves so the
+    // final validation and close are one atomic operation with respect to both
+    // channel data tasks. A send may have completed while this monitor waited for
+    // the lock; in that case the connection is healthy and must be left alone.
+    xSemaphoreTake(seg_critical_sem[channel], portMAX_DELAY);
+    progress = seg_s2e_tx_progress[channel];
+    if ((progress != seg_s2e_recovery_progress_mark[channel]) ||
+            (network_connection->working_state != ST_CONNECT) ||
+            !uart_rts_is_blocked(channel) ||
+            (u2e_size[channel] == 0) ||
+            (seg_s2e_last_send_rc[channel] != SOCK_BUSY)) {
+        xSemaphoreGive(seg_critical_sem[channel]);
+        seg_s2e_recovery_reset(channel, progress);
+        return;
+    }
+
+    ring_used = get_data_buffer_usedsize(channel);
+    seg_socket_lock();
+    tx_fsr_first = getSn_TX_FSR(sock);
+    tx_fsr_second = getSn_TX_FSR(sock);
+    sn_ir = getSn_IR(sock);
+    sn_sr = getSn_SR(sock);
+    seg_socket_unlock();
+
+    if ((ring_used == 0) || (sn_sr != SOCK_ESTABLISHED) ||
+            (tx_fsr_first != 0) || (tx_fsr_second != 0) ||
+            (sn_ir & (Sn_IR_SENDOK | Sn_IR_TIMEOUT | Sn_IR_DISCON))) {
+        xSemaphoreGive(seg_critical_sem[channel]);
+        seg_s2e_recovery_reset(channel, progress);
+        return;
+    }
+
+    uint16_t staged = u2e_size[channel];
+    uint16_t send_len = seg_s2e_last_send_len[channel];
+    int16_t send_rc = seg_s2e_last_send_rc[channel];
+
+    process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
+    set_device_status(ST_OPEN, channel);
+    xSemaphoreGive(seg_critical_sem[channel]);
+    seg_s2e_recovery_reset(channel, seg_s2e_tx_progress[channel]);
+
+    // Print after releasing the channel lock. USB stdio can block, and recovery
+    // must not turn a socket fault into a channel-task lockout.
+    printf("[S2E_RECOVERY] ch=%d sock=%u stalled_ms=%lu ring=%u u2e=%u "
+           "tx_fsr=%u/%u sn_ir=0x%02x sr=0x%02x send_len=%u send_rc=%d "
+           "action=socket_recycle\r\n",
+           channel, (unsigned int)sock, (unsigned long)stalled_ms,
+           (unsigned int)ring_used, (unsigned int)staged,
+           (unsigned int)tx_fsr_first, (unsigned int)tx_fsr_second,
+           (unsigned int)sn_ir, (unsigned int)sn_sr,
+           (unsigned int)send_len, (int)send_rc);
+}
+#endif
 
 // channel -> W5500 data socket map (also used by netHandler.c)
 const uint8_t seg_data_sock[DEVICE_UART_CNT] = {
@@ -152,6 +552,180 @@ void ether_to_uart(uint8_t sock, int channel);
 uint16_t get_serial_data(int channel);
 void restore_serial_data(uint8_t idx);
 
+/*
+    ioLibrary's CRIS callback protects a single SPI register transaction, but a
+    non-blocking socket operation spans several transactions. socket.c also
+    stores all sockets' state in shared bitmaps (sock_is_sending/sock_io_mode),
+    whose read-modify-write updates are not atomic on the dual-core build.
+    Serialize complete operations across every SEG data socket. This is kept
+    separate from seg_critical_sem and is never held while waiting for UART.
+*/
+static int8_t seg_socket_open(uint8_t sock, uint8_t protocol,
+                              uint16_t port, uint8_t flag) {
+    int8_t result;
+
+    seg_socket_lock();
+    result = socket(sock, protocol, port, flag);
+    seg_socket_unlock();
+
+    return result;
+}
+
+static int8_t seg_socket_connect(uint8_t sock, uint8_t *addr, uint16_t port) {
+    int8_t result;
+
+    seg_socket_lock();
+    result = connect(sock, addr, port);
+    seg_socket_unlock();
+
+    return result;
+}
+
+static int8_t seg_socket_listen(uint8_t sock) {
+    int8_t result;
+
+    seg_socket_lock();
+    result = listen(sock);
+    seg_socket_unlock();
+
+    return result;
+}
+
+static void seg_tcp_server_transient_reset(int channel) {
+    seg_tcp_server_transient_active[channel] = SEG_DISABLE;
+    seg_tcp_server_transient_state[channel] = SOCK_CLOSED;
+    seg_tcp_server_transient_since[channel] = 0;
+}
+
+static uint8_t seg_tcp_server_transient_timed_out(int channel, uint8_t state) {
+    uint32_t now = (uint32_t)millis();
+
+    if ((seg_tcp_server_transient_active[channel] == SEG_DISABLE) ||
+            (seg_tcp_server_transient_state[channel] != state)) {
+        seg_tcp_server_transient_active[channel] = SEG_ENABLE;
+        seg_tcp_server_transient_state[channel] = state;
+        seg_tcp_server_transient_since[channel] = now;
+        return FALSE;
+    }
+
+    return ((uint32_t)(now - seg_tcp_server_transient_since[channel]) >=
+            SEG_TCP_SERVER_STUCK_TIMEOUT_MS) ? TRUE : FALSE;
+}
+
+static int8_t seg_socket_disconnect(uint8_t sock) {
+    int8_t result;
+
+    seg_socket_lock();
+    result = disconnect(sock);
+    seg_socket_unlock();
+
+    return result;
+}
+
+static int8_t seg_socket_close(uint8_t sock) {
+    int8_t result;
+
+    seg_socket_lock();
+    result = close(sock);
+    seg_socket_unlock();
+
+    return result;
+}
+
+static int16_t seg_socket_send(uint8_t sock, uint8_t *buf, uint16_t len, int channel) {
+    int16_t sent;
+
+    (void)channel;
+    seg_socket_lock();
+    sent = (int16_t)send(sock, buf, len);
+    seg_socket_unlock();
+
+    return sent;
+}
+
+static int16_t seg_socket_send_available(uint8_t sock, uint8_t *buf,
+        uint16_t *len, int channel) {
+    int16_t sent;
+    uint16_t freesize;
+
+    seg_socket_lock();
+    freesize = getSn_TX_FSR(sock);
+    if ((freesize > 0) && (*len > freesize)) {
+        *len = freesize;
+    }
+    sent = (int16_t)send(sock, buf, *len);
+    seg_socket_unlock();
+
+    seg_s2e_last_send_len[channel] = *len;
+    seg_s2e_last_send_rc[channel] = sent;
+    if (sent > 0) {
+        seg_s2e_tx_progress[channel] += (uint32_t)sent;
+    }
+
+    return sent;
+}
+
+static uint16_t seg_socket_rx_available(uint8_t sock, int channel) {
+    uint16_t available;
+
+    (void)channel;
+    seg_socket_lock();
+    available = getSn_RX_RSR(sock);
+    seg_socket_unlock();
+
+    return available;
+}
+
+static int16_t seg_socket_recv(uint8_t sock, uint8_t *buf, uint16_t len,
+                               int channel) {
+    int16_t received;
+    uint16_t reg_val = SIK_RECEIVED & 0x00FF;
+
+    (void)channel;
+    seg_socket_lock();
+    received = (int16_t)recv(sock, buf, len);
+    ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
+    seg_socket_unlock();
+
+    return received;
+}
+
+static int16_t seg_socket_recvfrom(uint8_t sock, uint8_t *buf, uint16_t len,
+                                   uint8_t *addr, uint16_t *port, int channel) {
+    int16_t received;
+    uint16_t reg_val = SIK_RECEIVED & 0x00FF;
+
+    (void)channel;
+    seg_socket_lock();
+    received = (int16_t)recvfrom(sock, buf, len, addr, port);
+    ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
+    seg_socket_unlock();
+
+    return received;
+}
+
+static int16_t seg_socket_sendto(uint8_t sock, uint8_t *buf, uint16_t len,
+                                 uint8_t *addr, uint16_t port, int channel) {
+    int16_t sent;
+
+    (void)channel;
+    seg_socket_lock();
+    sent = (int16_t)sendto(sock, buf, len, addr, port);
+    seg_socket_unlock();
+
+    return sent;
+}
+
+static int8_t seg_socket_getopt(uint8_t sock, sockopt_type option, void *value) {
+    int8_t result;
+
+    seg_socket_lock();
+    result = getsockopt(sock, option, value);
+    seg_socket_unlock();
+
+    return result;
+}
+
 uint8_t check_connect_pw_auth(uint8_t * buf, uint16_t len);
 uint8_t check_tcp_connect_exception(int channel);
 void reset_SEG_timeflags(uint8_t channel);
@@ -203,6 +777,12 @@ static BaseType_t ensure_channel_timer(TimerHandle_t *timer,
 static void drain_socket_to_uart(uint8_t sock, int channel) {
     uint32_t started = millis();
 
+#if SEG_FLOW_STALL_DIAG_ENABLE
+    // Distinguishes "stalled in this loop" from "stalled elsewhere in do_seg()"
+    // if the channel parks again.
+    seg_flow_diag_seg_phase[channel] = SEG_FLOW_DIAG_SEG_CLOSE_DRAIN;
+#endif
+
     while (getSn_RX_RSR(sock) || e2u_size[channel]) {
         ether_to_uart(sock, channel);    // receive remaining packets
 
@@ -213,6 +793,11 @@ static void drain_socket_to_uart(uint8_t sock, int channel) {
         }
     }
 
+#if SEG_FLOW_STALL_DIAG_ENABLE
+    // Back to the caller's phase, so a later stall elsewhere in do_seg() is not
+    // misreported as this loop.
+    seg_flow_diag_seg_phase[channel] = SEG_FLOW_DIAG_SEG_SOCKET;
+#endif
 }
 
 // The RX ISR is the only producer of seg_u2e_sem while packing_time is 0, which
@@ -250,7 +835,14 @@ void do_seg(uint8_t sock, int channel) {
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
     struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option[channel]);
 
+#if SEG_FLOW_STALL_DIAG_ENABLE
+    seg_flow_diag_seg_step[channel] = SEG_STEP_ENTER;
+#endif
+
     if (opmode == DEVICE_GW_MODE) {
+#if SEG_FLOW_STALL_DIAG_ENABLE
+        seg_flow_diag_seg_step[channel] = SEG_STEP_MODE_PROC;
+#endif
         switch (network_connection->working_mode) {
         case TCP_CLIENT_MODE:
             proc_SEG_tcp_client(sock, channel);
@@ -290,15 +882,28 @@ void do_seg(uint8_t sock, int channel) {
 
         // XON/XOFF Software flow control: Check the Buffer usage and Send the start/stop commands
         // [WIZnet Device] -> [Peer]
+#if SEG_FLOW_STALL_DIAG_ENABLE
+        seg_flow_diag_seg_phase[channel] = SEG_FLOW_DIAG_SEG_FLOW_CONTROL;
+        seg_flow_diag_seg_step[channel] = SEG_STEP_SOCK_HANDLED;
+#endif
         if ((serial_option->flow_control == flow_xon_xoff) ||
                 (serial_option->flow_control == flow_rts_cts) ||
                 (serial_option->flow_control == flow_dtr_dsr)) {
+#if SEG_FLOW_STALL_DIAG_ENABLE
+            seg_flow_diag_seg_step[channel] = SEG_STEP_FLOW_CONTROL;
+#endif
             check_uart_flow_control(serial_option->flow_control, channel);
         }
 
+#if SEG_FLOW_STALL_DIAG_ENABLE
+        seg_flow_diag_seg_step[channel] = SEG_STEP_WAKEUP_RESTORE;
+#endif
         restore_u2e_wakeup(channel);
     }
 
+#if SEG_FLOW_STALL_DIAG_ENABLE
+    seg_flow_diag_seg_step[channel] = SEG_STEP_DONE;
+#endif
 }
 
 void set_device_status(teDEVSTATUS status, int channel) {
@@ -348,7 +953,10 @@ void set_device_status(teDEVSTATUS status, int channel) {
             }
 #endif
             else {
-                (int16_t)send(seg_data_sock[channel], device_option->device_eth_connect_data[channel], strlen((char *)device_option->device_eth_connect_data[channel]));
+                (void)seg_socket_send(seg_data_sock[channel],
+                                      device_option->device_eth_connect_data[channel],
+                                      strlen((char *)device_option->device_eth_connect_data[channel]),
+                                      channel);
             }
 
             if ((tcp_option->keepalive_en == ENABLE) &&
@@ -382,6 +990,7 @@ uint8_t get_device_status(int channel) {
     return network_connection->working_state;
 }
 
+
 void proc_SEG_udp(uint8_t sock, int channel) {
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
     struct __serial_common *serial_common = (struct __serial_common *) & (get_DevConfig_pointer()->serial_common);
@@ -392,6 +1001,9 @@ void proc_SEG_udp(uint8_t sock, int channel) {
 
     // Socket state
     uint8_t state = getSn_SR(sock);
+#if SEG_FLOW_STALL_DIAG_ENABLE
+    seg_flow_diag_sock_state[channel] = state;
+#endif
 
     uint8_t flag = 0;
 
@@ -432,7 +1044,7 @@ void proc_SEG_udp(uint8_t sock, int channel) {
         //     flag |= SOCK_IO_NONBLOCK;
         //     int8_t s = socket(sock, Sn_MR_UDP, network_connection->local_port, 0);
         flag |= SF_IO_NONBLOCK;
-        int8_t s = socket(sock, Sn_MR_UDP, network_connection->local_port, flag);
+        int8_t s = seg_socket_open(sock, Sn_MR_UDP, network_connection->local_port, flag);
 
         if (s == sock) {
             set_device_status(ST_UDP, channel);
@@ -468,6 +1080,9 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
 
     // Socket state
     uint8_t state = getSn_SR(sock);
+#if SEG_FLOW_STALL_DIAG_ENABLE
+    seg_flow_diag_sock_state[channel] = state;
+#endif
     int ret;
     uint16_t reg_val;
 
@@ -481,7 +1096,7 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
             return;
         }
         // TCP connect
-        ret = connect(sock, network_connection->remote_ip, network_connection->remote_port);
+        ret = seg_socket_connect(sock, network_connection->remote_ip, network_connection->remote_port);
         PRT_SEG(" > SEG:TCP_CLIENT_MODE:ConnectNetwork Err %d\r\n", ret);
 
 #ifdef _SEG_DEBUG_
@@ -500,8 +1115,8 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
 
             // Serial debug message printout
             if (serial_common->serial_debug_en) {
-                getsockopt(sock, SO_DESTIP, &destip);
-                getsockopt(sock, SO_DESTPORT, &destport);
+                seg_socket_getopt(sock, SO_DESTIP, &destip);
+                seg_socket_getopt(sock, SO_DESTPORT, &destport);
                 PRT_SEG(" > SEG:CONNECTED TO - %d.%d.%d.%d : %d\r\n", destip[0], destip[1], destip[2], destip[3], destport);
             }
 
@@ -544,7 +1159,7 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
         if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
             drain_socket_to_uart(sock, channel);
         }
-        disconnect(sock);
+        seg_socket_disconnect(sock);
         break;
 
     case SOCK_FIN_WAIT:
@@ -561,10 +1176,11 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
             source_port = get_tcp_any_port();
         }
 
+
 #ifdef _SEG_DEBUG_
         PRT_SEG(" > TCP CLIENT: client_any_port = %d\r\n", client_any_port);
 #endif
-        int8_t s = socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
+        int8_t s = seg_socket_open(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
 
         if (s == sock) {
             if ((serial_command->serial_command == SEG_ENABLE) && serial_data_packing->packing_time) {
@@ -606,6 +1222,9 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
 
     // Socket state
     uint8_t state = getSn_SR(sock);
+#if SEG_FLOW_STALL_DIAG_ENABLE
+    seg_flow_diag_sock_state[channel] = state;
+#endif
 
     int ret = 0;
     uint16_t reg_val;
@@ -624,7 +1243,7 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
         reg_val = 0;
         ctlsocket(sock, CS_SET_INTMASK, (void *)&reg_val);
 
-        ret = connect(sock, network_connection->remote_ip, network_connection->remote_port);
+        ret = seg_socket_connect(sock, network_connection->remote_ip, network_connection->remote_port);
         PRT_SEG(" > SEG:TCP_CLIENT_OVER_TLS_MODE:ConnectNetwork Err %d\r\n", ret);
 
         // Wait for TCP connection with timeout (1s * tcp_rcr_val)
@@ -691,8 +1310,8 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
 
             // Serial debug message printout
             if (serial_common->serial_debug_en) {
-                getsockopt(sock, SO_DESTIP, &destip);
-                getsockopt(sock, SO_DESTPORT, &destport);
+                seg_socket_getopt(sock, SO_DESTIP, &destip);
+                seg_socket_getopt(sock, SO_DESTPORT, &destport);
                 PRT_SEG(" > SEG:CONNECTED TO - %d.%d.%d.%d : %d\r\n", destip[0], destip[1], destip[2], destip[3], destport);
             }
 
@@ -737,7 +1356,7 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
         if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
             drain_socket_to_uart(sock, channel);
         }
-        disconnect(sock);
+        seg_socket_disconnect(sock);
         break;
 
     case SOCK_FIN_WAIT:
@@ -786,6 +1405,7 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
 
 #endif
 
+
 void proc_SEG_mqtt_client(uint8_t sock, int channel) {
     struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option);
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
@@ -801,6 +1421,9 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
 
     uint8_t serial_mode = get_serial_communation_protocol(channel);
     uint8_t state = getSn_SR(sock);
+#if SEG_FLOW_STALL_DIAG_ENABLE
+    seg_flow_diag_sock_state[channel] = state;
+#endif
     int ret;
     uint16_t reg_val;
     static uint8_t first_established;
@@ -820,7 +1443,7 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
         ctlsocket(sock, CS_SET_INTMASK, (void *)&reg_val);
 
         // MQTT connect
-        ret = connect(sock, network_connection->remote_ip, network_connection->remote_port);
+        ret = seg_socket_connect(sock, network_connection->remote_ip, network_connection->remote_port);
         PRT_SEG(" > SEG:MQTT_CLIENT_MODE:ConnectNetwork Err %d\r\n", ret);
 
         // Wait for TCP connection with timeout (1s * tcp_rcr_val)
@@ -886,8 +1509,8 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
         if (first_established) {
             // Serial debug message printout
             if (serial_common->serial_debug_en) {
-                getsockopt(sock, SO_DESTIP, &destip);
-                getsockopt(sock, SO_DESTPORT, &destport);
+                seg_socket_getopt(sock, SO_DESTIP, &destip);
+                seg_socket_getopt(sock, SO_DESTPORT, &destport);
                 PRT_SEG(" > SEG:CONNECTED TO - %d.%d.%d.%d : %d\r\n", destip[0], destip[1], destip[2], destip[3], destport);
             }
 
@@ -929,7 +1552,7 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
         break;
 
     case SOCK_CLOSE_WAIT:
-        disconnect(sock);
+        seg_socket_disconnect(sock);
         break;
 
     case SOCK_FIN_WAIT:
@@ -947,7 +1570,7 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
         }
 
         PRT_SEG(" > MQTT CLIENT: client_any_port = %d\r\n", client_any_port);
-        int8_t s = socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
+        int8_t s = seg_socket_open(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
 
         if (s == sock) {
             // Replace the command mode switch code GAP time (default: 500ms)
@@ -1011,6 +1634,9 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
 
     uint8_t serial_mode = get_serial_communation_protocol(channel);
     uint8_t state = getSn_SR(sock);
+#if SEG_FLOW_STALL_DIAG_ENABLE
+    seg_flow_diag_sock_state[channel] = state;
+#endif
     int ret;
     uint16_t reg_val;
     static uint8_t first_established;
@@ -1028,7 +1654,7 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
         reg_val = 0;
         ctlsocket(sock, CS_SET_INTMASK, (void *)&reg_val);
 
-        ret = connect(sock, network_connection->remote_ip, network_connection->remote_port);
+        ret = seg_socket_connect(sock, network_connection->remote_ip, network_connection->remote_port);
         PRT_SEG(" > SEG:TCP_CLIENT_OVER_TLS_MODE:ConnectNetwork Err %d\r\n", ret);
 
         // Wait for TCP connection with timeout (1s * tcp_rcr_val)
@@ -1110,8 +1736,8 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
         if (first_established) {
             // Serial debug message printout
             if (serial_common->serial_debug_en) {
-                getsockopt(sock, SO_DESTIP, &destip);
-                getsockopt(sock, SO_DESTPORT, &destport);
+                seg_socket_getopt(sock, SO_DESTIP, &destip);
+                seg_socket_getopt(sock, SO_DESTPORT, &destport);
                 PRT_SEG(" > SEG:CONNECTED TO - %d.%d.%d.%d : %d\r\n", destip[0], destip[1], destip[2], destip[3], destport);
             }
 
@@ -1154,7 +1780,7 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
         break;
 
     case SOCK_CLOSE_WAIT:
-        disconnect(sock);
+        seg_socket_disconnect(sock);
         break;
 
     case SOCK_FIN_WAIT:
@@ -1242,16 +1868,35 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
 
     // Socket state
     uint8_t state = getSn_SR(sock);
+#if SEG_FLOW_STALL_DIAG_ENABLE
+    seg_flow_diag_sock_state[channel] = state;
+#endif
     uint16_t reg_val;
 
     switch (state) {
-    case SOCK_INIT:
+    case SOCK_INIT: {
+        int8_t listen_rc;
+        uint8_t listen_state;
+
+        /* Recover a server left in INIT instead of ignoring it forever. */
+        listen_rc = seg_socket_listen(sock);
+        listen_state = getSn_SR(sock);
+        if ((listen_rc != SOCK_OK) || (listen_state != SOCK_LISTEN)) {
+            PRT_SEG(" > SEG:TCP_SERVER_MODE:LISTEN_RECOVERY_FAILED ch=%d sock=%u rc=%d sr=0x%02X\r\n",
+                    channel, (unsigned int)sock, (int)listen_rc,
+                    (unsigned int)listen_state);
+            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
+        }
+        seg_tcp_server_transient_reset(channel);
         break;
+    }
 
     case SOCK_LISTEN:
+        seg_tcp_server_transient_reset(channel);
         break;
 
     case SOCK_ESTABLISHED:
+        seg_tcp_server_transient_reset(channel);
         if (getSn_IR(sock) & Sn_IR_CON) {
             ///////////////////////////////////////////////////////////////////////////////////////////////////
             // S2E: TCP server mode initialize after connection established (only once)
@@ -1265,9 +1910,11 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
 
             // Serial debug message printout
             if (serial_common->serial_debug_en) {
-                getsockopt(sock, SO_DESTIP, &destip);
-                getsockopt(sock, SO_DESTPORT, &destport);
-                PRT_SEG(" > SEG:CONNECTED FROM - %d.%d.%d.%d : %d\r\n", destip[0], destip[1], destip[2], destip[3], destport);
+                seg_socket_getopt(sock, SO_DESTIP, &destip);
+                seg_socket_getopt(sock, SO_DESTPORT, &destport);
+                PRT_SEG(" > SEG:CONNECTED ch=%d sock=%u FROM - %d.%d.%d.%d : %d\r\n",
+                        channel, (unsigned int)sock,
+                        destip[0], destip[1], destip[2], destip[3], destport);
             }
 
             if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
@@ -1318,14 +1965,16 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
         break;
 
     case SOCK_CLOSE_WAIT:
+        seg_tcp_server_transient_reset(channel);
         if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
             drain_socket_to_uart(sock, channel);
         }
-        disconnect(sock);
+        seg_socket_disconnect(sock);
         break;
 
     case SOCK_FIN_WAIT:
     case SOCK_CLOSED:
+        seg_tcp_server_transient_reset(channel);
         process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
         set_device_status(ST_OPEN, channel);
 
@@ -1340,7 +1989,7 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
         //
         // Original:
         //     int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, 0x00);
-        int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
+        int8_t s = seg_socket_open(sock, Sn_MR_TCP, network_connection->local_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
 
         if (s == sock) {
             // Replace the command mode switch code GAP time (default: 500ms)
@@ -1348,11 +1997,22 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
                 modeswitch_gap_time = serial_data_packing->packing_time;
             }
 
-            // TCP Server listen
-            listen(sock);
+            // TCP Server listen.  A successful socket() only reaches INIT; do
+            // not report SOCKOPEN unless listen() actually reached LISTEN.
+            int8_t listen_rc = seg_socket_listen(sock);
+            uint8_t listen_state = getSn_SR(sock);
 
-            if (serial_common->serial_debug_en) {
-                PRT_SEG(" > SEG:TCP_SERVER_MODE:SOCKOPEN\r\n");
+            if ((listen_rc == SOCK_OK) && (listen_state == SOCK_LISTEN)) {
+                if (serial_common->serial_debug_en) {
+                    PRT_SEG(" > SEG:TCP_SERVER_MODE:SOCKOPEN ch=%d sock=%u port=%u\r\n",
+                            channel, (unsigned int)sock,
+                            (unsigned int)getSn_PORT(sock));
+                }
+            } else {
+                PRT_SEG(" > SEG:TCP_SERVER_MODE:SOCKOPEN FAILED ch=%d sock=%u rc=%d sr=0x%02X\r\n",
+                        channel, (unsigned int)sock, (int)listen_rc,
+                        (unsigned int)listen_state);
+                process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             }
         } else {
             if (serial_common->serial_debug_en) {
@@ -1363,9 +2023,21 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
         break;
 
     default:
+        if (seg_tcp_server_transient_timed_out(channel, state) == TRUE) {
+            uint8_t ir = getSn_IR(sock);
+            uint16_t local_port = getSn_PORT(sock);
+
+            PRT_SEG(" > SEG:TCP_SERVER_MODE:STATE_RECOVERY ch=%d sock=%u sr=0x%02X ir=0x%02X port=%u age_ms=%u\r\n",
+                    channel, (unsigned int)sock, (unsigned int)state,
+                    (unsigned int)ir, (unsigned int)local_port,
+                    (unsigned int)SEG_TCP_SERVER_STUCK_TIMEOUT_MS);
+            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
+            seg_tcp_server_transient_reset(channel);
+        }
         break;
     }
 }
+
 
 void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
     struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option[channel]);
@@ -1384,6 +2056,9 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
 
     // Socket state
     uint8_t state = getSn_SR(sock);
+#if SEG_FLOW_STALL_DIAG_ENABLE
+    seg_flow_diag_sock_state[channel] = state;
+#endif
     int ret;
     uint16_t reg_val;
 
@@ -1409,7 +2084,7 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
             }
 
             // TCP connect
-            ret = connect(sock, network_connection->remote_ip, network_connection->remote_port);
+            ret = seg_socket_connect(sock, network_connection->remote_ip, network_connection->remote_port);
             PRT_SEG(" > SEG:TCP_MIXED_MODE:ConnectNetwork Err %d\r\n", ret);
 
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
@@ -1446,8 +2121,8 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
 
             // Serial debug message printout
             if (serial_common->serial_debug_en) {
-                getsockopt(sock, SO_DESTIP, &destip);
-                getsockopt(sock, SO_DESTPORT, &destport);
+                seg_socket_getopt(sock, SO_DESTIP, &destip);
+                seg_socket_getopt(sock, SO_DESTPORT, &destport);
 
                 if (mixed_state[channel] == MIXED_SERVER) {
                     PRT_SEG(" > SEG:CONNECTED FROM - %d.%d.%d.%d : %d\r\n", destip[0], destip[1], destip[2], destip[3], destport);
@@ -1517,7 +2192,7 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
         if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
             drain_socket_to_uart(sock, channel);
         }
-        disconnect(sock);
+        seg_socket_disconnect(sock);
         break;
 
     case SOCK_FIN_WAIT:
@@ -1531,7 +2206,7 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
             e2u_size[channel] = 0;
             data_buffer_flush(channel);
 
-            int8_t s = socket(sock, Sn_MR_TCP, network_connection->local_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
+            int8_t s = seg_socket_open(sock, Sn_MR_TCP, network_connection->local_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
 
             if (s == sock) {
                 // Replace the command mode switch code GAP time (default: 500ms)
@@ -1540,7 +2215,7 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
                 }
 
                 // TCP Server listen
-                listen(sock);
+                seg_socket_listen(sock);
 
                 if (serial_common->serial_debug_en) {
                     PRT_SEG(" > SEG:TCP_MIXED_MODE:SERVER_SOCKOPEN\r\n");
@@ -1563,7 +2238,7 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
 #ifdef _SEG_DEBUG_
             PRT_SEG(" > TCP CLIENT: any_port = %d\r\n", source_port);
 #endif
-            int8_t s = socket(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
+            int8_t s = seg_socket_open(sock, Sn_MR_TCP, source_port, (SF_TCP_NODELAY | SF_IO_NONBLOCK));
 
             if (s == sock) {
                 // Replace the command mode switch code GAP time (default: 500ms)
@@ -1622,10 +2297,14 @@ void uart_to_ether(uint8_t sock, int channel) {
                         PRT_SEG(" > SEG:UDP_MODE:DATA SEND FAILED - UDP Peer IP/Port required (0.0.0.0)\r\n");
                     }
                 } else {
-                    sent_len = (int16_t)sendto(sock, g_send_buf[channel], len, peerip, peerport);    // UDP 1:N mode
+                    sent_len = seg_socket_sendto(sock, g_send_buf[channel], len,
+                                                 peerip, peerport, channel);    // UDP 1:N mode
                 }
             } else {
-                sent_len = (int16_t)sendto(sock, g_send_buf[channel], len, network_connection->remote_ip, network_connection->remote_port);    // UDP 1:1 mode
+                sent_len = seg_socket_sendto(sock, g_send_buf[channel], len,
+                                             network_connection->remote_ip,
+                                             network_connection->remote_port,
+                                             channel);    // UDP 1:1 mode
             }
         } else if (network_connection->working_state == ST_CONNECT) {
             if (network_connection->working_mode == MQTT_CLIENT_MODE || network_connection->working_mode == MQTTS_CLIENT_MODE) {
@@ -1647,17 +2326,28 @@ void uart_to_ether(uint8_t sock, int channel) {
                 // sending for good: the ring buffer fills behind it and the peer is
                 // never released. Offer what the socket has room for and keep the rest.
                 //
+                // Holding out for a minimum partial size was tried and reverted: it
+                // stopped three channels outright at 630 s where taking whatever was
+                // free only degraded them. socket.c allows one SEND in flight per
+                // socket and returns SOCK_BUSY until SENDOK, so waiting for a larger
+                // chunk only lengthens the gap between sends without making the next
+                // one bigger.
+                //
                 // Original:
                 //     sent_len = (int16_t)send(sock, g_send_buf[channel], len);
-                uint16_t freesize = getSn_TX_FSR(sock);
-
-                if (len > freesize) {
-                    len = freesize;
-                }
-
-                if (len > 0) {
-                    sent_len = (int16_t)send(sock, g_send_buf[channel], len);
-                }
+                // send() must be reached on every pass. It is the only thing that
+                // acknowledges Sn_IR_SENDOK and clears socket.c's sock_is_sending, and
+                // the chip does not refresh Sn_TX_FSR until it has been. Skipping the
+                // call when the clamp produced zero left both set and the register
+                // stuck at 0 for good - captured as tx_rd == tx_wr, so an empty
+                // transmit buffer, reporting no free space, unchanged over twelve
+                // minutes with SENDOK still raised.
+                //
+                // So clamp only when there is space to clamp to. With none reported,
+                // hand over the full request: send() runs its SENDOK bookkeeping first
+                // and then returns SOCK_BUSY, which is the state the next pass needs.
+                sent_len = seg_socket_send_available(sock, g_send_buf[channel],
+                                                     &len, channel);
             }
 
             if ((tcp_option->keepalive_en == ENABLE) &&
@@ -1751,7 +2441,6 @@ void ether_to_uart(uint8_t sock, int channel) {
 
     uint16_t len;
     uint16_t i;
-    uint16_t reg_val;
 
     // The E2S stall lives here: platform_uart_cts_ready() reports ready
     // unconditionally on the HW channels because the PL011 gates CTS itself, so a
@@ -1785,7 +2474,7 @@ void ether_to_uart(uint8_t sock, int channel) {
         // rather than appends, so fetching now would overwrite it.
         if ((e2u_size[channel] == 0) &&
                 !(network_connection->working_mode == MQTT_CLIENT_MODE || network_connection->working_mode == MQTTS_CLIENT_MODE)) {
-            len = getSn_RX_RSR(sock);
+            len = seg_socket_rx_available(sock, channel);
             if (len > DATA_BUF_SIZE) {
                 len = DATA_BUF_SIZE;    // avoiding buffer overflow
             }
@@ -1799,7 +2488,10 @@ void ether_to_uart(uint8_t sock, int channel) {
                 platform_uart_tx_wait(channel);
 
                 if (network_connection->working_mode == UDP_MODE) {
-                    e2u_size[channel] = recvfrom(sock, g_recv_buf[channel], len, peerip, &peerport);
+                    e2u_size[channel] = (uint16_t)seg_socket_recvfrom(sock,
+                                        g_recv_buf[channel], len,
+                                        peerip, &peerport,
+                                        channel);
 
                     if (memcmp(peerip_tmp, peerip, 4) !=  0) {
                         memcpy(peerip_tmp, peerip, 4);
@@ -1811,15 +2503,20 @@ void ether_to_uart(uint8_t sock, int channel) {
                 } else {
 #ifdef __USE_S2E_OVER_TLS__
                     if (network_connection->working_mode == SSL_TCP_CLIENT_MODE) {
+                        uint16_t reg_val = SIK_RECEIVED & 0x00FF;
+
+                        seg_socket_lock();
                         e2u_size[channel] = wiz_tls_read(&s2e_tlsContext[channel], g_recv_buf[channel], len);
+                        ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
+                        seg_socket_unlock();
                     }
 #endif
                     else {
-                        e2u_size[channel] = recv(sock, g_recv_buf[channel], len);
+                        e2u_size[channel] = (uint16_t)seg_socket_recv(sock,
+                                            g_recv_buf[channel], len,
+                                            channel);
                     }
                 }
-                reg_val = SIK_RECEIVED & 0x00FF;
-                ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
             } else {
                 break;
             }
@@ -1839,7 +2536,7 @@ void ether_to_uart(uint8_t sock, int channel) {
                         xTimerStop(seg_auth_timer[channel], 0);
                     }
                     if (flag_connect_pw_auth[channel] == SEG_DISABLE) {
-                        disconnect(sock);
+                        seg_socket_disconnect(sock);
                         return;
                     }
                 }
@@ -1943,19 +2640,20 @@ void ether_to_spi(uint8_t sock) {
 
     uint16_t len;
     uint16_t i;
-    uint16_t reg_val;
 
     do {
         // H/W Socket buffer -> User's buffer
         if (!(network_connection->working_mode == MQTT_CLIENT_MODE || network_connection->working_mode == MQTTS_CLIENT_MODE)) {
-            len = getSn_RX_RSR(sock);
+            len = seg_socket_rx_available(sock, SEG_DATA0_CH);
             if (len > DATA_BUF_SIZE) {
                 len = DATA_BUF_SIZE;    // avoiding buffer overflow
             }
 
             if (len > 0) {
                 if (network_connection->working_mode == UDP_MODE) {
-                    e2u_size[SEG_DATA0_CH] = recvfrom(sock, g_recv_buf[SEG_DATA0_CH], len, peerip, &peerport);
+                    e2u_size[SEG_DATA0_CH] = (uint16_t)seg_socket_recvfrom(
+                                                 sock, g_recv_buf[SEG_DATA0_CH], len,
+                                                 peerip, &peerport, SEG_DATA0_CH);
 
                     if (memcmp(peerip_tmp, peerip, 4) !=  0) {
                         memcpy(peerip_tmp, peerip, 4);
@@ -1966,15 +2664,20 @@ void ether_to_spi(uint8_t sock) {
                 } else if (network_connection->working_state == ST_CONNECT) {
 #ifdef __USE_S2E_OVER_TLS__
                     if (network_connection->working_mode == SSL_TCP_CLIENT_MODE) {
+                        uint16_t reg_val = SIK_RECEIVED & 0x00FF;
+
+                        seg_socket_lock();
                         e2u_size[SEG_DATA0_CH] = wiz_tls_read(&s2e_tlsContext[SEG_DATA0_CH], g_recv_buf[SEG_DATA0_CH], len);
+                        ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
+                        seg_socket_unlock();
                     }
 #endif
                     else {
-                        e2u_size[SEG_DATA0_CH] = recv(sock, g_recv_buf[SEG_DATA0_CH], len);
+                        e2u_size[SEG_DATA0_CH] = (uint16_t)seg_socket_recv(
+                                                     sock, g_recv_buf[SEG_DATA0_CH], len,
+                                                     SEG_DATA0_CH);
                     }
                 }
-                reg_val = SIK_RECEIVED & 0x00FF;
-                ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
             } else {
                 break;
             }
@@ -1994,7 +2697,7 @@ void ether_to_spi(uint8_t sock) {
                         xTimerStop(seg_auth_timer[SEG_DATA0_CH], 0);
                     }
                     if (flag_connect_pw_auth[SEG_DATA0_CH] == SEG_DISABLE) {
-                        disconnect(sock);
+                        seg_socket_disconnect(sock);
                         return;
                     }
                 }
@@ -2026,6 +2729,7 @@ uint16_t get_tcp_any_port(void) {
     return client_any_port;
 }
 
+
 uint8_t get_serial_communation_protocol(int channel) {
     struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option[channel]);
 
@@ -2036,9 +2740,19 @@ uint8_t get_serial_communation_protocol(int channel) {
     return serial_option->protocol;
 }
 
+
 void send_keepalive_packet_manual(uint8_t sock) {
+    // SEND_KEEP uses the same per-socket command register as data SEND.  The
+    // timer task used to issue it outside seg_socket_sem, so it could cross a
+    // send() between that call's SENDOK check and Sn_CR_SEND command.  That left
+    // socket.c's software pending bit set with no matching SENDOK/TIMEOUT and
+    // reproduced as FLOW_DIAG send_rc=SOCK_BUSY with a full S2E ring.  Keep the
+    // entire command transaction in the same lock as send()/recv().
+    seg_socket_lock();
     setsockopt(sock, SO_KEEPALIVESEND, 0);
+    seg_socket_unlock();
 }
+
 
 uint8_t process_socket_termination(uint8_t sock, uint32_t timeout, int channel, uint8_t mutex) {
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
@@ -2070,7 +2784,7 @@ uint8_t process_socket_termination(uint8_t sock, uint32_t timeout, int channel, 
     if (network_connection->working_mode != UDP_MODE) { // TCP_SERVER_MODE / TCP_CLIENT_MODE / TCP_MIXED_MODE
         if ((sock_status == SOCK_ESTABLISHED) || (sock_status == SOCK_CLOSE_WAIT)) {
             do {
-                ret = disconnect(sock);
+                ret = seg_socket_disconnect(sock);
                 if ((ret == SOCK_OK) || (ret == SOCKERR_TIMEOUT)) {
                     break;
                 }
@@ -2078,7 +2792,7 @@ uint8_t process_socket_termination(uint8_t sock, uint32_t timeout, int channel, 
         }
     }
 
-    close(sock);
+    seg_socket_close(sock);
     if (mutex == TRUE) {
         xSemaphoreGive(seg_critical_sem[channel]);
     }
@@ -2109,6 +2823,7 @@ uint8_t check_connect_pw_auth(uint8_t * buf, uint16_t len) {
 
     return ret;
 }
+
 
 void init_trigger_modeswitch(uint8_t mode) {
     struct __serial_common *serial_common = (struct __serial_common *) & (get_DevConfig_pointer()->serial_common);
@@ -2406,6 +3121,7 @@ uint16_t debugSerial_dataTransfer(uint8_t * buf, uint16_t size, teDEBUGTYPE type
     return bytecnt;
 }
 
+
 void send_sid(uint8_t sock, uint8_t link_message) {
     DevConfig *dev_config = get_DevConfig_pointer();
 
@@ -2449,6 +3165,7 @@ void send_sid(uint8_t sock, uint8_t link_message) {
                        dev_config->network_common.mac[5]);
         break;
 
+
     case SEG_LINK_MSG_DEVALIAS:
         len = snprintf((char *)buf, sizeof(buf), "%s", dev_config->device_option.device_alias);
         break;
@@ -2462,7 +3179,7 @@ void send_sid(uint8_t sock, uint8_t link_message) {
     }
 
     if (len > 0) {
-        send(sock, buf, len);
+        seg_socket_send(sock, buf, len, SEG_DATA0_CH);
     }
 }
 
@@ -2542,13 +3259,26 @@ void seg_ch_task(void *argument)  {
 
     while (1) {
         seg_task_heartbeat_ms[channel] = (uint32_t)millis();
+#if SEG_FLOW_STALL_DIAG_ENABLE
+        seg_flow_diag_seg_beat[channel]++;
+        seg_flow_diag_seg_phase[channel] = SEG_FLOW_DIAG_SEG_WAIT_NET;
+#endif
         if (get_net_status() == NET_LINK_DISCONNECTED) {
             PRT_SEGCP("get_net_status() != NET_LINK_DISCONNECTED\r\n");
             xSemaphoreTake(net_seg_sem[channel], portMAX_DELAY);
         }
+#if SEG_FLOW_STALL_DIAG_ENABLE
+        seg_flow_diag_seg_phase[channel] = SEG_FLOW_DIAG_SEG_WAIT_CRITICAL;
+#endif
         xSemaphoreTake(seg_critical_sem[channel], portMAX_DELAY);
+#if SEG_FLOW_STALL_DIAG_ENABLE
+        seg_flow_diag_seg_phase[channel] = SEG_FLOW_DIAG_SEG_SOCKET;
+#endif
         do_seg(sock, channel);
         xSemaphoreGive(seg_critical_sem[channel]);
+#if SEG_FLOW_STALL_DIAG_ENABLE
+        seg_flow_diag_seg_phase[channel] = SEG_FLOW_DIAG_SEG_DELAY;
+#endif
         xSemaphoreTake(seg_sem[channel], pdMS_TO_TICKS(10));
     }
 }
@@ -2580,15 +3310,28 @@ void seg_ch_u2e_task(void *argument)  {
     struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option[channel]);
 
     while (1) {
+#if SEG_FLOW_STALL_DIAG_ENABLE
+        seg_flow_diag_u2e_phase[channel] = SEG_FLOW_DIAG_U2E_WAIT_NET;
+#endif
         if (get_net_status() == NET_LINK_DISCONNECTED) {
             PRT_SEGCP("get_net_status() != NET_LINK_DISCONNECTED\r\n");
             xSemaphoreTake(net_seg_u2e_sem[channel], portMAX_DELAY);
         }
 
+#if SEG_FLOW_STALL_DIAG_ENABLE
+        seg_flow_diag_u2e_phase[channel] = SEG_FLOW_DIAG_U2E_WAIT_WAKEUP;
+#endif
         xSemaphoreTake(seg_u2e_sem[channel], portMAX_DELAY);
+#if SEG_FLOW_STALL_DIAG_ENABLE
+        seg_flow_diag_u2e_beat[channel]++;
+        seg_flow_diag_u2e_phase[channel] = SEG_FLOW_DIAG_U2E_WAIT_CRITICAL;
+#endif
         switch (serial_mode) {
         case SEG_SERIAL_PROTOCOL_NONE :
             xSemaphoreTake(seg_critical_sem[channel], portMAX_DELAY);
+#if SEG_FLOW_STALL_DIAG_ENABLE
+            seg_flow_diag_u2e_phase[channel] = SEG_FLOW_DIAG_U2E_DRAIN;
+#endif
             if (get_data_buffer_usedsize(channel) || u2e_size[channel]) {
                 if ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state[channel] == MIXED_SERVER) && (ST_OPEN == get_device_status(channel))) {
                     mixed_state[channel] = MIXED_CLIENT;
@@ -2603,6 +3346,9 @@ void seg_ch_u2e_task(void *argument)  {
                 check_uart_flow_control(serial_option->flow_control, channel);
             }
             xSemaphoreGive(seg_critical_sem[channel]);
+#if SEG_FLOW_STALL_DIAG_ENABLE
+            seg_flow_diag_u2e_phase[channel] = SEG_FLOW_DIAG_U2E_RELEASE;
+#endif
             if ((uint32_t)((uint32_t)millis() - seg_task_heartbeat_ms[channel]) >= SEG_U2E_YIELD_WINDOW_MS) {
                 vTaskDelay(1);
             }
@@ -2651,6 +3397,12 @@ void seg_ch_recv_task(void *argument)  {
     uint8_t serial_mode = get_serial_communation_protocol(channel);
 
     while (1) {
+#if SEG_FLOW_STALL_DIAG_ENABLE
+        // Only a liveness beat here. The poll itself moved to seg_flow_diag_task:
+        // ether_to_uart() below can block indefinitely, and a reporter sitting in
+        // this loop goes down with the very fault it is meant to describe.
+        seg_flow_diag_recv_beat[channel]++;
+#endif
         switch (serial_mode) {
         case SEG_SERIAL_PROTOCOL_NONE :
             ether_to_uart(sock, channel);
@@ -2714,6 +3466,51 @@ void auth_timer_callback(TimerHandle_t xTimer) {
     flag_auth_time[timer_id] = SEG_ENABLE;
     xSemaphoreGive(seg_timer_sem);
 }
+
+#if SEG_FLOW_STALL_DIAG_ENABLE || SEG_S2E_STALL_RECOVERY_ENABLE
+// Polls every channel from an independent task so it remains available when a
+// channel's data tasks stop making useful progress.
+void seg_flow_diag_task(void *argument) {
+    (void)argument;
+
+#if SEG_FLOW_STALL_DIAG_ENABLE
+    // Take over ioLibrary's critical-section callbacks so the SPI lock's holder is
+    // recorded. Safe here: wizchip_cris_initialize() already ran during startup and
+    // is never called again, and both callbacks use the same semaphore as before.
+    reg_wizchip_cris_cbfunc(seg_wiz_cris_enter, seg_wiz_cris_exit);
+
+    // A two second beat line was tried here and removed. It answered its question, but
+    // the answer was about itself: reset frequency tracked printf frequency almost
+    // exactly - none at all over three hours with the diagnostics silent, once every
+    // few hours with a stack line each minute, and once every twenty to ninety seconds
+    // with a beat line every two. It reset with no traffic at all, which rules the data
+    // path out. Every occurrence looks the same - every task stops in the same instant,
+    // this one included, and the watchdog fires 8.4 s later.
+    //
+    // pico-sdk guards stdio with a spin lock rather than a FreeRTOS mutex, so a task
+    // that loses the CPU while holding it leaves the next caller spinning at priority
+    // 31 - feeding nothing. Printing less is the only lever from here.
+#endif
+    for (;;) {
+#if (DEVICE_UART_CNT > 2)
+        // DATA2/DATA3 share one PIO RX consumer task. This poll is normally
+        // silent and emits a snapshot only when that shared path stops making
+        // progress for long enough to explain a simultaneous two-channel stall.
+        pio_uart_rx_diag_poll();
+#endif
+        for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+#if SEG_FLOW_STALL_DIAG_ENABLE
+            seg_flow_diag_poll(ch);     // receive side: RTS held deasserted
+            seg_e2s_diag_poll(ch);      // transmit side: recv task not looping
+#endif
+#if SEG_S2E_STALL_RECOVERY_ENABLE
+            seg_s2e_recovery_poll(ch);  // permanent raw-TCP send stall
+#endif
+        }
+        vTaskDelay(pdMS_TO_TICKS(250));
+    }
+}
+#endif
 
 void seg_timer_task(void *argument)  {
     struct __tcp_option *tcp_option;

@@ -82,13 +82,17 @@ int8_t DNS_run_handler(uint8_t * dns_ip, uint8_t * name, uint8_t * ip_from_dns, 
 
     switch (dns_state) {
     case STATE_DNS_INIT:
+        seg_wizchip_api_lock();
         socket(DNS_SOCKET, Sn_MR_UDP, 0, 0x00);
+        seg_wizchip_api_unlock();
         dns_state = STATE_DNS_SEND_QUERY;
         break;
 
     case STATE_DNS_SEND_QUERY:
         len = dns_makequery(0, (char *)name, pDNSMSG, MAX_DNS_BUF_SIZE);
+        seg_wizchip_api_lock();
         sendto(DNS_SOCKET, pDNSMSG, len, dns_ip, IPPORT_DOMAIN);
+        seg_wizchip_api_unlock();
 #ifdef _DNS_DEBUG_
         printf("> DNS Query to DNS Server : %d.%d.%d.%d\r\n", dns_ip[0], dns_ip[1], dns_ip[2], dns_ip[3]);
 #endif
@@ -98,11 +102,16 @@ int8_t DNS_run_handler(uint8_t * dns_ip, uint8_t * name, uint8_t * ip_from_dns, 
         break;
 
     case STATE_DNS_RECV_RESPONSE:
-        if ((len = getSn_RX_RSR(DNS_SOCKET)) > 0) {
+        seg_wizchip_api_lock();
+        len = getSn_RX_RSR(DNS_SOCKET);
+        seg_wizchip_api_unlock();
+        if (len > 0) {
             if (len > MAX_DNS_BUF_SIZE) {
                 len = MAX_DNS_BUF_SIZE;
             }
+            seg_wizchip_api_lock();
             len = recvfrom(DNS_SOCKET, pDNSMSG, len, ip, &port);
+            seg_wizchip_api_unlock();
 #ifdef _DNS_DEBUG_
             printf("> Receive DNS message from %d.%d.%d.%d(%d). len = %d\r\n", ip[0], ip[1], ip[2], ip[3], port, len);
 #endif
@@ -129,7 +138,9 @@ int8_t DNS_run_handler(uint8_t * dns_ip, uint8_t * name, uint8_t * ip_from_dns, 
 
     case STATE_DNS_DONE:
         tickStart = 0;
+        seg_wizchip_api_lock();
         close(DNS_SOCKET);
+        seg_wizchip_api_unlock();
         dns_state = STATE_DNS_STOP;
         break;
 
@@ -170,7 +181,9 @@ int8_t process_dns(int channel) {
         }
 
         if (dev_config->network_option.dhcp_use) {
+            seg_wizchip_api_lock();
             DHCP_run();
+            seg_wizchip_api_unlock();
         }
 
         device_wdt_reset();
@@ -208,6 +221,3 @@ int8_t get_ipaddr_from_dns(uint8_t * domain, uint8_t * ip_from_dns, uint32_t tim
     }
     return ret;
 }
-
-
-
