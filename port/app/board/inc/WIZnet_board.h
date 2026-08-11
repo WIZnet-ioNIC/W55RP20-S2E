@@ -126,14 +126,14 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define DATA2_UART_RX_PIN            14
 #define DATA2_UART_CTS_PIN           8
 #define DATA2_UART_RTS_PIN           15
-#define DATA2_STATUS_TCPCONNECT_PIN  19   // not on EVB header (onboard LD2 red LED net)
+#define DATA2_STATUS_TCPCONNECT_PIN  10   // EVB pin 14
 
 // DATA3 (PIO)
 #define DATA3_UART_TX_PIN            12
 #define DATA3_UART_RX_PIN            27
 #define DATA3_UART_CTS_PIN           9
 #define DATA3_UART_RTS_PIN           28
-#define DATA3_STATUS_TCPCONNECT_PIN  10
+#define DATA3_STATUS_TCPCONNECT_PIN  19   // not on EVB header (onboard LD2 red LED net)
 
 // DTR/DSR share the RTS/CTS pins (config selects RTS-CTS vs DTR-DSR); aliases keep the
 // existing DTR/DSR GPIO helpers pointing at the correct shared pins.
@@ -151,7 +151,7 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 
 #define LED1_PIN      STATUS_PHYLINK_PIN             // PHY link
 #define LED2_PIN      DATA0_STATUS_TCPCONNECT_PIN    // DATA0 TCP status
-#define LED3_PIN      DATA2_STATUS_TCPCONNECT_PIN    // GP19 now DATA2 status (heartbeat blink removed)
+#define LED3_PIN      DATA3_STATUS_TCPCONNECT_PIN    // GP19 now DATA3 status (heartbeat blink removed)
 #define LEDn          3
 
 #else   // ---- W232N / IP20 / PLATYPUS_S2E : original 2-port pin map ----
