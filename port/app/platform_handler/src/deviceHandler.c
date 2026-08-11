@@ -42,12 +42,15 @@ void device_set_factory_default(void) {
 
 
 void device_socket_termination(void) {
-    process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, FALSE);
-    process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, FALSE);
+    for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+        process_socket_termination(seg_data_sock[ch], SOCK_TERMINATION_DELAY, ch, FALSE);
+    }
 
-    for (int i = SEG_DATA1_SOCK + 1; i < _WIZCHIP_SOCK_NUM_; i++) {
+    seg_wizchip_api_lock();
+    for (int i = SEG_DATA3_SOCK + 1; i < _WIZCHIP_SOCK_NUM_; i++) {
         close(i);
     }
+    seg_wizchip_api_unlock();
 }
 
 void device_reboot(void) {
@@ -431,7 +434,7 @@ void display_Dev_Info_main(void) {
         printf("%d / ", stop_bit_table[dev_config->serial_option[i].stop_bits]);
         if (dev_config->serial_option[i].uart_interface == UART_IF_RS232_TTL) {
             printf("Flow control: %s", flow_ctrl_table[dev_config->serial_option[i].flow_control]);
-        } else if ((dev_config->serial_option[i].uart_interface == UART_IF_RS422) || (dev_config->serial_option[i].uart_interface == UART_IF_RS485)) {
+        } else {
             if ((dev_config->serial_option[i].flow_control == flow_rtsonly) || (dev_config->serial_option[i].flow_control == flow_reverserts)) {
                 printf("Flow control: %s", flow_ctrl_table[dev_config->serial_option[i].flow_control]);
             } else {
@@ -772,4 +775,3 @@ void wdt_reset(void) {
     //__HAL_IWDG_RELOAD_COUNTER(&hiwdg);
 }
 #endif
-

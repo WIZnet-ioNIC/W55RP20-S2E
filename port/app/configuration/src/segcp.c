@@ -106,19 +106,16 @@ static int32_t segcp_socket_send(uint8_t sock, uint8_t *buf, uint16_t len) {
 
 static int32_t segcp_socket_sendto(uint8_t sock, uint8_t *buf, uint16_t len,
                                    uint8_t *addr, uint16_t port) {
-    int32_t sent;
-
-    seg_wizchip_api_lock();
-    sent = sendto(sock, buf, len, addr, port);
-    seg_wizchip_api_unlock();
-
-    return sent;
+    return seg_wizchip_udp_send_nonblocking(sock, buf, len, addr, port);
 }
 
 static int8_t segcp_socket_open(uint8_t sock, uint8_t protocol,
                                 uint16_t port, uint8_t flag) {
     int8_t result;
 
+    if (protocol == Sn_MR_UDP) {
+        seg_wizchip_udp_send_reset(sock);
+    }
     seg_wizchip_api_lock();
     result = socket(sock, protocol, port, flag);
     seg_wizchip_api_unlock();
@@ -152,6 +149,7 @@ static int8_t segcp_socket_close(uint8_t sock) {
     seg_wizchip_api_lock();
     result = close(sock);
     seg_wizchip_api_unlock();
+    seg_wizchip_udp_send_reset(sock);
 
     return result;
 }
@@ -196,7 +194,7 @@ uint8_t * tbSEGCPCMD[] = {"MC", "VR", "MN", "IM", "OP", "CP", "DG", "KA", "KI", 
                           "CS", "YN", "YI", "JO", "CL", "CH", "JP", "YB", "YD", "YP", "YS", "YF", "UD", "US",
                           "JT", "ZV", "ZR", "ZA", "ZS", "ZE", "ZO", "YO", "ZD", "ZF", "YE", // ch3 (25)
 #endif
-                          "0"
+                          0
                          };
 
 #if 0
@@ -300,10 +298,12 @@ void segcp_ret_handler(uint16_t segcp_ret) {
             erase_storage(STORAGE_CONFIG);
         }
         if (segcp_ret & SEGCP_RET_FWUP) {
-            teDEVSTATUS status_bak0 = (teDEVSTATUS)get_device_status(SEG_DATA0_CH);
-            teDEVSTATUS status_bak1 = (teDEVSTATUS)get_device_status(SEG_DATA1_CH);
-            set_device_status(ST_UPGRADE, SEG_DATA0_CH);
-            set_device_status(ST_UPGRADE, SEG_DATA1_CH);
+            teDEVSTATUS status_bak[DEVICE_UART_CNT];
+
+            for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+                status_bak[ch] = (teDEVSTATUS)get_device_status(ch);
+                set_device_status(ST_UPGRADE, ch);
+            }
 
             if ((segcp_ret & SEGCP_RET_FWUP_BANK) == segcp_ret) {
                 ret = device_bank_update(); // BANK Firmware update by Configuration tool
@@ -312,10 +312,9 @@ void segcp_ret_handler(uint16_t segcp_ret) {
             }
 
             if (ret == DEVICE_FWUP_RET_SUCCESS) {
-                teDEVSTATUS status_bak0 = (teDEVSTATUS)get_device_status(SEG_DATA0_CH);
-                teDEVSTATUS status_bak1 = (teDEVSTATUS)get_device_status(SEG_DATA1_CH);
-                set_device_status(ST_OPEN, SEG_DATA0_CH);
-                set_device_status(ST_OPEN, SEG_DATA1_CH);
+                for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+                    set_device_status(ST_OPEN, ch);
+                }
 
                 save_DevConfig_to_storage();
 
@@ -325,8 +324,9 @@ void segcp_ret_handler(uint16_t segcp_ret) {
                 dev_config->firmware_update.fwup_size = 0;
                 dev_config->firmware_update.fwup_flag = SEGCP_DISABLE;
                 dev_config->firmware_update.fwup_server_flag = SEGCP_DISABLE;
-                set_device_status(status_bak0, SEG_DATA0_CH);
-                set_device_status(status_bak1, SEG_DATA1_CH);
+                for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+                    set_device_status(status_bak[ch], ch);
+                }
                 seg_wizchip_api_lock();
                 close(SOCK_FWUPDATE);
                 seg_wizchip_api_unlock();
@@ -1050,7 +1050,6 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
-                        process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
                         dev_config->network_connection[0].working_mode = tmp_byte;
                     }
                     break;
@@ -1060,7 +1059,6 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param_len != 1 || tmp_byte > MQTTS_CLIENT_MODE) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
-                        process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
                         process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
                         dev_config->network_connection[1].working_mode = tmp_byte;
                     }
@@ -1100,7 +1098,8 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_KI:
                     tmp_long = atol(param);
-                    if (tmp_long > 0xFFFF) {
+                    if ((tmp_long < SEG_KEEPALIVE_MIN_INTERVAL_MS) ||
+                            (tmp_long > 0xFFFF)) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         dev_config->tcp_option[0].keepalive_wait_time = (uint16_t) tmp_long;
@@ -1108,7 +1107,8 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_RS:
                     tmp_long = atol(param);
-                    if (tmp_long > 0xFFFF) {
+                    if ((tmp_long < SEG_KEEPALIVE_MIN_INTERVAL_MS) ||
+                            (tmp_long > 0xFFFF)) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         dev_config->tcp_option[1].keepalive_wait_time = (uint16_t) tmp_long;
@@ -1116,7 +1116,8 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_KE:
                     tmp_long = atol(param);
-                    if (tmp_long > 0xFFFF) {
+                    if ((tmp_long < SEG_KEEPALIVE_MIN_INTERVAL_MS) ||
+                            (tmp_long > 0xFFFF)) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         dev_config->tcp_option[0].keepalive_retry_time = (uint16_t) tmp_long;
@@ -1124,7 +1125,8 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_RE:
                     tmp_long = atol(param);
-                    if (tmp_long > 0xFFFF) {
+                    if ((tmp_long < SEG_KEEPALIVE_MIN_INTERVAL_MS) ||
+                            (tmp_long > 0xFFFF)) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         dev_config->tcp_option[1].keepalive_retry_time = (uint16_t) tmp_long;
@@ -1347,8 +1349,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param_len != 1 || tmp_byte > flow_dtr_dsr) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
-                        if ((dev_config->serial_option[0].uart_interface == UART_IF_RS422) ||
-                                (dev_config->serial_option[0].uart_interface == UART_IF_RS485)) {
+                        if (dev_config->serial_option[0].uart_interface != UART_IF_RS232_TTL) {
                             if ((tmp_byte != flow_rtsonly) && (tmp_byte != flow_reverserts)) {
                                 dev_config->serial_option[0].flow_control = flow_none;
                             } else {
@@ -1364,8 +1365,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param_len != 1 || tmp_byte > flow_dtr_dsr) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
-                        if ((dev_config->serial_option[1].uart_interface == UART_IF_RS422) ||
-                                (dev_config->serial_option[1].uart_interface == UART_IF_RS485)) {
+                        if (dev_config->serial_option[1].uart_interface != UART_IF_RS232_TTL) {
                             if ((tmp_byte != flow_rtsonly) && (tmp_byte != flow_reverserts)) {
                                 dev_config->serial_option[1].flow_control = flow_none;
                             } else {
@@ -1668,19 +1668,36 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
 
 #ifdef __USE_S2E_OVER_TLS__
                 case SEGCP_OC: { // rootca
+                    int32_t received_len;
                     temp_buf = pvPortMalloc(ROOTCA_BUF_SIZE);
+                    if (temp_buf == NULL) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                        break;
+                    }
                     tmp_ptr = temp_buf;
                     memset(tmp_ptr, 0, ROOTCA_BUF_SIZE);
                     sprintf(tmp_ptr, "%s", treq + SEGCP_CMD_MAX);
                     tmp_ptr += strlen(tmp_ptr);
 
                     while ((len = segcp_socket_rx_available(SEGCP_UDP_SOCK)) > 0) {
-                        len = segcp_socket_recvfrom(SEGCP_UDP_SOCK, tmp_ptr, len, tmp_ip, &tmp_port);
-                        tmp_ptr += len;
-                        if ((tmp_ptr - temp_buf) > ROOTCA_BUF_SIZE) {
+                        size_t used = (size_t)(tmp_ptr - temp_buf);
+                        size_t remaining;
+
+                        if (used >= (ROOTCA_BUF_SIZE - 1U)) {
                             ret |= SEGCP_RET_ERR_INVALIDPARAM;
                             break;
                         }
+                        remaining = (ROOTCA_BUF_SIZE - 1U) - used;
+                        if (len > remaining) {
+                            len = remaining;
+                        }
+                        received_len = segcp_socket_recvfrom(SEGCP_UDP_SOCK,
+                                                             tmp_ptr, (uint16_t)len, tmp_ip, &tmp_port);
+                        if (received_len <= 0) {
+                            ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                            break;
+                        }
+                        tmp_ptr += received_len;
                     }
                     if (!(ret & SEGCP_RET_ERR)) {
                         tmp_ptr = strstr(temp_buf, END_CERT);
@@ -1724,7 +1741,12 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                 break;
 
                 case SEGCP_LC: { // client_cert
+                    int32_t received_len;
                     temp_buf = pvPortMalloc(CLICA_BUF_SIZE);
+                    if (temp_buf == NULL) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                        break;
+                    }
                     tmp_ptr = temp_buf;
                     memset(tmp_ptr, 0, CLICA_BUF_SIZE);
                     sprintf(tmp_ptr, "%s", treq + SEGCP_CMD_MAX);
@@ -1732,12 +1754,24 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     tmp_ptr += strlen(tmp_ptr);
                     while ((len = segcp_socket_rx_available(SEGCP_UDP_SOCK)) > 0) {
                         PRT_SEGCP("while((len = getSn_RX_RSR(SEGCP_UDP_SOCK)) > 0)\r\n");
-                        len = segcp_socket_recvfrom(SEGCP_UDP_SOCK, tmp_ptr, len, tmp_ip, &tmp_port);
-                        tmp_ptr += len;
-                        if ((tmp_ptr - temp_buf) > CLICA_BUF_SIZE) {
+                        size_t used = (size_t)(tmp_ptr - temp_buf);
+                        size_t remaining;
+
+                        if (used >= (CLICA_BUF_SIZE - 1U)) {
                             ret |= SEGCP_RET_ERR_INVALIDPARAM;
                             break;
                         }
+                        remaining = (CLICA_BUF_SIZE - 1U) - used;
+                        if (len > remaining) {
+                            len = remaining;
+                        }
+                        received_len = segcp_socket_recvfrom(SEGCP_UDP_SOCK,
+                                                             tmp_ptr, (uint16_t)len, tmp_ip, &tmp_port);
+                        if (received_len <= 0) {
+                            ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                            break;
+                        }
+                        tmp_ptr += received_len;
                     }
                     if (!(ret & SEGCP_RET_ERR)) {
                         tmp_ptr = strstr(temp_buf, END_CERT);
@@ -1779,7 +1813,12 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                 break;
 
                 case SEGCP_PK: { // pkey
+                    int32_t received_len;
                     temp_buf = pvPortMalloc(PKEY_BUF_SIZE);
+                    if (temp_buf == NULL) {
+                        ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                        break;
+                    }
                     tmp_ptr = temp_buf;
                     memset(tmp_ptr, 0, PKEY_BUF_SIZE);
                     sprintf(tmp_ptr, "%s", treq + SEGCP_CMD_MAX);
@@ -1787,12 +1826,24 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     tmp_ptr += strlen(tmp_ptr);
                     while ((len = segcp_socket_rx_available(SEGCP_UDP_SOCK)) > 0) {
                         PRT_SEGCP("while((len = getSn_RX_RSR(SEGCP_UDP_SOCK)) > 0)\r\n");
-                        len = segcp_socket_recvfrom(SEGCP_UDP_SOCK, tmp_ptr, len, tmp_ip, &tmp_port);
-                        tmp_ptr += len;
-                        if ((tmp_ptr - temp_buf) > PKEY_BUF_SIZE) {
+                        size_t used = (size_t)(tmp_ptr - temp_buf);
+                        size_t remaining;
+
+                        if (used >= (PKEY_BUF_SIZE - 1U)) {
                             ret |= SEGCP_RET_ERR_INVALIDPARAM;
                             break;
                         }
+                        remaining = (PKEY_BUF_SIZE - 1U) - used;
+                        if (len > remaining) {
+                            len = remaining;
+                        }
+                        received_len = segcp_socket_recvfrom(SEGCP_UDP_SOCK,
+                                                             tmp_ptr, (uint16_t)len, tmp_ip, &tmp_port);
+                        if (received_len <= 0) {
+                            ret |= SEGCP_RET_ERR_INVALIDPARAM;
+                            break;
+                        }
+                        tmp_ptr += received_len;
                     }
                     if (!(ret & SEGCP_RET_ERR)) {
                         tmp_ptr = strstr(temp_buf, END_PKEY);
@@ -1852,8 +1903,10 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                                 dev_config->network_common.local_ip[3],
                                 (uint16_t)DEVICE_FWUP_PORT);
 
-                        process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
-                        process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
+                        for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+                            process_socket_termination(seg_data_sock[ch],
+                                                       SOCK_TERMINATION_DELAY, ch, TRUE);
+                        }
                         PRT_SEGCP("SEGCP_FW:OK\r\n");
                     }
                     break;
@@ -1964,7 +2017,9 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param_len != 1 || tmp_byte > MQTTS_CLIENT_MODE) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
-                        dev_config->network_connection[2].working_mode = tmp_byte; // TODO Phase C: terminate ch2 socket on change
+                        process_socket_termination(SEG_DATA2_SOCK,
+                                                   SOCK_TERMINATION_DELAY, SEG_DATA2_CH, TRUE);
+                        dev_config->network_connection[2].working_mode = tmp_byte;
                     }
                     break;
                 case SEGCP_GL: // local port
@@ -2044,8 +2099,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param_len != 1 || tmp_byte > flow_dtr_dsr) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
-                        if ((dev_config->serial_option[2].uart_interface == UART_IF_RS422) ||
-                                (dev_config->serial_option[2].uart_interface == UART_IF_RS485)) {
+                        if (dev_config->serial_option[2].uart_interface != UART_IF_RS232_TTL) {
                             if ((tmp_byte != flow_rtsonly) && (tmp_byte != flow_reverserts)) {
                                 dev_config->serial_option[2].flow_control = flow_none;
                             } else {
@@ -2111,7 +2165,8 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_XS: // keepalive wait
                     tmp_long = atol(param);
-                    if (tmp_long > 0xFFFF) {
+                    if ((tmp_long < SEG_KEEPALIVE_MIN_INTERVAL_MS) ||
+                            (tmp_long > 0xFFFF)) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         dev_config->tcp_option[2].keepalive_wait_time = (uint16_t)tmp_long;
@@ -2119,7 +2174,8 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_XE: // keepalive retry
                     tmp_long = atol(param);
-                    if (tmp_long > 0xFFFF) {
+                    if ((tmp_long < SEG_KEEPALIVE_MIN_INTERVAL_MS) ||
+                            (tmp_long > 0xFFFF)) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         dev_config->tcp_option[2].keepalive_retry_time = (uint16_t)tmp_long;
@@ -2178,7 +2234,9 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param_len != 1 || tmp_byte > MQTTS_CLIENT_MODE) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
-                        dev_config->network_connection[3].working_mode = tmp_byte; // TODO Phase C: terminate ch3 socket on change
+                        process_socket_termination(SEG_DATA3_SOCK,
+                                                   SOCK_TERMINATION_DELAY, SEG_DATA3_CH, TRUE);
+                        dev_config->network_connection[3].working_mode = tmp_byte;
                     }
                     break;
                 case SEGCP_CL: // local port
@@ -2258,8 +2316,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param_len != 1 || tmp_byte > flow_dtr_dsr) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
-                        if ((dev_config->serial_option[3].uart_interface == UART_IF_RS422) ||
-                                (dev_config->serial_option[3].uart_interface == UART_IF_RS485)) {
+                        if (dev_config->serial_option[3].uart_interface != UART_IF_RS232_TTL) {
                             if ((tmp_byte != flow_rtsonly) && (tmp_byte != flow_reverserts)) {
                                 dev_config->serial_option[3].flow_control = flow_none;
                             } else {
@@ -2325,7 +2382,8 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_ZS: // keepalive wait
                     tmp_long = atol(param);
-                    if (tmp_long > 0xFFFF) {
+                    if ((tmp_long < SEG_KEEPALIVE_MIN_INTERVAL_MS) ||
+                            (tmp_long > 0xFFFF)) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         dev_config->tcp_option[3].keepalive_wait_time = (uint16_t)tmp_long;
@@ -2333,7 +2391,8 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_ZE: // keepalive retry
                     tmp_long = atol(param);
-                    if (tmp_long > 0xFFFF) {
+                    if ((tmp_long < SEG_KEEPALIVE_MIN_INTERVAL_MS) ||
+                            (tmp_long > 0xFFFF)) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         dev_config->tcp_option[3].keepalive_retry_time = (uint16_t)tmp_long;
@@ -2442,6 +2501,7 @@ uint16_t proc_SEGCP_udp(uint8_t* segcp_req, uint8_t* segcp_rep) {
 
     uint16_t ret = 0;
     uint16_t len = 0;
+    int32_t received;
 
     uint8_t destip[4];
     uint16_t destport;
@@ -2456,7 +2516,15 @@ uint16_t proc_SEGCP_udp(uint8_t* segcp_req, uint8_t* segcp_rep) {
         if (len > 0) {
             treq = segcp_req;
             trep = segcp_rep;
-            len = segcp_socket_recvfrom(SEGCP_UDP_SOCK, treq, len, destip, &destport);
+            if (len >= CONFIG_BUF_SIZE) {
+                len = CONFIG_BUF_SIZE - 1U;
+            }
+            received = segcp_socket_recvfrom(SEGCP_UDP_SOCK, treq, len,
+                                             destip, &destport);
+            if (received <= 0) {
+                break;
+            }
+            len = (uint16_t)received;
             //reg_val = (SIK_RECEIVED) & 0x00FF;
             //ctlsocket(SEGCP_UDP_SOCK, CS_CLR_INTERRUPT, (void *)&reg_val);
 
@@ -2523,6 +2591,7 @@ uint16_t proc_SEGCP_tcp(uint8_t* segcp_req, uint8_t* segcp_rep) {
 
     uint16_t ret = 0;
     uint16_t len = 0;
+    int32_t received;
 
     uint8_t * treq;
     uint8_t * trep;
@@ -2556,8 +2625,22 @@ uint16_t proc_SEGCP_tcp(uint8_t* segcp_req, uint8_t* segcp_rep) {
         if (len > 0) {
             treq = segcp_req;
             trep = segcp_rep;
-            len = segcp_socket_recv(SEGCP_TCP_SOCK, treq, len);
-            treq[len - 1] = 0x00;
+            if (len >= CONFIG_BUF_SIZE) {
+                len = CONFIG_BUF_SIZE - 1U;
+            }
+            received = segcp_socket_recv(SEGCP_TCP_SOCK, treq, len);
+            if (received <= 0) {
+                break;
+            }
+            len = (uint16_t)received;
+            treq[len] = 0x00;
+            while ((len > 0) &&
+                    ((treq[len - 1] == '\r') || (treq[len - 1] == '\n'))) {
+                treq[--len] = 0x00;
+            }
+            if (len == 0) {
+                break;
+            }
 
             if (SEGCP_MA == parse_SEGCP(treq, tpar)) {
                 if (!memcmp(tpar, "\xFF\xFF\xFF\xFF\xFF\xFF", 6)) {
@@ -2607,7 +2690,8 @@ uint16_t proc_SEGCP_tcp(uint8_t* segcp_req, uint8_t* segcp_rep) {
         segcp_socket_close(SEGCP_TCP_SOCK);
 
         int8_t socket_rc = segcp_socket_open(SEGCP_TCP_SOCK, Sn_MR_TCP,
-                                             DEVICE_SEGCP_PORT, SF_TCP_NODELAY);
+                                             DEVICE_SEGCP_PORT,
+                                             SF_TCP_NODELAY | SF_IO_NONBLOCK);
         if (socket_rc == SEGCP_TCP_SOCK) {
             //Keep-alive timer keep disabled until TCP connection established.
             enable_configtool_keepalive_timer = DISABLE;
@@ -2743,9 +2827,12 @@ void segcp_serial_task(void *argument) {
             // Mode switch
             init_trigger_modeswitch(DEVICE_AT_MODE);
 
-            // Socket disconnect (TCP only) / close
-            process_socket_termination(SOCK_DATA0, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
-            process_socket_termination(SOCK_DATA1, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
+            // AT mode is device-wide.  Close all four data sockets so DATA2/3
+            // cannot remain established while their SEG tasks are suspended.
+            for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+                process_socket_termination(seg_data_sock[ch],
+                                           SOCK_TERMINATION_DELAY, ch, TRUE);
+            }
 
             // Mode switch flag disabled
             sw_modeswitch_at_mode_on = SEG_DISABLE;
