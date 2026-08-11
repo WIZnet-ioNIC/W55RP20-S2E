@@ -60,6 +60,14 @@ static bool mbTCPGet(uint8_t sock, uint8_t ** ppucMBTCPFrame, uint16_t * usTCPLe
 
     len = getSn_RX_RSR(sock);
 
+    // The socket receive buffer is 2 KB but this one is MB_TCP_BUF_SIZE, and
+    // neither recv() nor recvfrom() knows the destination size. Anything longer
+    // than a Modbus TCP frame is malformed; take what fits so the rest of the
+    // stream is still consumed rather than left to desynchronise the socket.
+    if (len > MB_TCP_BUF_SIZE) {
+        len = MB_TCP_BUF_SIZE;
+    }
+
     if (len > 0) {
         if (network_connection->working_mode == UDP_MODE) {
             usTCPBufPos = recvfrom(sock, aucTCPBuf[channel], len, peerip, &peerport);

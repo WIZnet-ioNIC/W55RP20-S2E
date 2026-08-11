@@ -22,6 +22,11 @@
 
 #define SEGCP_CMD_MAX				2
 #define SEGCP_PARAM_MAX				256
+
+// Space kept free at the end of the reply buffer so the answer to the command
+// being processed always fits. The longest single reply is a 128-byte string
+// field plus its command and delimiter.
+#define SEGCP_REPLY_HEADROOM		256
 #define SEGCP_DELIMETER				"\r\n"
 
 // Command [K1] : Hidden command, This command erase the configuration data in flash / or EEPROM

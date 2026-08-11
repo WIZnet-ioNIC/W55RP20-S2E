@@ -358,6 +358,22 @@ uint8_t get_segcp_uart(void) {
 }
 
 
+// Copy a command parameter into a fixed configuration field. The request buffer
+// is far larger than any of these fields, so a parameter that does not fit is
+// refused rather than truncated: a silently shortened password or topic is worse
+// than a rejected command, and the write would land in the neighbouring field.
+static void segcp_store_string(void *field, uint32_t size, const uint8_t *param,
+                               uint16_t *ret) {
+    uint32_t len = strlen((const char *)param);
+
+    if (len > (size - 1)) {
+        *ret |= SEGCP_RET_ERR_INVALIDPARAM;
+        return;
+    }
+    memcpy(field, param, len);
+    ((uint8_t *)field)[len] = 0;
+}
+
 uint8_t parse_SEGCP(uint8_t * pmsg, uint8_t * param) {
     uint8_t** pcmd;
     uint8_t cmdnum = 0;
@@ -386,11 +402,14 @@ uint8_t parse_SEGCP(uint8_t * pmsg, uint8_t * param) {
             return SEGCP_UNKNOWN;
         }
     } else if (cmdnum == (uint8_t)SEGCP_PW) {
-        for (i = 0; pmsg[2 + i] != '\r'; i++) {
+        // The index is a byte and the destination is param[SEGCP_PARAM_MAX * 2],
+        // so stop before either can wrap. A token that reaches the bound without
+        // its delimiter is malformed and rejected below.
+        for (i = 0; (i < (SEGCP_PARAM_MAX - 1)) && (pmsg[2 + i] != '\r'); i++) {
             param[i] = pmsg[2 + i];
         }
 
-        if (pmsg[2 + i + 1] == '\n') {
+        if ((pmsg[2 + i] == '\r') && (pmsg[2 + i + 1] == '\n')) {
             param[i] = 0; param[i + 1] = 0;
         } else {
             return SEGCP_UNKNOWN;
@@ -413,6 +432,11 @@ uint8_t parse_SEGCP(uint8_t * pmsg, uint8_t * param) {
         *param = 1;
         return cmdnum;
     } else {
+        // A request token can be almost as long as the whole request buffer,
+        // which is several times the size of param.
+        if (strlen((const char *)&pmsg[2]) > ((SEGCP_PARAM_MAX * 2) - 1)) {
+            return SEGCP_UNKNOWN;
+        }
         strcpy(param, (uint8_t*)&pmsg[2]);
     }
     return cmdnum;
@@ -449,10 +473,17 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
     uint8_t *temp_buf;
 
     //PRT_SEGCP("SEGCP_REQ : %s\r\n",segcp_req);
-    memset(trep, 0, sizeof(trep));
+    // trep is a pointer, so sizeof() cleared four bytes instead of the buffer.
+    memset(segcp_rep, 0, CONFIG_BUF_SIZE);
     treq = strtok(segcp_req, SEGCP_DELIMETER);
 
     while (treq) {
+        // One request can carry many short reads whose answers are far longer
+        // than the commands, so stop before the reply runs past its buffer.
+        if ((uint32_t)(trep - (char *)segcp_rep) > (CONFIG_BUF_SIZE - SEGCP_REPLY_HEADROOM)) {
+            ret |= SEGCP_RET_ERR_IGNORED;
+            break;
+        }
         //PRT_SEGCP("SEGCP_REQ_TOK : %s\r\n",treq);
         if ((cmdnum = parse_SEGCP(treq, param)) != SEGCP_UNKNOWN) {
             param_len = strlen((const char *)param);
@@ -1046,7 +1077,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_OP:
                     tmp_byte = is_hex(*param);
-                    if (param_len != 1 || tmp_byte > MQTTS_CLIENT_MODE) {
+                    if (param_len != 1 || tmp_byte > UDP_MODE) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
@@ -1056,7 +1087,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
 
                 case SEGCP_AO:
                     tmp_byte = is_hex(*param);
-                    if (param_len != 1 || tmp_byte > MQTTS_CLIENT_MODE) {
+                    if (param_len != 1 || tmp_byte > UDP_MODE) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
@@ -1239,13 +1270,13 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         dev_config->network_connection[0].remote_ip[1] = tmp_ip[1];
                         dev_config->network_connection[0].remote_ip[2] = tmp_ip[2];
                         dev_config->network_connection[0].remote_ip[3] = tmp_ip[3];
-                        strcpy(dev_config->network_connection[0].dns_domain_name, param);
+                        segcp_store_string(dev_config->network_connection[0].dns_domain_name, sizeof(dev_config->network_connection[0].dns_domain_name), param, &ret);
                     } else {
                         dev_config->network_connection[0].dns_use = SEGCP_ENABLE;
                         if (param[0] == SEGCP_NULL) {
                             dev_config->network_connection[0].dns_domain_name[0] = 0;
                         } else {
-                            strcpy(dev_config->network_connection[0].dns_domain_name, param);
+                            segcp_store_string(dev_config->network_connection[0].dns_domain_name, sizeof(dev_config->network_connection[0].dns_domain_name), param, &ret);
                         }
                     }
                     break;
@@ -1256,13 +1287,13 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         dev_config->network_connection[1].remote_ip[1] = tmp_ip[1];
                         dev_config->network_connection[1].remote_ip[2] = tmp_ip[2];
                         dev_config->network_connection[1].remote_ip[3] = tmp_ip[3];
-                        strcpy(dev_config->network_connection[1].dns_domain_name, param);
+                        segcp_store_string(dev_config->network_connection[1].dns_domain_name, sizeof(dev_config->network_connection[1].dns_domain_name), param, &ret);
                     } else {
                         dev_config->network_connection[1].dns_use = SEGCP_ENABLE;
                         if (param[0] == SEGCP_NULL) {
                             dev_config->network_connection[1].dns_domain_name[0] = 0;
                         } else {
-                            strcpy(dev_config->network_connection[1].dns_domain_name, param);
+                            segcp_store_string(dev_config->network_connection[1].dns_domain_name, sizeof(dev_config->network_connection[1].dns_domain_name), param, &ret);
                         }
                     }
                     break;
@@ -1590,7 +1621,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param[0] == SEGCP_NULL) {
                         dev_config->mqtt_option[0].user_name[0] = 0;
                     } else {
-                        sprintf(dev_config->mqtt_option[0].user_name, "%s", param);
+                        segcp_store_string(dev_config->mqtt_option[0].user_name, sizeof(dev_config->mqtt_option[0].user_name), param, &ret);
                     }
                     break;
 
@@ -1598,7 +1629,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param[0] == SEGCP_NULL) {
                         dev_config->mqtt_option[0].password[0] = 0;
                     } else {
-                        sprintf(dev_config->mqtt_option[0].password, "%s", param);
+                        segcp_store_string(dev_config->mqtt_option[0].password, sizeof(dev_config->mqtt_option[0].password), param, &ret);
                     }
                     break;
 
@@ -1607,7 +1638,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param[0] == SEGCP_NULL) {
                         dev_config->mqtt_option[0].client_id[0] = 0;
                     } else {
-                        sprintf(dev_config->mqtt_option[0].client_id, "%s", param);
+                        segcp_store_string(dev_config->mqtt_option[0].client_id, sizeof(dev_config->mqtt_option[0].client_id), param, &ret);
                     }
                     break;
 
@@ -1619,7 +1650,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param[0] == SEGCP_NULL) {
                         dev_config->mqtt_option[0].pub_topic[0] = 0;
                     } else {
-                        sprintf(dev_config->mqtt_option[0].pub_topic, "%s", param);
+                        segcp_store_string(dev_config->mqtt_option[0].pub_topic, sizeof(dev_config->mqtt_option[0].pub_topic), param, &ret);
                     }
                     break;
 
@@ -1627,7 +1658,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param[0] == SEGCP_NULL) {
                         dev_config->mqtt_option[0].sub_topic_0[0] = 0;
                     } else {
-                        sprintf(dev_config->mqtt_option[0].sub_topic_0, "%s", param);
+                        segcp_store_string(dev_config->mqtt_option[0].sub_topic_0, sizeof(dev_config->mqtt_option[0].sub_topic_0), param, &ret);
                     }
                     break;
 
@@ -1635,7 +1666,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param[0] == SEGCP_NULL) {
                         dev_config->mqtt_option[0].sub_topic_1[0] = 0;
                     } else {
-                        sprintf(dev_config->mqtt_option[0].sub_topic_1, "%s", param);
+                        segcp_store_string(dev_config->mqtt_option[0].sub_topic_1, sizeof(dev_config->mqtt_option[0].sub_topic_1), param, &ret);
                     }
                     break;
 
@@ -1643,7 +1674,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param[0] == SEGCP_NULL) {
                         dev_config->mqtt_option[0].sub_topic_2[0] = 0;
                     } else {
-                        sprintf(dev_config->mqtt_option[0].sub_topic_2, "%s", param);
+                        segcp_store_string(dev_config->mqtt_option[0].sub_topic_2, sizeof(dev_config->mqtt_option[0].sub_topic_2), param, &ret);
                     }
                     break;
 
@@ -1914,7 +1945,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param[0] == SEGCP_NULL) {
                         dev_config->device_option.device_serial_connect_data[0][0] = 0;
                     } else {
-                        sprintf(dev_config->device_option.device_serial_connect_data[0], "%s", param);
+                        segcp_store_string(dev_config->device_option.device_serial_connect_data[0], sizeof(dev_config->device_option.device_serial_connect_data[0]), param, &ret);
                     }
                     break;
 
@@ -1922,7 +1953,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param[0] == SEGCP_NULL) {
                         dev_config->device_option.device_serial_disconnect_data[0][0] = 0;
                     } else {
-                        sprintf(dev_config->device_option.device_serial_disconnect_data[0], "%s", param);
+                        segcp_store_string(dev_config->device_option.device_serial_disconnect_data[0], sizeof(dev_config->device_option.device_serial_disconnect_data[0]), param, &ret);
                     }
                     break;
 
@@ -1930,7 +1961,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param[0] == SEGCP_NULL) {
                         dev_config->device_option.device_serial_connect_data[1][0] = 0;
                     } else {
-                        sprintf(dev_config->device_option.device_serial_connect_data[1], "%s", param);
+                        segcp_store_string(dev_config->device_option.device_serial_connect_data[1], sizeof(dev_config->device_option.device_serial_connect_data[1]), param, &ret);
                     }
                     break;
 
@@ -1938,7 +1969,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param[0] == SEGCP_NULL) {
                         dev_config->device_option.device_serial_disconnect_data[1][0] = 0;
                     } else {
-                        sprintf(dev_config->device_option.device_serial_disconnect_data[1], "%s", param);
+                        segcp_store_string(dev_config->device_option.device_serial_disconnect_data[1], sizeof(dev_config->device_option.device_serial_disconnect_data[1]), param, &ret);
                     }
                     break;
 
@@ -1946,7 +1977,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param[0] == SEGCP_NULL) {
                         dev_config->device_option.device_eth_connect_data[0][0] = 0;
                     } else {
-                        sprintf(dev_config->device_option.device_eth_connect_data[0], "%s", param);
+                        segcp_store_string(dev_config->device_option.device_eth_connect_data[0], sizeof(dev_config->device_option.device_eth_connect_data[0]), param, &ret);
                     }
                     break;
 
@@ -1954,7 +1985,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param[0] == SEGCP_NULL) {
                         dev_config->device_option.device_eth_connect_data[1][0] = 0;
                     } else {
-                        sprintf(dev_config->device_option.device_eth_connect_data[1], "%s", param);
+                        segcp_store_string(dev_config->device_option.device_eth_connect_data[1], sizeof(dev_config->device_option.device_eth_connect_data[1]), param, &ret);
                     }
                     break;
 
@@ -2014,7 +2045,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                 // ---- ch2 (index [2]) SET ----
                 case SEGCP_TO: // opmode
                     tmp_byte = is_hex(*param);
-                    if (param_len != 1 || tmp_byte > MQTTS_CLIENT_MODE) {
+                    if (param_len != 1 || tmp_byte > UDP_MODE) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         process_socket_termination(SEG_DATA2_SOCK,
@@ -2037,13 +2068,13 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         dev_config->network_connection[2].remote_ip[1] = tmp_ip[1];
                         dev_config->network_connection[2].remote_ip[2] = tmp_ip[2];
                         dev_config->network_connection[2].remote_ip[3] = tmp_ip[3];
-                        strcpy(dev_config->network_connection[2].dns_domain_name, param);
+                        segcp_store_string(dev_config->network_connection[2].dns_domain_name, sizeof(dev_config->network_connection[2].dns_domain_name), param, &ret);
                     } else {
                         dev_config->network_connection[2].dns_use = SEGCP_ENABLE;
                         if (param[0] == SEGCP_NULL) {
                             dev_config->network_connection[2].dns_domain_name[0] = 0;
                         } else {
-                            strcpy(dev_config->network_connection[2].dns_domain_name, param);
+                            segcp_store_string(dev_config->network_connection[2].dns_domain_name, sizeof(dev_config->network_connection[2].dns_domain_name), param, &ret);
                         }
                     }
                     break;
@@ -2201,21 +2232,21 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param[0] == SEGCP_NULL) {
                         dev_config->device_option.device_serial_connect_data[2][0] = 0;
                     } else {
-                        sprintf(dev_config->device_option.device_serial_connect_data[2], "%s", param);
+                        segcp_store_string(dev_config->device_option.device_serial_connect_data[2], sizeof(dev_config->device_option.device_serial_connect_data[2]), param, &ret);
                     }
                     break;
                 case SEGCP_XF: // serial disconnect data
                     if (param[0] == SEGCP_NULL) {
                         dev_config->device_option.device_serial_disconnect_data[2][0] = 0;
                     } else {
-                        sprintf(dev_config->device_option.device_serial_disconnect_data[2], "%s", param);
+                        segcp_store_string(dev_config->device_option.device_serial_disconnect_data[2], sizeof(dev_config->device_option.device_serial_disconnect_data[2]), param, &ret);
                     }
                     break;
                 case SEGCP_WE: // eth connect data
                     if (param[0] == SEGCP_NULL) {
                         dev_config->device_option.device_eth_connect_data[2][0] = 0;
                     } else {
-                        sprintf(dev_config->device_option.device_eth_connect_data[2], "%s", param);
+                        segcp_store_string(dev_config->device_option.device_eth_connect_data[2], sizeof(dev_config->device_option.device_eth_connect_data[2]), param, &ret);
                     }
                     break;
                 case SEGCP_WI: // ch2 serial IF (num) — R/W
@@ -2231,7 +2262,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                 // ---- ch3 (index [3]) SET ----
                 case SEGCP_JO: // opmode
                     tmp_byte = is_hex(*param);
-                    if (param_len != 1 || tmp_byte > MQTTS_CLIENT_MODE) {
+                    if (param_len != 1 || tmp_byte > UDP_MODE) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         process_socket_termination(SEG_DATA3_SOCK,
@@ -2254,13 +2285,13 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         dev_config->network_connection[3].remote_ip[1] = tmp_ip[1];
                         dev_config->network_connection[3].remote_ip[2] = tmp_ip[2];
                         dev_config->network_connection[3].remote_ip[3] = tmp_ip[3];
-                        strcpy(dev_config->network_connection[3].dns_domain_name, param);
+                        segcp_store_string(dev_config->network_connection[3].dns_domain_name, sizeof(dev_config->network_connection[3].dns_domain_name), param, &ret);
                     } else {
                         dev_config->network_connection[3].dns_use = SEGCP_ENABLE;
                         if (param[0] == SEGCP_NULL) {
                             dev_config->network_connection[3].dns_domain_name[0] = 0;
                         } else {
-                            strcpy(dev_config->network_connection[3].dns_domain_name, param);
+                            segcp_store_string(dev_config->network_connection[3].dns_domain_name, sizeof(dev_config->network_connection[3].dns_domain_name), param, &ret);
                         }
                     }
                     break;
@@ -2418,21 +2449,21 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     if (param[0] == SEGCP_NULL) {
                         dev_config->device_option.device_serial_connect_data[3][0] = 0;
                     } else {
-                        sprintf(dev_config->device_option.device_serial_connect_data[3], "%s", param);
+                        segcp_store_string(dev_config->device_option.device_serial_connect_data[3], sizeof(dev_config->device_option.device_serial_connect_data[3]), param, &ret);
                     }
                     break;
                 case SEGCP_ZF: // serial disconnect data
                     if (param[0] == SEGCP_NULL) {
                         dev_config->device_option.device_serial_disconnect_data[3][0] = 0;
                     } else {
-                        sprintf(dev_config->device_option.device_serial_disconnect_data[3], "%s", param);
+                        segcp_store_string(dev_config->device_option.device_serial_disconnect_data[3], sizeof(dev_config->device_option.device_serial_disconnect_data[3]), param, &ret);
                     }
                     break;
                 case SEGCP_YE: // eth connect data
                     if (param[0] == SEGCP_NULL) {
                         dev_config->device_option.device_eth_connect_data[3][0] = 0;
                     } else {
-                        sprintf(dev_config->device_option.device_eth_connect_data[3], "%s", param);
+                        segcp_store_string(dev_config->device_option.device_eth_connect_data[3], sizeof(dev_config->device_option.device_eth_connect_data[3]), param, &ret);
                     }
                     break;
                 case SEGCP_YI: // ch3 serial IF (num) — R/W
