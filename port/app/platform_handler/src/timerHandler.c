@@ -59,7 +59,7 @@ bool repeating_timer_callback(struct repeating_timer *t) {
 #if (DEVICE_UART_CNT <= 2)
         LED_Toggle(LED3);           // heartbeat blink LED
 #else
-        // LED3 pin (GP19) is DATA2 TCP status on 4-port; no heartbeat blink
+        // LED3 pin (GP19) is DATA3 TCP status on 4-port; no heartbeat blink
 #endif
 #ifdef __USE_WATCHDOG__
         if ((get_wiz_tls_init_state(SEG_DATA0_CH) == ENABLE) && (get_device_status(SEG_DATA0_CH) == ST_OPEN) ||

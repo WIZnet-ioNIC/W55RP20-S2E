@@ -224,6 +224,15 @@ static volatile uint32_t pio_uart_parity_err[DEVICE_UART_CNT];
 #define PIO_UART_RX_BATCH_MAX 64U
 #define PIO_UART_RX_DMA_RING_BITS 12U  // 1024 x uint32_t = 4096-byte address ring
 
+// The address ring wraps the write pointer forever, but the transfer count does
+// not: the channel halts once it reaches zero, which at 460800 baud arrives
+// after roughly 27 hours of continuous traffic and silently kills DATA2/DATA3
+// reception until the next reset.  Re-arm from the consumer task while the
+// count is still comfortably above zero.  The channel is only stopped for the
+// few register writes that restart it, which the 8-word PIO FIFO (174 us at
+// 460800 baud) absorbs, so no byte is lost.
+#define PIO_UART_RX_DMA_REARM_LEFT (1U << 20)
+
 static uint pio_uart_rx_dma[DEVICE_UART_CNT];
 static uint16_t pio_uart_rx_dma_read[DEVICE_UART_CNT];
 static uint32_t pio_uart_rx_dma_ring[DEVICE_UART_CNT - UART_HW_CH_CNT][PIO_UART_RX_DMA_WORDS]
@@ -233,6 +242,7 @@ static volatile uint32_t pio_uart_rx_task_heartbeat;
 static volatile uint32_t pio_uart_rx_consumed[DEVICE_UART_CNT];
 static volatile uint32_t pio_uart_rx_stored[DEVICE_UART_CNT];
 static volatile uint32_t pio_uart_rx_dropped[DEVICE_UART_CNT];
+static volatile uint32_t pio_uart_rx_rearm[DEVICE_UART_CNT];
 
 static uint8_t pio_uart_resolve_data_bits(uint8_t cfg) {
     switch (cfg) {
@@ -408,6 +418,8 @@ static uint8_t pio_uart_decode_rx_word(int channel, uint32_t fifo_word) {
     return ch;
 }
 
+static void pio_data_uart_rx_dma_rearm(int channel);
+
 static void pio_data_uart_rx_task(void *argument) {
     (void)argument;
 
@@ -420,11 +432,19 @@ static void pio_data_uart_rx_task(void *argument) {
         for (int channel = UART_HW_CH_CNT; channel < DEVICE_UART_CNT; channel++) {
             uint ring_row = (uint)(channel - UART_HW_CH_CNT);
             uintptr_t ring_base = (uintptr_t)&pio_uart_rx_dma_ring[ring_row][0];
-            uintptr_t write_addr =
-                (uintptr_t)dma_channel_hw_addr(pio_uart_rx_dma[channel])->write_addr;
-            uint16_t write_index =
-                (uint16_t)(((write_addr - ring_base) / sizeof(uint32_t)) & PIO_UART_RX_DMA_MASK);
+            uintptr_t write_addr;
+            uint16_t write_index;
             uint8_t input_flag = 0;
+
+            if (dma_channel_hw_addr(pio_uart_rx_dma[channel])->transfer_count <
+                    PIO_UART_RX_DMA_REARM_LEFT) {
+                pio_data_uart_rx_dma_rearm(channel);
+            }
+
+            write_addr =
+                (uintptr_t)dma_channel_hw_addr(pio_uart_rx_dma[channel])->write_addr;
+            write_index =
+                (uint16_t)(((write_addr - ring_base) / sizeof(uint32_t)) & PIO_UART_RX_DMA_MASK);
 
             // The RX program's optional framing flag is independent of the DMA
             // data path. It is normally compiled out, but retain the counter.
@@ -468,25 +488,41 @@ static void pio_data_uart_rx_task(void *argument) {
     }
 }
 
+static void pio_data_uart_rx_dma_start(int channel, volatile void *write_addr) {
+    dma_channel_config config = dma_channel_get_default_config(pio_uart_rx_dma[channel]);
+
+    channel_config_set_transfer_data_size(&config, DMA_SIZE_32);
+    channel_config_set_read_increment(&config, false);
+    channel_config_set_write_increment(&config, true);
+    channel_config_set_dreq(&config,
+                            pio_get_dreq(PIO_DATA_UART, pio_rx_sm[channel], false));
+    channel_config_set_ring(&config, true, PIO_UART_RX_DMA_RING_BITS);
+
+    dma_channel_configure(pio_uart_rx_dma[channel], &config,
+                          write_addr,
+                          &PIO_DATA_UART->rxf[pio_rx_sm[channel]],
+                          UINT32_MAX, true);
+}
+
+// Restart the channel where it stopped so the consumer's read index stays
+// valid; the ring keeps the write pointer inside the same buffer either way.
+static void pio_data_uart_rx_dma_rearm(int channel) {
+    volatile void *write_addr;
+
+    dma_channel_abort(pio_uart_rx_dma[channel]);
+    write_addr = (volatile void *)(uintptr_t)
+                 dma_channel_hw_addr(pio_uart_rx_dma[channel])->write_addr;
+    pio_data_uart_rx_dma_start(channel, write_addr);
+    pio_uart_rx_rearm[channel]++;
+}
+
 static void pio_data_uart_dma_enable(void) {
     for (int channel = UART_HW_CH_CNT; channel < DEVICE_UART_CNT; channel++) {
         uint ring_row = (uint)(channel - UART_HW_CH_CNT);
-        dma_channel_config config;
 
         pio_uart_rx_dma[channel] = dma_claim_unused_channel(true);
-        config = dma_channel_get_default_config(pio_uart_rx_dma[channel]);
-        channel_config_set_transfer_data_size(&config, DMA_SIZE_32);
-        channel_config_set_read_increment(&config, false);
-        channel_config_set_write_increment(&config, true);
-        channel_config_set_dreq(&config,
-                                pio_get_dreq(PIO_DATA_UART, pio_rx_sm[channel], false));
-        channel_config_set_ring(&config, true, PIO_UART_RX_DMA_RING_BITS);
         pio_uart_rx_dma_read[channel] = 0;
-
-        dma_channel_configure(pio_uart_rx_dma[channel], &config,
-                              pio_uart_rx_dma_ring[ring_row],
-                              &PIO_DATA_UART->rxf[pio_rx_sm[channel]],
-                              UINT32_MAX, true);
+        pio_data_uart_rx_dma_start(channel, pio_uart_rx_dma_ring[ring_row]);
     }
 
     if (xTaskCreate(pio_data_uart_rx_task, "PIO_UART_RX", 768, NULL,
@@ -600,6 +636,7 @@ void pio_uart_rx_diag_poll(void) {
     static uint32_t last_stored[DEVICE_UART_CNT];
     static uint32_t dma_not_consumed_since[DEVICE_UART_CNT];
     static uint32_t store_stalled_since[DEVICE_UART_CNT];
+    static uint32_t dma_stopped_since[DEVICE_UART_CNT];
     static uint32_t last_report_at;
     static uint8_t sample_valid;
     static uint8_t fault_reported;
@@ -630,12 +667,24 @@ void pio_uart_rx_diag_poll(void) {
         uint8_t sm_enabled =
             (PIO_DATA_UART->ctrl & (1U << pio_rx_sm[channel])) ? 1U : 0U;
 
+        if (dma_channel_is_busy(pio_uart_rx_dma[channel])) {
+            dma_stopped_since[channel] = 0U;
+        }
+
         if (!sm_enabled) {
             reason = "rx_sm_disabled";
             fault_channel = channel;
         } else if (!dma_channel_is_busy(pio_uart_rx_dma[channel])) {
-            reason = "rx_dma_stopped";
-            fault_channel = channel;
+            // The consumer task briefly stops the channel to re-arm its transfer
+            // count, so only a stop that outlives that window is a real fault.
+            if (dma_stopped_since[channel] == 0U) {
+                dma_stopped_since[channel] = now;
+            }
+            stalled_ms = now - dma_stopped_since[channel];
+            if (stalled_ms >= PIO_RX_DIAG_STALL_MS) {
+                reason = "rx_dma_stopped";
+                fault_channel = channel;
+            }
         } else if (sample_valid && (transfer_count != last_transfer_count[channel]) &&
                    (consumed == last_consumed[channel])) {
             if (dma_not_consumed_since[channel] == 0U) {
@@ -885,10 +934,11 @@ void DATA_UART_Configuration(void) {
         case word_len8:
             temp_data_bits = 8;
             break;
-        case word_len9:
-            temp_data_bits = 9;
-            break;
         default:
+            // The PL011 only implements 5 to 8 data bits, so word_len9 is not
+            // reachable on the HW channels; store the value actually applied so
+            // a later read reports the real line format. The PIO channels keep
+            // their own 9-bit support.
             temp_data_bits = 8;
             serial_option->data_bits = word_len8;
             break;
@@ -1164,10 +1214,10 @@ int32_t platform_uart_putc(uint16_t ch, int channel) {
     struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option[channel]);
     uint8_t c[1];
 
-    if (serial_option->data_bits == word_len8) {
+    if (serial_option->data_bits == word_len7) {
+        c[0] = ch & 0x007F;
+    } else {
         c[0] = ch & 0x00FF;
-    } else if (serial_option->data_bits == word_len7) {
-        c[0] = ch & 0x007F; // word_len7
     }
     device_wdt_reset();
     uart_putc(channel ? DATA1_UART_ID : DATA0_UART_ID, c[0]);
