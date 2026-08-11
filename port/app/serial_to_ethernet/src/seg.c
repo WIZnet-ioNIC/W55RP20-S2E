@@ -62,6 +62,11 @@ uint8_t flag_auth_time[DEVICE_UART_CNT] = {SEG_DISABLE, }; // TCP_SERVER_MODE on
 uint8_t flag_send_keepalive[DEVICE_UART_CNT] = {SEG_DISABLE, };
 uint8_t flag_first_keepalive[DEVICE_UART_CNT] = {SEG_DISABLE, };
 uint8_t flag_inactivity[DEVICE_UART_CNT] = {SEG_DISABLE, };
+static uint8_t connect_pw_progress[DEVICE_UART_CNT] = {0, };
+
+#define SEG_AUTH_FAILED   0U
+#define SEG_AUTH_SUCCESS  1U
+#define SEG_AUTH_PENDING  2U
 
 /*
     A TCP server normally moves CLOSED -> INIT -> LISTEN and then completes a
@@ -75,6 +80,9 @@ uint8_t flag_inactivity[DEVICE_UART_CNT] = {SEG_DISABLE, };
 static uint8_t seg_tcp_server_transient_active[DEVICE_UART_CNT] = {SEG_DISABLE, };
 static uint8_t seg_tcp_server_transient_state[DEVICE_UART_CNT] = {SOCK_CLOSED, };
 static uint32_t seg_tcp_server_transient_since[DEVICE_UART_CNT] = {0, };
+static uint8_t seg_udp_transient_active[DEVICE_UART_CNT] = {SEG_DISABLE, };
+static uint8_t seg_udp_transient_state[DEVICE_UART_CNT] = {SOCK_CLOSED, };
+static uint32_t seg_udp_transient_since[DEVICE_UART_CNT] = {0, };
 
 // User's buffer / size idx
 extern uint8_t g_send_buf[DEVICE_UART_CNT][DATA_BUF_SIZE];
@@ -95,6 +103,7 @@ extern xSemaphoreHandle segcp_uart_sem;
 extern xSemaphoreHandle seg_critical_sem[DEVICE_UART_CNT];
 extern xSemaphoreHandle seg_socket_sem;
 extern xSemaphoreHandle seg_sem[DEVICE_UART_CNT];
+extern xSemaphoreHandle seg_recv_sem[DEVICE_UART_CNT];
 extern xSemaphoreHandle wizchip_critical_sem;
 
 void seg_wizchip_api_lock(void) {
@@ -117,6 +126,105 @@ static void seg_socket_unlock(void) {
     seg_wizchip_api_unlock();
 }
 
+// ioLibrary's sendto() remains in its SENDOK/TIMEOUT polling loop even when the
+// socket was opened with SF_IO_NONBLOCK.  Holding seg_socket_sem across that
+// loop lets one unreachable UDP peer pause every data/configuration socket for
+// the complete W5500 retry window.  Keep a tiny per-socket completion state and
+// return as soon as the W5500 has accepted Sn_CR_SEND instead.
+static uint8_t seg_udp_send_pending[_WIZCHIP_SOCK_NUM_] = {0, };
+
+static void seg_udp_send_reset_locked(uint8_t sock) {
+    if (sock < _WIZCHIP_SOCK_NUM_) {
+        seg_udp_send_pending[sock] = SEG_DISABLE;
+    }
+}
+
+void seg_wizchip_udp_send_reset(uint8_t sock) {
+    if (sock >= _WIZCHIP_SOCK_NUM_) {
+        return;
+    }
+
+    seg_socket_lock();
+    seg_udp_send_reset_locked(sock);
+    if ((getSn_MR(sock) & 0x0f) == Sn_MR_UDP) {
+        setSn_IR(sock, Sn_IR_SENDOK | Sn_IR_TIMEOUT);
+    }
+    seg_socket_unlock();
+}
+
+int32_t seg_wizchip_udp_send_nonblocking(uint8_t sock, uint8_t *buf,
+        uint16_t len, uint8_t *addr, uint16_t port) {
+    int32_t result = SOCK_BUSY;
+    uint8_t interrupt;
+    uint16_t tx_max;
+
+    if (sock >= _WIZCHIP_SOCK_NUM_) {
+        return SOCKERR_SOCKNUM;
+    }
+    if ((buf == NULL) || (addr == NULL) || (len == 0)) {
+        return SOCKERR_DATALEN;
+    }
+    if ((addr[0] | addr[1] | addr[2] | addr[3]) == 0) {
+        return SOCKERR_IPINVALID;
+    }
+    if (port == 0) {
+        return SOCKERR_PORTZERO;
+    }
+
+    seg_socket_lock();
+
+    if (((getSn_MR(sock) & 0x0f) != Sn_MR_UDP) ||
+            (getSn_SR(sock) != SOCK_UDP)) {
+        result = SOCKERR_SOCKSTATUS;
+        goto out;
+    }
+
+    // A command still present in Sn_CR has not yet been accepted by the chip.
+    // Do not spin here: another pass will reap it after the register clears.
+    if (getSn_CR(sock) != 0) {
+        goto out;
+    }
+
+    interrupt = getSn_IR(sock);
+    if (seg_udp_send_pending[sock] == SEG_ENABLE) {
+        if (interrupt & Sn_IR_TIMEOUT) {
+            setSn_IR(sock, Sn_IR_TIMEOUT);
+            seg_udp_send_pending[sock] = SEG_DISABLE;
+            result = SOCKERR_TIMEOUT;
+            goto out;
+        }
+        if (!(interrupt & Sn_IR_SENDOK)) {
+            goto out;
+        }
+        setSn_IR(sock, Sn_IR_SENDOK);
+        seg_udp_send_pending[sock] = SEG_DISABLE;
+    } else {
+        // Clear stale completion bits left by a previous socket generation.
+        if (interrupt & (Sn_IR_SENDOK | Sn_IR_TIMEOUT)) {
+            setSn_IR(sock, interrupt & (Sn_IR_SENDOK | Sn_IR_TIMEOUT));
+        }
+    }
+
+    tx_max = getSn_TxMAX(sock);
+    if (len > tx_max) {
+        len = tx_max;
+    }
+    if (getSn_TX_FSR(sock) < len) {
+        goto out;
+    }
+
+    setSn_DIPR(sock, addr);
+    setSn_DPORT(sock, port);
+    wiz_send_data(sock, buf, len);
+    setSn_CR(sock, Sn_CR_SEND);
+    seg_udp_send_pending[sock] = SEG_ENABLE;
+    result = (int32_t)len;
+
+out:
+    seg_socket_unlock();
+    return result;
+}
+
 extern TimerHandle_t seg_inactivity_timer[DEVICE_UART_CNT];
 extern TimerHandle_t seg_keepalive_timer[DEVICE_UART_CNT];
 extern TimerHandle_t seg_auth_timer[DEVICE_UART_CNT];
@@ -131,6 +239,19 @@ uint16_t e2u_size[DEVICE_UART_CNT] = {0, };
 static volatile uint16_t seg_s2e_last_send_len[DEVICE_UART_CNT];
 static volatile int16_t seg_s2e_last_send_rc[DEVICE_UART_CNT];
 static volatile uint32_t seg_s2e_tx_progress[DEVICE_UART_CNT];
+
+// Manual TCP keepalive is only useful while a connection is idle.  Issuing
+// SEND_KEEP merely outside the socket API mutex is not sufficient: send()
+// returns after starting Sn_CR_SEND, so that command may still be pending when
+// the timer task enters setsockopt(SO_KEEPALIVESEND).  Track application traffic
+// and never issue SEND_KEEP over an active or backpressured data stream.
+static volatile uint32_t seg_tcp_last_activity_ms[DEVICE_UART_CNT];
+
+static void seg_tcp_mark_activity(int channel) {
+    if ((channel >= 0) && (channel < DEVICE_UART_CNT)) {
+        seg_tcp_last_activity_ms[channel] = (uint32_t)millis();
+    }
+}
 
 /*
     One-shot stall recorder for the long-run RTS/CTS S2E failure.
@@ -312,6 +433,8 @@ static void seg_flow_diag_poll(int channel) {
     uint16_t tx_fsr_second = getSn_TX_FSR(sock);
     uint16_t tx_rd = getSn_TX_RD(sock);
     uint16_t tx_wr = getSn_TX_WR(sock);
+    uint16_t tx_max = getSn_TxMAX(sock);
+    uint8_t tx_buf_kb = getSn_TXBUF_SIZE(sock);
     uint16_t rx_rsr = getSn_RX_RSR(sock);
     uint8_t sn_ir = getSn_IR(sock);
     uint8_t sn_sr = getSn_SR(sock);
@@ -322,7 +445,7 @@ static void seg_flow_diag_poll(int channel) {
     // channel whose E2S path was also stuck reported nothing at all - the fault
     // silenced its own reporter. That is why this runs in its own task now.
     printf("[FLOW_DIAG] ch=%d rts_high_ms=%lu shadow=%u pin=%u ring=%u u2e=%u e2u=%u "
-           "tx_fsr=%u/%u tx_rd=%u tx_wr=%u rx_rsr=%u "
+           "tx_fsr=%u/%u tx_rd=%u tx_wr=%u tx_max=%u tx_buf_kb=%u rx_rsr=%u "
            "sn_ir=0x%02x(sendok=%u timeout=%u discon=%u) sn_sr=0x%02x send_len=%u send_rc=%d "
            "seg_beat=%lu(+%lu) seg_phase=%u seg_step=%u cached_sr=0x%02x "
            "u2e_beat=%lu(+%lu) u2e_phase=%u "
@@ -340,6 +463,8 @@ static void seg_flow_diag_poll(int channel) {
            (unsigned int)tx_fsr_second,
            (unsigned int)tx_rd,
            (unsigned int)tx_wr,
+           (unsigned int)tx_max,
+           (unsigned int)tx_buf_kb,
            (unsigned int)rx_rsr,
            (unsigned int)sn_ir,
            (unsigned int)((sn_ir & Sn_IR_SENDOK) != 0),
@@ -518,13 +643,21 @@ static const uint16_t seg_status_pin[DEVICE_UART_CNT] = {
 #endif
 };
 
-// UDP: Peer netinfo
-uint8_t peerip[4] = {0, };
-uint8_t peerip_tmp[4] = {0xff, };
-uint16_t peerport = 0;
+// UDP 1:N peer information is owned by the channel that received it.  The old
+// single global peer let the last packet on DATA3 redirect DATA0's serial data.
+static uint8_t udp_peer_ip[DEVICE_UART_CNT][4] = {{0, }};
+static uint16_t udp_peer_port[DEVICE_UART_CNT] = {0, };
+static uint8_t udp_peer_valid[DEVICE_UART_CNT] = {SEG_DISABLE, };
 
 // XON/XOFF (Software flow control) flag, Serial data can be transmitted to peer when XON enabled.
-uint8_t isXON = SEG_ENABLE;
+uint8_t isXON[DEVICE_UART_CNT] = {SEG_ENABLE, SEG_ENABLE,
+#if (DEVICE_UART_CNT > 2)
+                                  SEG_ENABLE,
+#endif
+#if (DEVICE_UART_CNT > 3)
+                                  SEG_ENABLE,
+#endif
+                                 };
 
 char * str_working[] = {"TCP_CLIENT_MODE", "TCP_SERVER_MODE", "TCP_MIXED_MODE", "UDP_MODE", "SSL_TCP_CLIENT_MODE", "MQTT_CLIENT_MODE", "MQTTS_CLIENT_MODE"};
 
@@ -565,6 +698,7 @@ static int8_t seg_socket_open(uint8_t sock, uint8_t protocol,
     int8_t result;
 
     seg_socket_lock();
+    seg_udp_send_reset_locked(sock);
     result = socket(sock, protocol, port, flag);
     seg_socket_unlock();
 
@@ -612,6 +746,33 @@ static uint8_t seg_tcp_server_transient_timed_out(int channel, uint8_t state) {
             SEG_TCP_SERVER_STUCK_TIMEOUT_MS) ? TRUE : FALSE;
 }
 
+static void seg_udp_transient_reset(int channel) {
+    seg_udp_transient_active[channel] = SEG_DISABLE;
+    seg_udp_transient_state[channel] = SOCK_CLOSED;
+    seg_udp_transient_since[channel] = 0;
+}
+
+static uint8_t seg_udp_transient_timed_out(int channel, uint8_t state) {
+    uint32_t now = (uint32_t)millis();
+
+    if ((seg_udp_transient_active[channel] == SEG_DISABLE) ||
+            (seg_udp_transient_state[channel] != state)) {
+        seg_udp_transient_active[channel] = SEG_ENABLE;
+        seg_udp_transient_state[channel] = state;
+        seg_udp_transient_since[channel] = now;
+        return FALSE;
+    }
+
+    return ((uint32_t)(now - seg_udp_transient_since[channel]) >=
+            SEG_TCP_SERVER_STUCK_TIMEOUT_MS) ? TRUE : FALSE;
+}
+
+static void seg_udp_peer_reset(int channel) {
+    memset(udp_peer_ip[channel], 0, sizeof(udp_peer_ip[channel]));
+    udp_peer_port[channel] = 0;
+    udp_peer_valid[channel] = SEG_DISABLE;
+}
+
 static int8_t seg_socket_disconnect(uint8_t sock) {
     int8_t result;
 
@@ -627,6 +788,7 @@ static int8_t seg_socket_close(uint8_t sock) {
 
     seg_socket_lock();
     result = close(sock);
+    seg_udp_send_reset_locked(sock);
     seg_socket_unlock();
 
     return result;
@@ -635,9 +797,11 @@ static int8_t seg_socket_close(uint8_t sock) {
 static int16_t seg_socket_send(uint8_t sock, uint8_t *buf, uint16_t len, int channel) {
     int16_t sent;
 
-    (void)channel;
     seg_socket_lock();
     sent = (int16_t)send(sock, buf, len);
+    if (sent > 0) {
+        seg_tcp_mark_activity(channel);
+    }
     seg_socket_unlock();
 
     return sent;
@@ -654,6 +818,9 @@ static int16_t seg_socket_send_available(uint8_t sock, uint8_t *buf,
         *len = freesize;
     }
     sent = (int16_t)send(sock, buf, *len);
+    if (sent > 0) {
+        seg_tcp_mark_activity(channel);
+    }
     seg_socket_unlock();
 
     seg_s2e_last_send_len[channel] = *len;
@@ -681,10 +848,12 @@ static int16_t seg_socket_recv(uint8_t sock, uint8_t *buf, uint16_t len,
     int16_t received;
     uint16_t reg_val = SIK_RECEIVED & 0x00FF;
 
-    (void)channel;
     seg_socket_lock();
     received = (int16_t)recv(sock, buf, len);
     ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
+    if (received > 0) {
+        seg_tcp_mark_activity(channel);
+    }
     seg_socket_unlock();
 
     return received;
@@ -695,10 +864,12 @@ static int16_t seg_socket_recvfrom(uint8_t sock, uint8_t *buf, uint16_t len,
     int16_t received;
     uint16_t reg_val = SIK_RECEIVED & 0x00FF;
 
-    (void)channel;
     seg_socket_lock();
     received = (int16_t)recvfrom(sock, buf, len, addr, port);
     ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
+    if (received > 0) {
+        seg_tcp_mark_activity(channel);
+    }
     seg_socket_unlock();
 
     return received;
@@ -706,12 +877,11 @@ static int16_t seg_socket_recvfrom(uint8_t sock, uint8_t *buf, uint16_t len,
 
 static int16_t seg_socket_sendto(uint8_t sock, uint8_t *buf, uint16_t len,
                                  uint8_t *addr, uint16_t port, int channel) {
-    int16_t sent;
-
-    (void)channel;
-    seg_socket_lock();
-    sent = (int16_t)sendto(sock, buf, len, addr, port);
-    seg_socket_unlock();
+    int16_t sent = (int16_t)seg_wizchip_udp_send_nonblocking(sock, buf, len,
+                   addr, port);
+    if (sent > 0) {
+        seg_tcp_mark_activity(channel);
+    }
 
     return sent;
 }
@@ -726,11 +896,23 @@ static int8_t seg_socket_getopt(uint8_t sock, sockopt_type option, void *value) 
     return result;
 }
 
-uint8_t check_connect_pw_auth(uint8_t * buf, uint16_t len);
+uint8_t check_connect_pw_auth(int channel, uint8_t *buf, uint16_t len,
+                              uint16_t *consumed);
 uint8_t check_tcp_connect_exception(int channel);
 void reset_SEG_timeflags(uint8_t channel);
 
 uint16_t get_tcp_any_port(void);
+
+static uint32_t seg_keepalive_interval_ms(uint32_t value_ms) {
+    return (value_ms < SEG_KEEPALIVE_MIN_INTERVAL_MS) ?
+           SEG_KEEPALIVE_MIN_INTERVAL_MS : value_ms;
+}
+
+static TickType_t seg_keepalive_interval_ticks(uint32_t value_ms) {
+    TickType_t ticks = pdMS_TO_TICKS(seg_keepalive_interval_ms(value_ms));
+
+    return (ticks == 0) ? 1 : ticks;
+}
 
 static BaseType_t ensure_channel_timer(TimerHandle_t *timer,
                                        const char *name,
@@ -909,6 +1091,7 @@ void do_seg(uint8_t sock, int channel) {
 void set_device_status(teDEVSTATUS status, int channel) {
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
     struct __device_option *device_option = (struct __device_option *) & (get_DevConfig_pointer()->device_option);
+    struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option[channel]);
     uint8_t prev_working_state = network_connection->working_state;
 
     switch (status) {
@@ -938,11 +1121,28 @@ void set_device_status(teDEVSTATUS status, int channel) {
         break;
     }
 
+    if ((network_connection->working_state == ST_CONNECT) &&
+            (prev_working_state != ST_CONNECT)) {
+        seg_tcp_mark_activity(channel);
+        if ((tcp_option->keepalive_en == ENABLE) &&
+                (seg_keepalive_timer[channel] != NULL)) {
+            // Start at connection establishment, not at the first S2E packet.
+            // Otherwise an idle or E2S-only server connection never probes a
+            // peer that disappeared without FIN/RST.
+            flag_first_keepalive[channel] = ENABLE;
+            xTimerChangePeriod(seg_keepalive_timer[channel],
+                               seg_keepalive_interval_ticks(
+                                   tcp_option->keepalive_wait_time), 0);
+            xTimerStart(seg_keepalive_timer[channel], 0);
+        }
+    } else if (network_connection->working_state != ST_CONNECT) {
+        seg_tcp_last_activity_ms[channel] = 0;
+    }
+
     // Status indicator pins
     if (network_connection->working_state == ST_CONNECT) {
         if (device_option->device_eth_connect_data[channel][0] != 0) {
             struct __mqtt_option *mqtt_option = (struct __mqtt_option *) & (get_DevConfig_pointer()->mqtt_option[channel]);
-            struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option[channel]);
 
             if (network_connection->working_mode == MQTT_CLIENT_MODE || network_connection->working_mode == MQTTS_CLIENT_MODE) {
                 wizchip_mqtt_publish(&g_mqtt_config[channel], mqtt_option->pub_topic, mqtt_option->qos, device_option->device_eth_connect_data[channel], strlen((char *)device_option->device_eth_connect_data[channel]));
@@ -958,16 +1158,9 @@ void set_device_status(teDEVSTATUS status, int channel) {
                                       strlen((char *)device_option->device_eth_connect_data[channel]),
                                       channel);
             }
-
-            if ((tcp_option->keepalive_en == ENABLE) &&
-                    (flag_first_keepalive[channel] == DISABLE) &&
-                    (seg_keepalive_timer[channel] != NULL)) {
-                flag_first_keepalive[channel] = ENABLE;
-                xTimerStart(seg_keepalive_timer[channel], 0);
-            }
         }
 
-        if (device_option->device_serial_connect_data[channel] != 0) {
+        if (device_option->device_serial_connect_data[channel][0] != 0) {
             platform_uart_puts((const char *)device_option->device_serial_connect_data[channel], strlen((const char *)device_option->device_serial_connect_data[channel]), channel);
         }
 
@@ -1009,9 +1202,13 @@ void proc_SEG_udp(uint8_t sock, int channel) {
 
     switch (state) {
     case SOCK_UDP:
+        seg_udp_transient_reset(channel);
         break;
 
     case SOCK_CLOSED:
+        seg_udp_transient_reset(channel);
+        seg_udp_peer_reset(channel);
+        seg_wizchip_udp_send_reset(sock);
         if (serial_mode == SEG_SERIAL_PROTOCOL_NONE) {
             // UART Ring buffer clear
             data_buffer_flush(channel);
@@ -1034,15 +1231,9 @@ void proc_SEG_udp(uint8_t sock, int channel) {
             setSn_DHAR(sock, multicast_mac);
             flag |= SF_MULTI_ENABLE;
         }
-        // flag was assembled above and then thrown away: socket() got a literal 0,
-        // so multicast was never enabled and the socket opened blocking - sendto()
-        // then sits in ioLibrary's SENDOK polling loop instead of returning SOCK_BUSY.
-        // SOCK_IO_NONBLOCK is also the wrong name here; it belongs to setsockopt().
-        // Both constants happen to be 1, so only the discarded flag changed behaviour.
-        //
-        // Original:
-        //     flag |= SOCK_IO_NONBLOCK;
-        //     int8_t s = socket(sock, Sn_MR_UDP, network_connection->local_port, 0);
+        // Keep the socket in non-blocking mode for RX/TX-space checks. UDP SEND
+        // completion itself is handled by seg_wizchip_udp_send_nonblocking(),
+        // because ioLibrary sendto() still waits for SENDOK even with this flag.
         flag |= SF_IO_NONBLOCK;
         int8_t s = seg_socket_open(sock, Sn_MR_UDP, network_connection->local_port, flag);
 
@@ -1060,6 +1251,15 @@ void proc_SEG_udp(uint8_t sock, int channel) {
         break;
 
     default:
+        if (seg_udp_transient_timed_out(channel, state) == TRUE) {
+            PRT_SEG(" > SEG:UDP_MODE:STATE_RECOVERY ch=%d sock=%u sr=0x%02X age_ms=%u\r\n",
+                    channel, (unsigned int)sock, (unsigned int)state,
+                    (unsigned int)SEG_TCP_SERVER_STUCK_TIMEOUT_MS);
+            process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
+            set_device_status(ST_OPEN, channel);
+            seg_udp_peer_reset(channel);
+            seg_udp_transient_reset(channel);
+        }
         break;
     }
 }
@@ -1105,7 +1305,8 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
         break;
 
     case SOCK_ESTABLISHED:
-        if (getSn_IR(sock) & Sn_IR_CON) {
+        if ((getSn_IR(sock) & Sn_IR_CON) ||
+                (get_device_status(channel) != ST_CONNECT)) {
             ///////////////////////////////////////////////////////////////////////////////////////////////////
             // S2E: TCP client mode initialize after connection established (only once)
             ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1140,7 +1341,7 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
                 if (seg_keepalive_timer[channel] == NULL) {
                     ensure_channel_timer(&seg_keepalive_timer[channel],
                                          "seg_keepalive_timer",
-                                         pdMS_TO_TICKS(tcp_option->keepalive_wait_time),
+                                         seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time),
                                          pdFALSE,
                                          channel,
                                          keepalive_timer_callback);
@@ -1148,7 +1349,7 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
                     }
-                    xTimerChangePeriod(seg_keepalive_timer[channel], pdMS_TO_TICKS(tcp_option->keepalive_wait_time), 0);
+                    xTimerChangePeriod(seg_keepalive_timer[channel], seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time), 0);
                 }
             }
             set_device_status(ST_CONNECT, channel);
@@ -1228,7 +1429,9 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
 
     int ret = 0;
     uint16_t reg_val;
-    static uint8_t first_established;
+    // Connection setup is independent for every data channel.  A single static
+    // flag lets one channel consume another channel's TLS-established event.
+    static uint8_t first_established[DEVICE_UART_CNT] = {0, };
 
     switch (state) {
     case SOCK_INIT:
@@ -1296,14 +1499,14 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
             }
             break;
         }
-        first_established = 1;
+        first_established[channel] = 1;
 
         PRT_SEG(" > SEG:TCP_CLIENT_OVER_TLS_MODE: TCP CLIENT CONNECTED\r\n");
         break;
 
     case SOCK_ESTABLISHED:
         //if(getSn_IR(sock) & Sn_IR_CON)
-        if (first_established) {
+        if (first_established[channel]) {
             ///////////////////////////////////////////////////////////////////////////////////////////////////
             // S2E: TCP client mode initialize after connection established (only once)
             ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1335,7 +1538,7 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
                 if (seg_keepalive_timer[channel] == NULL) {
                     ensure_channel_timer(&seg_keepalive_timer[channel],
                                          "seg_keepalive_timer",
-                                         pdMS_TO_TICKS(tcp_option->keepalive_wait_time),
+                                         seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time),
                                          pdFALSE,
                                          channel,
                                          keepalive_timer_callback);
@@ -1343,11 +1546,11 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
                     }
-                    xTimerChangePeriod(seg_keepalive_timer[channel], pdMS_TO_TICKS(tcp_option->keepalive_wait_time), 0);
+                    xTimerChangePeriod(seg_keepalive_timer[channel], seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time), 0);
                 }
             }
 
-            first_established = 0;
+            first_established[channel] = 0;
             set_device_status(ST_CONNECT, channel);
         }
         break;
@@ -1407,7 +1610,7 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
 
 
 void proc_SEG_mqtt_client(uint8_t sock, int channel) {
-    struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option);
+    struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option[channel]);
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
     struct __network_option *network_option = (struct __network_option *) & (get_DevConfig_pointer()->network_option);
     struct __serial_data_packing *serial_data_packing = (struct __serial_data_packing *) & (get_DevConfig_pointer()->serial_data_packing[channel]);
@@ -1426,7 +1629,8 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
 #endif
     int ret;
     uint16_t reg_val;
-    static uint8_t first_established;
+    // MQTT connection completion must not be shared between channels.
+    static uint8_t first_established[DEVICE_UART_CNT] = {0, };
 
     switch (state) {
     case SOCK_INIT:
@@ -1502,11 +1706,11 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
             }
         }
         PRT_SEG(" > SEG:MQTT_CLIENT_MODE:MQTTSubscribed\r\n");
-        first_established = 1;
+        first_established[channel] = 1;
         break;
 
     case SOCK_ESTABLISHED:
-        if (first_established) {
+        if (first_established[channel]) {
             // Serial debug message printout
             if (serial_common->serial_debug_en) {
                 seg_socket_getopt(sock, SO_DESTIP, &destip);
@@ -1534,7 +1738,7 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
                 if (seg_keepalive_timer[channel] == NULL) {
                     ensure_channel_timer(&seg_keepalive_timer[channel],
                                          "seg_keepalive_timer",
-                                         pdMS_TO_TICKS(tcp_option->keepalive_wait_time),
+                                         seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time),
                                          pdFALSE,
                                          channel,
                                          keepalive_timer_callback);
@@ -1542,10 +1746,10 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
                     }
-                    xTimerChangePeriod(seg_keepalive_timer[channel], pdMS_TO_TICKS(tcp_option->keepalive_wait_time), 0);
+                    xTimerChangePeriod(seg_keepalive_timer[channel], seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time), 0);
                 }
             }
-            first_established = 0;
+            first_established[channel] = 0;
             set_device_status(ST_CONNECT, channel);
         }
         mqtt_transport_yield(&g_mqtt_config[channel]);
@@ -1639,7 +1843,8 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
 #endif
     int ret;
     uint16_t reg_val;
-    static uint8_t first_established;
+    // MQTTS connection completion must not be shared between channels.
+    static uint8_t first_established[DEVICE_UART_CNT] = {0, };
 
     switch (state) {
     case SOCK_INIT:
@@ -1729,11 +1934,11 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
             }
         }
         PRT_SEG(" > SEG:MQTTS_CLIENT_MODE:MQTTSubscribed\r\n");
-        first_established = 1;
+        first_established[channel] = 1;
         break;
 
     case SOCK_ESTABLISHED:
-        if (first_established) {
+        if (first_established[channel]) {
             // Serial debug message printout
             if (serial_common->serial_debug_en) {
                 seg_socket_getopt(sock, SO_DESTIP, &destip);
@@ -1761,7 +1966,7 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
                 if (seg_keepalive_timer[channel] == NULL) {
                     ensure_channel_timer(&seg_keepalive_timer[channel],
                                          "seg_keepalive_timer",
-                                         pdMS_TO_TICKS(tcp_option->keepalive_wait_time),
+                                         seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time),
                                          pdFALSE,
                                          channel,
                                          keepalive_timer_callback);
@@ -1769,11 +1974,11 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
                     }
-                    xTimerChangePeriod(seg_keepalive_timer[channel], pdMS_TO_TICKS(tcp_option->keepalive_wait_time), 0);
+                    xTimerChangePeriod(seg_keepalive_timer[channel], seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time), 0);
                 }
             }
 
-            first_established = 0;
+            first_established[channel] = 0;
             set_device_status(ST_CONNECT, channel);
         }
         mqtt_transport_yield(&g_mqtt_config[channel]);
@@ -1897,7 +2102,8 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
 
     case SOCK_ESTABLISHED:
         seg_tcp_server_transient_reset(channel);
-        if (getSn_IR(sock) & Sn_IR_CON) {
+        if ((getSn_IR(sock) & Sn_IR_CON) ||
+                (get_device_status(channel) != ST_CONNECT)) {
             ///////////////////////////////////////////////////////////////////////////////////////////////////
             // S2E: TCP server mode initialize after connection established (only once)
             ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1937,7 +2143,7 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
                 if (seg_keepalive_timer[channel] == NULL) {
                     ensure_channel_timer(&seg_keepalive_timer[channel],
                                          "seg_keepalive_timer",
-                                         pdMS_TO_TICKS(tcp_option->keepalive_wait_time),
+                                         seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time),
                                          pdFALSE,
                                          channel,
                                          keepalive_timer_callback);
@@ -1945,7 +2151,7 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
                     }
-                    xTimerChangePeriod(seg_keepalive_timer[channel], pdMS_TO_TICKS(tcp_option->keepalive_wait_time), 0);
+                    xTimerChangePeriod(seg_keepalive_timer[channel], seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time), 0);
                 }
             }
 
@@ -2063,12 +2269,12 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
     uint16_t reg_val;
 
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
-    static uint8_t reconnection_count = 0;
+    static uint8_t reconnection_count[DEVICE_UART_CNT] = {0, };
 #endif
     switch (state) {
     case SOCK_INIT:
         if (mixed_state[channel] == MIXED_CLIENT) {
-            if (reconnection_count && tcp_option->reconnection) {
+            if (reconnection_count[channel] && tcp_option->reconnection) {
                 vTaskDelay(tcp_option->reconnection);
             }
 
@@ -2076,7 +2282,7 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
             if (check_tcp_connect_exception(channel) == ON) {
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
                 process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
-                reconnection_count = 0;
+                reconnection_count[channel] = 0;
                 data_buffer_flush(channel);
                 mixed_state[channel] = MIXED_SERVER;
 #endif
@@ -2088,18 +2294,18 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
             PRT_SEG(" > SEG:TCP_MIXED_MODE:ConnectNetwork Err %d\r\n", ret);
 
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
-            reconnection_count++;
+            reconnection_count[channel]++;
 
-            if (reconnection_count >= network_option->tcp_rcr_val) {
+            if (reconnection_count[channel] >= network_option->tcp_rcr_val) {
                 PRT_SEG("reconnection_count >= network_option->tcp_rcr_val\r\n");
                 process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
-                reconnection_count = 0;
+                reconnection_count[channel] = 0;
                 data_buffer_flush(channel);
                 mixed_state[channel] = MIXED_SERVER;
             }
 #ifdef _SEG_DEBUG_
-            if (reconnection_count != 0) {
-                PRT_SEG(" > SEG:TCP_MIXED_MODE:CLIENT_CONNECTION [%d]\r\n", reconnection_count);
+            if (reconnection_count[channel] != 0) {
+                PRT_SEG(" > SEG:TCP_MIXED_MODE:CLIENT_CONNECTION [%d]\r\n", reconnection_count[channel]);
             } else {
                 PRT_SEG(" > SEG:TCP_MIXED_MODE:CLIENT_CONNECTION_RETRY FAILED\r\n");
             }
@@ -2112,7 +2318,8 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
         break;
 
     case SOCK_ESTABLISHED:
-        if (getSn_IR(sock) & Sn_IR_CON) {
+        if ((getSn_IR(sock) & Sn_IR_CON) ||
+                (get_device_status(channel) != ST_CONNECT)) {
             ///////////////////////////////////////////////////////////////////////////////////////////////////
             // S2E: TCP mixed (server or client) mode initialize after connection established (only once)
             ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -2147,7 +2354,7 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
                 if (seg_keepalive_timer[channel] == NULL) {
                     ensure_channel_timer(&seg_keepalive_timer[channel],
                                          "seg_keepalive_timer",
-                                         pdMS_TO_TICKS(tcp_option->keepalive_wait_time),
+                                         seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time),
                                          pdFALSE,
                                          channel,
                                          keepalive_timer_callback);
@@ -2155,7 +2362,7 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
                     }
-                    xTimerChangePeriod(seg_keepalive_timer[channel], pdMS_TO_TICKS(tcp_option->keepalive_wait_time), 0);
+                    xTimerChangePeriod(seg_keepalive_timer[channel], seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time), 0);
                 }
             }
 
@@ -2168,21 +2375,21 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
                     if (ensure_channel_timer(&seg_auth_timer[channel],
                                              "seg_auth_timer",
                                              pdMS_TO_TICKS(MAX_CONNECTION_AUTH_TIME),
-                                             pdTRUE,
+                                             pdFALSE,
                                              channel,
                                              auth_timer_callback) == pdPASS) {
                         xTimerStart(seg_auth_timer[channel], 0);
                     }
                 }
             } else {
-                if (get_data_buffer_usedsize(channel) || u2e_size) {
+                if (get_data_buffer_usedsize(channel) || u2e_size[channel]) {
                     xSemaphoreGive(seg_u2e_sem[channel]);
                 }
                 mixed_state[channel] = MIXED_SERVER;
             }
 
 #ifdef MIXED_CLIENT_LIMITED_CONNECT
-            reconnection_count = 0;
+            reconnection_count[channel] = 0;
 #endif
         }
         break;
@@ -2274,7 +2481,15 @@ void uart_to_ether(uint8_t sock, int channel) {
 
     // UART ring buffer -> user's buffer
 
-    len = get_serial_data(channel);
+    // A staged UDP payload is one datagram. Do not append later UART bytes while
+    // a previous SEND is still pending/busy; TCP is a byte stream and may keep
+    // coalescing its unsent tail as before.
+    if ((network_connection->working_mode == UDP_MODE) &&
+            (u2e_size[channel] != 0)) {
+        len = u2e_size[channel];
+    } else {
+        len = get_serial_data(channel);
+    }
 
     if (len > 0) {
         serial_input_time[channel] = 0;
@@ -2292,13 +2507,15 @@ void uart_to_ether(uint8_t sock, int channel) {
                     (network_connection->remote_ip[1] == 0x00) &&
                     (network_connection->remote_ip[2] == 0x00) &&
                     (network_connection->remote_ip[3] == 0x00)) {
-                if ((peerip[0] == 0x00) && (peerip[1] == 0x00) && (peerip[2] == 0x00) && (peerip[3] == 0x00)) {
+                if (udp_peer_valid[channel] == SEG_DISABLE) {
                     if (serial_common->serial_debug_en) {
                         PRT_SEG(" > SEG:UDP_MODE:DATA SEND FAILED - UDP Peer IP/Port required (0.0.0.0)\r\n");
                     }
                 } else {
                     sent_len = seg_socket_sendto(sock, g_send_buf[channel], len,
-                                                 peerip, peerport, channel);    // UDP 1:N mode
+                                                 udp_peer_ip[channel],
+                                                 udp_peer_port[channel],
+                                                 channel);    // UDP 1:N mode
                 }
             } else {
                 sent_len = seg_socket_sendto(sock, g_send_buf[channel], len,
@@ -2375,16 +2592,14 @@ uint16_t get_serial_data(int channel) {
 
     len = get_data_buffer_usedsize(channel);
 
-    if ((len + u2e_size[channel]) >= DATA_BUF_SIZE) { // Avoiding u2e buffer (g_send_buf) overflow
-        /* Checking Data packing option: character delimiter */
-        if ((serial_data_packing->packing_delimiter[0] != 0x00) && (len == 1)) {
-            g_send_buf[channel][u2e_size[channel]] = (uint8_t)data_buffer_getc(channel);
-            if (serial_data_packing->packing_delimiter[0] == g_send_buf[channel][u2e_size[channel]]) {
-                return u2e_size[channel];
-            }
-        }
-
-        // serial data length value update for avoiding u2e buffer overflow
+    // Limit the copy before looking at a delimiter.  The old delimiter special
+    // case wrote g_send_buf[DATA_BUF_SIZE] when a full staged buffer and one new
+    // UART byte met here, corrupting the byte immediately after this channel's
+    // 2 KB buffer and consuming the delimiter without increasing u2e_size.
+    if (u2e_size[channel] >= DATA_BUF_SIZE) {
+        return u2e_size[channel];
+    }
+    if (len > (DATA_BUF_SIZE - u2e_size[channel])) {
         len = DATA_BUF_SIZE - u2e_size[channel];
     }
 
@@ -2433,7 +2648,7 @@ uint16_t get_serial_data(int channel) {
 // against 44 ms when the whole DATA_BUF_SIZE block was sent at once.
 #define E2S_DSR_CHUNK   256
 
-void ether_to_uart(uint8_t sock, int channel) {
+static void ether_to_uart_unlocked(uint8_t sock, int channel) {
     struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option[channel]);
     struct __serial_common *serial_common = (struct __serial_common *) & (get_DevConfig_pointer()->serial_common);
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
@@ -2441,18 +2656,19 @@ void ether_to_uart(uint8_t sock, int channel) {
 
     uint16_t len;
     uint16_t i;
+    int32_t received;
 
-    // The E2S stall lives here: platform_uart_cts_ready() reports ready
-    // unconditionally on the HW channels because the PL011 gates CTS itself, so a
-    // peer holding CTS off stops the wire, the transmit DMA never completes, and the
-    // platform_uart_tx_wait() below never returns - taking the whole receive task
-    // with it. Every observed E2S stall was DATA0 or DATA1 for that reason; the PIO
-    // channels read their CTS pin and do return early here.
+    // This gate is what used to wedge E2S. platform_uart_cts_ready() once reported
+    // ready unconditionally on the HW channels, so a peer holding CTS off stopped
+    // the wire, the transmit DMA never completed, and platform_uart_tx_wait() below
+    // never returned - taking the whole receive task with it. All four channels now
+    // read their own CTS pin, so a stalled peer only parks this channel here and it
+    // resumes without loss once CTS returns.
     //
     // Returning early on a busy DMA was tried and reverted: it fixed the wedge but
     // cost about 12 % of E2S throughput on every channel, because the task then
     // waits a whole tick between chunks instead of queueing the next one the moment
-    // the DMA frees up. A working fix has to keep the pipe full - poll at finer
+    // the DMA frees up. Any change here has to keep the pipe full - poll at finer
     // granularity, or bound the wait without letting recv() overwrite a buffer the
     // DMA is still reading.
     if (serial_option->flow_control == flow_rts_cts) {
@@ -2488,15 +2704,35 @@ void ether_to_uart(uint8_t sock, int channel) {
                 platform_uart_tx_wait(channel);
 
                 if (network_connection->working_mode == UDP_MODE) {
-                    e2u_size[channel] = (uint16_t)seg_socket_recvfrom(sock,
-                                        g_recv_buf[channel], len,
-                                        peerip, &peerport,
-                                        channel);
+                    uint8_t previous_peer_ip[4];
+                    uint16_t previous_peer_port = udp_peer_port[channel];
+                    uint8_t previous_peer_valid = udp_peer_valid[channel];
 
-                    if (memcmp(peerip_tmp, peerip, 4) !=  0) {
-                        memcpy(peerip_tmp, peerip, 4);
+                    memcpy(previous_peer_ip, udp_peer_ip[channel],
+                           sizeof(previous_peer_ip));
+                    received = seg_socket_recvfrom(sock, g_recv_buf[channel], len,
+                                                   udp_peer_ip[channel],
+                                                   &udp_peer_port[channel],
+                                                   channel);
+                    if (received <= 0) {
+                        // Socket teardown can race this receive task.  Never cast a
+                        // negative ioLibrary error to uint16_t: that turns e.g. -7
+                        // into a ~64 KB DMA transfer from a 2 KB channel buffer.
+                        e2u_size[channel] = 0;
+                        return;
+                    }
+                    e2u_size[channel] = (uint16_t)received;
+                    udp_peer_valid[channel] = SEG_ENABLE;
+
+                    if ((previous_peer_valid == SEG_DISABLE) ||
+                            (memcmp(previous_peer_ip, udp_peer_ip[channel], 4) != 0) ||
+                            (previous_peer_port != udp_peer_port[channel])) {
                         if (serial_common->serial_debug_en) {
-                            PRT_SEG(" > UDP Peer IP/Port: %d.%d.%d.%d : %d\r\n", peerip[0], peerip[1], peerip[2], peerip[3], peerport);
+                            PRT_SEG(" > UDP Peer ch=%d IP/Port: %d.%d.%d.%d : %d\r\n",
+                                    channel,
+                                    udp_peer_ip[channel][0], udp_peer_ip[channel][1],
+                                    udp_peer_ip[channel][2], udp_peer_ip[channel][3],
+                                    udp_peer_port[channel]);
                         }
                     }
                     //} else if (network_connection->working_state == ST_CONNECT) {
@@ -2506,15 +2742,25 @@ void ether_to_uart(uint8_t sock, int channel) {
                         uint16_t reg_val = SIK_RECEIVED & 0x00FF;
 
                         seg_socket_lock();
-                        e2u_size[channel] = wiz_tls_read(&s2e_tlsContext[channel], g_recv_buf[channel], len);
+                        received = wiz_tls_read(&s2e_tlsContext[channel], g_recv_buf[channel], len);
                         ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
                         seg_socket_unlock();
+
+                        if (received <= 0) {
+                            e2u_size[channel] = 0;
+                            return;
+                        }
+                        e2u_size[channel] = (uint16_t)received;
                     }
 #endif
                     else {
-                        e2u_size[channel] = (uint16_t)seg_socket_recv(sock,
-                                            g_recv_buf[channel], len,
-                                            channel);
+                        received = seg_socket_recv(sock, g_recv_buf[channel], len,
+                                                   channel);
+                        if (received <= 0) {
+                            e2u_size[channel] = 0;
+                            return;
+                        }
+                        e2u_size[channel] = (uint16_t)received;
                     }
                 }
             } else {
@@ -2525,12 +2771,29 @@ void ether_to_uart(uint8_t sock, int channel) {
                     ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state[channel] == MIXED_SERVER))) {
                 // Connection password authentication
                 if ((tcp_option->pw_connect_en == SEG_ENABLE) && (flag_connect_pw_auth[channel] == SEG_DISABLE)) {
-                    if (check_connect_pw_auth(g_recv_buf[channel], len) == SEG_ENABLE) {
+                    uint16_t auth_consumed = 0;
+                    uint8_t auth_result = check_connect_pw_auth(channel,
+                                          g_recv_buf[channel], e2u_size[channel],
+                                          &auth_consumed);
+
+                    if (auth_result == SEG_AUTH_PENDING) {
+                        e2u_size[channel] = 0;
+                        return;
+                    }
+                    if (auth_result == SEG_AUTH_SUCCESS) {
                         flag_connect_pw_auth[channel] = SEG_ENABLE;
+                        if (auth_consumed < e2u_size[channel]) {
+                            e2u_size[channel] -= auth_consumed;
+                            memmove(g_recv_buf[channel],
+                                    &g_recv_buf[channel][auth_consumed],
+                                    e2u_size[channel]);
+                        } else {
+                            e2u_size[channel] = 0;
+                        }
                     } else {
                         flag_connect_pw_auth[channel] = SEG_DISABLE;
+                        e2u_size[channel] = 0;
                     }
-                    e2u_size[channel] = 0;
 
                     if (seg_auth_timer[channel] != NULL) {
                         xTimerStop(seg_auth_timer[channel], 0);
@@ -2546,8 +2809,7 @@ void ether_to_uart(uint8_t sock, int channel) {
         if (e2u_size[channel] != 0) {
             //////////////////////////////////////////////////////////////////////
 #ifdef __USE_UART_485_422__
-            if ((serial_option->uart_interface == UART_IF_RS422) ||
-                    (serial_option->uart_interface == UART_IF_RS485)) {
+            if (serial_option->uart_interface != UART_IF_RS232_TTL) {
                 if ((serial_common->serial_debug_en == SEG_DEBUG_E2S) || (serial_common->serial_debug_en == SEG_DEBUG_ALL)) {
                     debugSerial_dataTransfer(g_recv_buf[channel], e2u_size[channel], SEG_DEBUG_E2S);
                 }
@@ -2565,7 +2827,7 @@ void ether_to_uart(uint8_t sock, int channel) {
             if (serial_option->flow_control == flow_xon_xoff)
 #endif
             {
-                if (isXON == SEG_ENABLE) {
+                if (isXON[channel] == SEG_ENABLE) {
                     if ((serial_common->serial_debug_en == SEG_DEBUG_E2S) || (serial_common->serial_debug_en == SEG_DEBUG_ALL)) {
                         debugSerial_dataTransfer(g_recv_buf[channel], e2u_size[channel], SEG_DEBUG_E2S);
                     }
@@ -2631,6 +2893,20 @@ void ether_to_uart(uint8_t sock, int channel) {
     } while (e2u_size[channel]);
 }
 
+void ether_to_uart(uint8_t sock, int channel) {
+    if ((channel < 0) || (channel >= DEVICE_UART_CNT)) {
+        return;
+    }
+
+    if (seg_recv_sem[channel] != NULL) {
+        xSemaphoreTake(seg_recv_sem[channel], portMAX_DELAY);
+    }
+    ether_to_uart_unlocked(sock, channel);
+    if (seg_recv_sem[channel] != NULL) {
+        xSemaphoreGive(seg_recv_sem[channel]);
+    }
+}
+
 void ether_to_spi(uint8_t sock) {
     struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option[SEG_DATA0_CH]);
     struct __serial_common *serial_common = (struct __serial_common *) & (get_DevConfig_pointer()->serial_common);
@@ -2640,6 +2916,7 @@ void ether_to_spi(uint8_t sock) {
 
     uint16_t len;
     uint16_t i;
+    int32_t received;
 
     do {
         // H/W Socket buffer -> User's buffer
@@ -2651,14 +2928,31 @@ void ether_to_spi(uint8_t sock) {
 
             if (len > 0) {
                 if (network_connection->working_mode == UDP_MODE) {
-                    e2u_size[SEG_DATA0_CH] = (uint16_t)seg_socket_recvfrom(
-                                                 sock, g_recv_buf[SEG_DATA0_CH], len,
-                                                 peerip, &peerport, SEG_DATA0_CH);
+                    uint8_t previous_peer_ip[4];
+                    uint16_t previous_peer_port = udp_peer_port[SEG_DATA0_CH];
+                    uint8_t previous_peer_valid = udp_peer_valid[SEG_DATA0_CH];
 
-                    if (memcmp(peerip_tmp, peerip, 4) !=  0) {
-                        memcpy(peerip_tmp, peerip, 4);
+                    memcpy(previous_peer_ip, udp_peer_ip[SEG_DATA0_CH],
+                           sizeof(previous_peer_ip));
+                    received = seg_socket_recvfrom(sock, g_recv_buf[SEG_DATA0_CH], len,
+                                                   udp_peer_ip[SEG_DATA0_CH],
+                                                   &udp_peer_port[SEG_DATA0_CH],
+                                                   SEG_DATA0_CH);
+                    if (received <= 0) {
+                        e2u_size[SEG_DATA0_CH] = 0;
+                        return;
+                    }
+                    e2u_size[SEG_DATA0_CH] = (uint16_t)received;
+                    udp_peer_valid[SEG_DATA0_CH] = SEG_ENABLE;
+
+                    if ((previous_peer_valid == SEG_DISABLE) ||
+                            (memcmp(previous_peer_ip, udp_peer_ip[SEG_DATA0_CH], 4) != 0) ||
+                            (previous_peer_port != udp_peer_port[SEG_DATA0_CH])) {
                         if (serial_common->serial_debug_en) {
-                            printf(" > UDP Peer IP/Port: %d.%d.%d.%d : %d\r\n", peerip[0], peerip[1], peerip[2], peerip[3], peerport);
+                            printf(" > UDP Peer ch=0 IP/Port: %d.%d.%d.%d : %d\r\n",
+                                   udp_peer_ip[SEG_DATA0_CH][0], udp_peer_ip[SEG_DATA0_CH][1],
+                                   udp_peer_ip[SEG_DATA0_CH][2], udp_peer_ip[SEG_DATA0_CH][3],
+                                   udp_peer_port[SEG_DATA0_CH]);
                         }
                     }
                 } else if (network_connection->working_state == ST_CONNECT) {
@@ -2667,15 +2961,25 @@ void ether_to_spi(uint8_t sock) {
                         uint16_t reg_val = SIK_RECEIVED & 0x00FF;
 
                         seg_socket_lock();
-                        e2u_size[SEG_DATA0_CH] = wiz_tls_read(&s2e_tlsContext[SEG_DATA0_CH], g_recv_buf[SEG_DATA0_CH], len);
+                        received = wiz_tls_read(&s2e_tlsContext[SEG_DATA0_CH], g_recv_buf[SEG_DATA0_CH], len);
                         ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
                         seg_socket_unlock();
+
+                        if (received <= 0) {
+                            e2u_size[SEG_DATA0_CH] = 0;
+                            return;
+                        }
+                        e2u_size[SEG_DATA0_CH] = (uint16_t)received;
                     }
 #endif
                     else {
-                        e2u_size[SEG_DATA0_CH] = (uint16_t)seg_socket_recv(
-                                                     sock, g_recv_buf[SEG_DATA0_CH], len,
-                                                     SEG_DATA0_CH);
+                        received = seg_socket_recv(sock, g_recv_buf[SEG_DATA0_CH], len,
+                                                   SEG_DATA0_CH);
+                        if (received <= 0) {
+                            e2u_size[SEG_DATA0_CH] = 0;
+                            return;
+                        }
+                        e2u_size[SEG_DATA0_CH] = (uint16_t)received;
                     }
                 }
             } else {
@@ -2686,12 +2990,29 @@ void ether_to_spi(uint8_t sock) {
                     ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state[SEG_DATA0_CH] == MIXED_SERVER))) {
                 // Connection password authentication
                 if ((tcp_option->pw_connect_en == SEG_ENABLE) && (flag_connect_pw_auth[SEG_DATA0_CH] == SEG_DISABLE)) {
-                    if (check_connect_pw_auth(g_recv_buf[SEG_DATA0_CH], len) == SEG_ENABLE) {
+                    uint16_t auth_consumed = 0;
+                    uint8_t auth_result = check_connect_pw_auth(SEG_DATA0_CH,
+                                          g_recv_buf[SEG_DATA0_CH], e2u_size[SEG_DATA0_CH],
+                                          &auth_consumed);
+
+                    if (auth_result == SEG_AUTH_PENDING) {
+                        e2u_size[SEG_DATA0_CH] = 0;
+                        return;
+                    }
+                    if (auth_result == SEG_AUTH_SUCCESS) {
                         flag_connect_pw_auth[SEG_DATA0_CH] = SEG_ENABLE;
+                        if (auth_consumed < e2u_size[SEG_DATA0_CH]) {
+                            e2u_size[SEG_DATA0_CH] -= auth_consumed;
+                            memmove(g_recv_buf[SEG_DATA0_CH],
+                                    &g_recv_buf[SEG_DATA0_CH][auth_consumed],
+                                    e2u_size[SEG_DATA0_CH]);
+                        } else {
+                            e2u_size[SEG_DATA0_CH] = 0;
+                        }
                     } else {
                         flag_connect_pw_auth[SEG_DATA0_CH] = SEG_DISABLE;
+                        e2u_size[SEG_DATA0_CH] = 0;
                     }
-                    e2u_size[SEG_DATA0_CH] = 0;
 
                     if (seg_auth_timer[SEG_DATA0_CH] != NULL) {
                         xTimerStop(seg_auth_timer[SEG_DATA0_CH], 0);
@@ -2741,16 +3062,41 @@ uint8_t get_serial_communation_protocol(int channel) {
 }
 
 
-void send_keepalive_packet_manual(uint8_t sock) {
-    // SEND_KEEP uses the same per-socket command register as data SEND.  The
-    // timer task used to issue it outside seg_socket_sem, so it could cross a
-    // send() between that call's SENDOK check and Sn_CR_SEND command.  That left
-    // socket.c's software pending bit set with no matching SENDOK/TIMEOUT and
-    // reproduced as FLOW_DIAG send_rc=SOCK_BUSY with a full S2E ring.  Keep the
-    // entire command transaction in the same lock as send()/recv().
+static uint8_t seg_keepalive_data_active(int channel) {
+    return ((u2e_size[channel] != 0) ||
+            (e2u_size[channel] != 0) ||
+            (get_data_buffer_usedsize(channel) != 0) ||
+            ((seg_s2e_last_send_len[channel] != 0) &&
+             (seg_s2e_last_send_rc[channel] == SOCK_BUSY))) ? TRUE : FALSE;
+}
+
+uint8_t send_keepalive_packet_manual(uint8_t sock, int channel) {
+    struct __tcp_option *tcp_option =
+        (struct __tcp_option *)&get_DevConfig_pointer()->tcp_option[channel];
+    uint8_t sent = FALSE;
+
+    // SEND_KEEP uses the same per-socket command register as data SEND.  A mutex
+    // around the two API calls only prevents their CPU-side transactions from
+    // overlapping; send() returns while the hardware SEND is still pending.
+    // Revalidate idleness while holding the API mutex so an active data stream
+    // can never receive a blind timer-driven SEND_KEEP command.
     seg_socket_lock();
-    setsockopt(sock, SO_KEEPALIVESEND, 0);
+    uint32_t now = (uint32_t)millis();
+    uint32_t last_activity = seg_tcp_last_activity_ms[channel];
+    uint32_t idle_ms = (uint32_t)(now - last_activity);
+    uint32_t wait_ms = seg_keepalive_interval_ms(
+                           tcp_option->keepalive_wait_time);
+
+    if ((get_device_status(channel) == ST_CONNECT) &&
+            (getSn_SR(sock) == SOCK_ESTABLISHED) &&
+            (last_activity != 0) &&
+            (idle_ms >= wait_ms) &&
+            !seg_keepalive_data_active(channel)) {
+        sent = (setsockopt(sock, SO_KEEPALIVESEND, 0) == SOCK_OK) ? TRUE : FALSE;
+    }
     seg_socket_unlock();
+
+    return sent;
 }
 
 
@@ -2800,28 +3146,52 @@ uint8_t process_socket_termination(uint8_t sock, uint32_t timeout, int channel, 
     return sock;
 }
 
-uint8_t check_connect_pw_auth(uint8_t * buf, uint16_t len) {
-    struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option);
+uint8_t check_connect_pw_auth(int channel, uint8_t *buf, uint16_t len,
+                              uint16_t *consumed) {
+    struct __tcp_option *tcp_option;
+    size_t expected_len;
+    uint16_t i;
 
-    uint8_t ret = SEG_DISABLE;
-    uint8_t pwbuf[11] = {0,};
-
-    if (len >= sizeof(pwbuf)) {
-        len = sizeof(pwbuf) - 1;
+    if ((channel < 0) || (channel >= DEVICE_UART_CNT) ||
+            (buf == NULL) || (consumed == NULL)) {
+        return SEG_AUTH_FAILED;
     }
 
-    memcpy(pwbuf, buf, len);
-    if ((len == strlen(tcp_option->pw_connect)) && (memcmp(tcp_option->pw_connect, pwbuf, len) == 0)) {
-        ret = SEG_ENABLE; // Connection password auth success
+    tcp_option = (struct __tcp_option *)&get_DevConfig_pointer()->tcp_option[channel];
+    expected_len = strlen(tcp_option->pw_connect);
+    *consumed = 0;
+
+    if (expected_len == 0) {
+        connect_pw_progress[channel] = 0;
+        return SEG_AUTH_SUCCESS;
     }
 
+    for (i = 0; i < len; i++) {
+        uint8_t progress = connect_pw_progress[channel];
+
+        if ((progress >= expected_len) ||
+                (buf[i] != (uint8_t)tcp_option->pw_connect[progress])) {
+            connect_pw_progress[channel] = 0;
 #ifdef _SEG_DEBUG_
-    PRT_SEG(" > Connection password: %s, len: %d\r\n", tcp_option->pw_connect, strlen(tcp_option->pw_connect));
-    PRT_SEG(" > Entered password: %s, len: %d\r\n", pwbuf, len);
-    PRT_SEG(" >> Auth %s\r\n", ret ? "success" : "failed");
+            PRT_SEG(" >> Connection password auth failed ch=%d at=%u\r\n",
+                    channel, (unsigned int)progress);
 #endif
+            return SEG_AUTH_FAILED;
+        }
 
-    return ret;
+        connect_pw_progress[channel] = progress + 1U;
+        *consumed = i + 1U;
+        if (connect_pw_progress[channel] == expected_len) {
+            connect_pw_progress[channel] = 0;
+#ifdef _SEG_DEBUG_
+            PRT_SEG(" >> Connection password auth success ch=%d len=%u\r\n",
+                    channel, (unsigned int)expected_len);
+#endif
+            return SEG_AUTH_SUCCESS;
+        }
+    }
+
+    return SEG_AUTH_PENDING;
 }
 
 
@@ -2831,8 +3201,9 @@ void init_trigger_modeswitch(uint8_t mode) {
 
     if (mode == DEVICE_AT_MODE) {
         opmode = DEVICE_AT_MODE;
-        set_device_status(ST_ATMODE, SEG_DATA0_CH);
-        set_device_status(ST_ATMODE, SEG_DATA1_CH);
+        for (int i = 0; i < DEVICE_UART_CNT; i++) {
+            set_device_status(ST_ATMODE, i);
+        }
 
         if (serial_common->serial_debug_en) {
             PRT_SEG(" > SEG:AT Mode\r\n");
@@ -2840,10 +3211,9 @@ void init_trigger_modeswitch(uint8_t mode) {
         }
     } else { // DEVICE_GW_MODE
         opmode = DEVICE_GW_MODE;
-        set_device_status(ST_OPEN, SEG_DATA0_CH);
-        set_device_status(ST_OPEN, SEG_DATA1_CH);
 
         for (int i = 0; i < DEVICE_UART_CNT; i++) {
+            set_device_status(ST_OPEN, i);
             network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[i]);
             if (network_connection->working_mode == TCP_MIXED_MODE) {
                 mixed_state[i] = MIXED_SERVER;
@@ -2856,12 +3226,12 @@ void init_trigger_modeswitch(uint8_t mode) {
         }
     }
 
-    u2e_size[SEG_DATA0_CH] = 0;
-    u2e_size[SEG_DATA1_CH] = 0;
-    data_buffer_flush(SEG_DATA0_CH);
-    data_buffer_flush(SEG_DATA1_CH);
-    reset_SEG_timeflags(SEG_DATA0_CH);
-    reset_SEG_timeflags(SEG_DATA1_CH);
+    for (int i = 0; i < DEVICE_UART_CNT; i++) {
+        u2e_size[i] = 0;
+        e2u_size[i] = 0;
+        data_buffer_flush(i);
+        reset_SEG_timeflags(i);
+    }
 }
 
 uint8_t check_modeswitch_trigger(uint8_t ch) {
@@ -2949,10 +3319,10 @@ uint8_t check_serial_store_permitted(uint8_t ch, int channel) {
     // [Peer] -> [WIZnet Device]
     if ((ret == SEG_ENABLE) && (serial_option->flow_control == flow_xon_xoff)) {
         if (ch == UART_XON) {
-            isXON = SEG_ENABLE;
+            isXON[channel] = SEG_ENABLE;
             ret = SEG_DISABLE;
         } else if (ch == UART_XOFF) {
-            isXON = SEG_DISABLE;
+            isXON[channel] = SEG_DISABLE;
             ret = SEG_DISABLE;
         }
     }
@@ -2969,6 +3339,8 @@ void reset_SEG_timeflags(uint8_t channel) {
     flag_first_keepalive[channel] = SEG_DISABLE;
     flag_auth_time[channel] = SEG_DISABLE;
     flag_connect_pw_auth[channel] = SEG_DISABLE; // TCP_SERVER_MODE only (+ MIXED_SERVER)
+    connect_pw_progress[channel] = 0;
+    isXON[channel] = SEG_ENABLE;
     flag_inactivity[channel] = SEG_DISABLE;
 
     // Timer value clear
@@ -3467,6 +3839,23 @@ void auth_timer_callback(TimerHandle_t xTimer) {
     xSemaphoreGive(seg_timer_sem);
 }
 
+static void seg_keepalive_timer_restart(TimerHandle_t timer, uint32_t delay_ms) {
+    TickType_t delay_ticks;
+
+    if (timer == NULL) {
+        return;
+    }
+    if (delay_ms == 0) {
+        delay_ms = 1;
+    }
+    delay_ticks = pdMS_TO_TICKS(delay_ms);
+    if (delay_ticks == 0) {
+        delay_ticks = 1;
+    }
+    xTimerChangePeriod(timer, delay_ticks, 0);
+    xTimerStart(timer, 0);
+}
+
 #if SEG_FLOW_STALL_DIAG_ENABLE || SEG_S2E_STALL_RECOVERY_ENABLE
 // Polls every channel from an independent task so it remains available when a
 // channel's data tasks stop making useful progress.
@@ -3529,17 +3918,37 @@ void seg_timer_task(void *argument)  {
             }
 
             if (flag_send_keepalive[i] == SEG_ENABLE) {
-                //#ifdef _SEG_DEBUG_
-                //            PRT_SEG(" >> send_keepalive_packet\r\n");
-                //#endif
                 flag_send_keepalive[i] = SEG_DISABLE;
-                send_keepalive_packet_manual(seg_data_sock[i]);    // <-> send_keepalive_packet_auto()
 
-                if (seg_keepalive_timer[i] != NULL) {
-                    if (xTimerGetPeriod(seg_keepalive_timer[i]) != pdMS_TO_TICKS(tcp_option->keepalive_retry_time)) {
-                        xTimerChangePeriod(seg_keepalive_timer[i], pdMS_TO_TICKS(tcp_option->keepalive_retry_time), 0);
+                if ((tcp_option->keepalive_en == SEG_ENABLE) &&
+                        (get_device_status(i) == ST_CONNECT) &&
+                        (seg_keepalive_timer[i] != NULL)) {
+                    uint32_t now = (uint32_t)millis();
+                    uint32_t last_activity = seg_tcp_last_activity_ms[i];
+                    uint32_t wait_ms = seg_keepalive_interval_ms(
+                                           tcp_option->keepalive_wait_time);
+                    uint32_t retry_ms = seg_keepalive_interval_ms(
+                                            tcp_option->keepalive_retry_time);
+                    uint32_t idle_ms;
+                    uint32_t next_ms;
+
+                    if (last_activity == 0) {
+                        seg_tcp_mark_activity(i);
+                        last_activity = seg_tcp_last_activity_ms[i];
                     }
-                    xTimerStart(seg_keepalive_timer[i], 0);
+                    idle_ms = (uint32_t)(now - last_activity);
+
+                    if (idle_ms < wait_ms) {
+                        // Normal traffic itself proves liveness.  Defer the first
+                        // probe until a full keepalive wait interval has elapsed.
+                        next_ms = wait_ms - idle_ms;
+                    } else {
+                        // Revalidated under seg_socket_sem inside the helper.  If
+                        // data became active meanwhile, no keepalive is issued.
+                        (void)send_keepalive_packet_manual(seg_data_sock[i], i);
+                        next_ms = retry_ms;
+                    }
+                    seg_keepalive_timer_restart(seg_keepalive_timer[i], next_ms);
                 }
             }
 

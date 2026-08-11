@@ -110,6 +110,9 @@ xSemaphoreHandle seg_u2e_sem[DEVICE_UART_CNT] = {NULL, };
 xSemaphoreHandle seg_e2s_sem = NULL;
 xSemaphoreHandle seg_sem[DEVICE_UART_CNT] = {NULL, };
 xSemaphoreHandle seg_critical_sem[DEVICE_UART_CNT] = {NULL, };
+// Serializes the normal receive task with the bounded CLOSE_WAIT drain for the
+// same channel. Both paths share g_recv_buf/e2u_size and must never run at once.
+xSemaphoreHandle seg_recv_sem[DEVICE_UART_CNT] = {NULL, };
 // Serializes whole ioLibrary socket operations across every SEG data socket.
 // ioLibrary keeps sock_is_sending and sock_io_mode as shared bitmaps, so a
 // per-channel lock is not sufficient on the dual-core FreeRTOS build.
@@ -272,6 +275,7 @@ void start_task(void *argument) {
         seg_u2e_sem[ch]      = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
         seg_sem[ch]          = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
         seg_critical_sem[ch] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)1);
+        seg_recv_sem[ch]     = xSemaphoreCreateMutex();
     }
 
     xTaskCreate(net_status_task, "Net_Status_Task", NET_TASK_STACK_SIZE, NULL, NET_TASK_PRIORITY, &watched_task[watched_task_cnt++]);

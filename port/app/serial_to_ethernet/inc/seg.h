@@ -54,6 +54,11 @@
 
 #define MAX_CONNECTION_AUTH_TIME            5000 // 5000ms (5sec)
 
+// Manual W5500 keepalive uses the same per-socket command register as data
+// SEND.  Sub-second values make a command collision much more likely and are
+// not useful on a TCP connection, so reject/clamp them consistently.
+#define SEG_KEEPALIVE_MIN_INTERVAL_MS        1000U
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 
 #ifndef DATA_BUF_SIZE
@@ -77,6 +82,12 @@ extern const uint8_t seg_data_sock[DEVICE_UART_CNT];  // channel -> data socket 
 // non-atomic bitmaps, so SPI transaction locking alone is not sufficient.
 void seg_wizchip_api_lock(void);
 void seg_wizchip_api_unlock(void);
+
+// Start a UDP SEND command without waiting under the process-wide socket mutex
+// for SENDOK/TIMEOUT.  Completion is reaped on the next call for that socket.
+int32_t seg_wizchip_udp_send_nonblocking(uint8_t sock, uint8_t *buf,
+        uint16_t len, uint8_t *addr, uint16_t port);
+void seg_wizchip_udp_send_reset(uint8_t sock);
 
 typedef enum {SEG_UART_RX, SEG_UART_TX, SEG_ETHER_RX, SEG_ETHER_TX, SEG_ALL} teDATADIR;
 typedef enum {
@@ -138,7 +149,7 @@ uint8_t get_serial_communation_protocol(int channel);
 uint8_t process_socket_termination(uint8_t sock, uint32_t timeout, int channel, uint8_t mutex);
 
 // Send Keep-alive packet manually (once)
-void send_keepalive_packet_manual(uint8_t sock);
+uint8_t send_keepalive_packet_manual(uint8_t sock, int channel);
 
 //These functions must be located in UART Rx IRQ Handler.
 uint8_t check_serial_store_permitted(uint8_t ch, int channel);
