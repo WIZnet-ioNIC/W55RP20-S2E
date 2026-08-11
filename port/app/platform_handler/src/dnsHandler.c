@@ -171,13 +171,12 @@ int8_t process_dns(int channel) {
         dns_retry++;
 
         if (dns_retry > 2) {
-#ifndef __USE_DNS_INFINITE_LOOP__
+            // Retrying here until the name resolves would keep net_status_task
+            // inside this call, and every channel - including the ones that need
+            // no DNS at all - would never be released. Report the failure and let
+            // the network state machine decide when to ask again.
             PRT_ERR(" - DNS Failed\r\n\r\n");
             break;
-#else // If DNS query failed, process_dns() function will try to DNS steps again.
-            PRT_ERR(" - DNS Failed, Try again...\r\n\r\n");
-            dns_retry = 0;
-#endif
         }
 
         if (dev_config->network_option.dhcp_use) {

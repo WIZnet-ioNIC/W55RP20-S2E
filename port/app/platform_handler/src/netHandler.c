@@ -84,7 +84,6 @@ void net_status_task(void *argument) {
 
             // Per-channel DNS resolution; reuse an earlier channel's result on matching domain
             {
-                uint8_t dns_failed = 0;
                 for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
                     if (dev_config->network_connection[ch].working_mode == TCP_SERVER_MODE) {
                         continue;
@@ -111,16 +110,15 @@ void net_status_task(void *argument) {
                             flag_process_dns_success[ch] = ON;
                             PRT_INFO("flag_process_dns_success[CH%d] = ON\r\n", ch);
                         } else {
+                            // One unresolved name must not hold back the other
+                            // channels; seg refuses to connect this channel on its
+                            // own while the flag is off, and NET_IP_UP retries it.
                             PRT_ERR("NET_LINK_CONNECTED DNS CH%d Failed\r\n", ch);
                             flag_process_dns_success[ch] = OFF;
-                            dns_failed = 1;
-                            break;
+                            continue;
                         }
                     }
                     display_Dev_Info_dns(ch);
-                }
-                if (dns_failed) {
-                    break;
                 }
             }
 
@@ -150,6 +148,26 @@ void net_status_task(void *argument) {
                         }
                     }
                 }
+                // Channels whose name did not resolve at link-up stay idle until it
+                // does, so keep asking here where a slow or missing DNS server only
+                // delays that channel.
+                for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+                    if (dev_config->network_connection[ch].working_mode == TCP_SERVER_MODE) {
+                        continue;
+                    }
+                    if (!dev_config->network_connection[ch].dns_use) {
+                        continue;
+                    }
+                    if (flag_process_dns_success[ch] == ON) {
+                        continue;
+                    }
+                    if (process_dns(ch) == DNS_RET_SUCCESS) {
+                        flag_process_dns_success[ch] = ON;
+                        PRT_INFO("flag_process_dns_success[CH%d] = ON\r\n", ch);
+                        display_Dev_Info_dns(ch);
+                    }
+                }
+
                 if (check_phylink_status() == PHY_LINK_OFF) {
 #if 1   //restore status
                     PRT_ERR("NET_IP_UP PHY_LINK_OFF\r\n");
@@ -246,7 +264,13 @@ void wizchip_recovery(void) {
     }
     flag_process_dhcp_success = OFF;
 
+    // Wait for any complete ioLibrary operation to leave the chip before
+    // toggling reset.  Per-register CRIS locking alone allowed a reset between
+    // two transactions of send()/recv(), leaving software and W5500 socket
+    // state from different generations.
+    seg_wizchip_api_lock();
     wizchip_reset();
     wizchip_initialize();
     Net_Conf();
+    seg_wizchip_api_unlock();
 }

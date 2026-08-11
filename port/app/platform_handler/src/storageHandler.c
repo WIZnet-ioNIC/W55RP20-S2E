@@ -95,15 +95,19 @@ void erase_storage(teDATASTORAGE stype) {
         break;
     case STORAGE_CLICA0:
         erase_flash_sector(FLASH_CLICA0_ADDR);
+        break;
     case STORAGE_PKEY0:
         erase_flash_sector(FLASH_PRIKEY0_ADDR);
+        break;
     case STORAGE_ROOTCA1:
         erase_flash_sector(FLASH_ROOTCA1_ADDR);
         break;
     case STORAGE_CLICA1:
         erase_flash_sector(FLASH_CLICA1_ADDR);
+        break;
     case STORAGE_PKEY1:
         erase_flash_sector(FLASH_PRIKEY1_ADDR);
+        break;
     default:
         break;
     }
