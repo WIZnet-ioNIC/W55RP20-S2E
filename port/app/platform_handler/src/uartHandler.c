@@ -116,6 +116,9 @@ static uint8_t data_uart_dtr_status[DEVICE_UART_CNT];
 // inside a tick, from paying that tick.
 #define UART_TX_DMA_YIELD_MS 2U
 
+// A full 2 KB transfer is 44 ms at 460800 baud. Anything past this is wedged.
+#define UART_TX_DMA_STUCK_MS 1000U
+
 static inline void uart_tx_spin_wait_bounded(uint32_t *started_ms, uint32_t yield_ms) {
     device_wdt_reset();
 
@@ -1229,6 +1232,33 @@ int32_t platform_uart_putc(uint16_t ch, int channel) {
 // Block until a channel's TX DMA has finished reading its source buffer.
 // Callers must do this before overwriting the buffer they last handed to
 // platform_uart_puts_dma(), which starts the transfer and returns immediately.
+static volatile uint32_t uart_tx_stuck_count[DEVICE_UART_CNT];
+
+// Report once per stuck transfer, with the state machine state that explains it.
+// A PIO channel parked with its FIFO full and CTS not asserted is waiting on the
+// line; the same channel with CTS asserted and the FIFO full is a state machine
+// that stopped for another reason.
+static void uart_tx_report_stuck_dma(int channel) {
+    uart_tx_stuck_count[channel]++;
+
+#if (DEVICE_UART_CNT > 2)
+    if (channel >= UART_HW_CH_CNT) {
+        printf("[TX_DMA_STUCK] ch=%d count=%lu cts=%u sm=%u pc=%u fifo=%u "
+               "sm_enabled=%u\r\n",
+               channel, (unsigned long)uart_tx_stuck_count[channel],
+               (unsigned int)platform_uart_cts_ready(channel),
+               (unsigned int)pio_tx_sm[channel],
+               (unsigned int)pio_sm_get_pc(PIO_DATA_UART, pio_tx_sm[channel]),
+               (unsigned int)pio_sm_get_tx_fifo_level(PIO_DATA_UART, pio_tx_sm[channel]),
+               (PIO_DATA_UART->ctrl & (1U << pio_tx_sm[channel])) ? 1U : 0U);
+        return;
+    }
+#endif
+    printf("[TX_DMA_STUCK] ch=%d count=%lu cts=%u hw\r\n",
+           channel, (unsigned long)uart_tx_stuck_count[channel],
+           (unsigned int)platform_uart_cts_ready(channel));
+}
+
 void platform_uart_tx_wait(int channel) {
     // The PIO channels used to transmit synchronously, so there was nothing to
     // wait for. They now have a DMA path of their own and need the same wait.
@@ -1244,9 +1274,25 @@ void platform_uart_tx_wait(int channel) {
     //     }
     {
         uint32_t waited_since = 0;
+        uint32_t entered_us = time_us_32();
 
         while (dma_channel_is_busy(dma_uart_tx[channel])) {
             uart_tx_spin_wait_bounded(&waited_since, UART_TX_DMA_YIELD_MS);
+
+            // 2 KB at 460800 baud takes 44 ms, so a transfer still running after
+            // a second is not slow, it is stuck. With CTS handshaking the PIO
+            // state machine samples the line before every byte: if it stops
+            // draining its FIFO the DREQ stops and the DMA never finishes. That
+            // used to park this loop for good, which killed the channel's
+            // ethernet-to-serial direction until the device was restarted while
+            // the other direction kept working.
+            if ((time_us_32() - entered_us) < (UART_TX_DMA_STUCK_MS * 1000U)) {
+                continue;
+            }
+
+            uart_tx_report_stuck_dma(channel);
+            dma_channel_abort(dma_uart_tx[channel]);
+            return;
         }
     }
 }
