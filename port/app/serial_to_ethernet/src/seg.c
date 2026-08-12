@@ -118,12 +118,155 @@ void seg_wizchip_api_unlock(void) {
     }
 }
 
+// The app-wide socket mutex is the one lock every task needs, and it had no
+// owner tracking - only the SPI critical section did. send() holds this one
+// across an unbounded `while (getSn_CR(sn))`, so a command the chip never
+// retires parks the receive task, the recovery poll and the diagnostic reporter
+// in the same instant. That is what a wedge looks like from the log: a last
+// [FLOW_DIAG], then silence, then the watchdog.
+static const char *volatile seg_sock_lock_owner;
+static volatile uint32_t seg_sock_lock_since_us;
+
+// Naming the holder was not enough: SEG_U2E_Task turned out to be the one that
+// keeps the mutex, but the bounded command wait added for it never even runs,
+// because the send returns SOCK_BUSY on free space long before reaching it. So
+// also record which call inside the lock is the slow one.
+// Split finer after step 2 came back with the SPI lock unheld: four short
+// register reads cannot take five seconds between them, so which one it is
+// matters now.
+#define SEG_SOCK_STEP_OTHER      0U
+#define SEG_SOCK_STEP_TX_FSR     1U   // caller-side free-size read
+#define SEG_SOCK_STEP_SEND_SR    2U   // getSn_SR()
+#define SEG_SOCK_STEP_SEND_IR    3U   // getSn_IR() / setSn_IR()
+#define SEG_SOCK_STEP_SEND_FSR   4U   // getSn_TxMAX() and the free-size read
+#define SEG_SOCK_STEP_SEND_DATA  5U   // wiz_send_data(), a 2 KB SPI burst
+#define SEG_SOCK_STEP_SEND_CMD   6U   // the Sn_CR poll after Sn_CR_SEND
+#define SEG_SOCK_STEP_RECV       7U
+#define SEG_SOCK_STEP_RX_AVAIL   8U
+
+static volatile uint8_t seg_sock_lock_step;
+
+// The step number is not cleared on release, so it names the last place the
+// lock reached rather than where it stopped - and a send that ends in SOCK_BUSY
+// leaves it at 4 every normal pass. Count acquisitions too: if the count moves
+// while the hold looks stuck, the task is spinning through the lock rather than
+// standing still in it, and those need opposite fixes.
+static volatile uint32_t seg_sock_lock_seq;
+
+uint32_t seg_socket_lock_seq(void) {
+    return seg_sock_lock_seq;
+}
+
+// ioLibrary's getSn_TX_FSR() reads the 16-bit free size twice and repeats until
+// two consecutive reads agree, with nothing bounding the loop. That settles at
+// once while the chip is idle, but on a channel whose transmit is creeping - a
+// wedged socket still drains around 1.6 kB/s - the value moves between every
+// pair of reads and the two never agree. The postmortem caught SEG_U2E_Task
+// there holding the app-wide socket mutex, which stops the receive task from
+// reaching the watchdog feed at the tail of its loop, and the device resets
+// 8.388 s later having logged nothing.
+//
+// Read it the same way with a limit, and take the last sample when the reads
+// will not settle. A free size one sample stale costs at most one send; not
+// returning costs the device. The vendor's `if (val1 != 0)` guard is dropped
+// with it - it skips the confirming read whenever the first one is zero, so
+// zero was the single value that arrived unverified.
+#define SEG_TX_FSR_MAX_ATTEMPTS 8U
+
+static uint16_t seg_tx_fsr_bounded(uint8_t sock) {
+    uint16_t val;
+    uint16_t val1;
+    uint32_t attempts = 0;
+
+    do {
+        val1 = WIZCHIP_READ(Sn_TX_FSR(sock));
+        val1 = (uint16_t)((val1 << 8) +
+                          WIZCHIP_READ(WIZCHIP_OFFSET_INC(Sn_TX_FSR(sock), 1)));
+        val = WIZCHIP_READ(Sn_TX_FSR(sock));
+        val = (uint16_t)((val << 8) +
+                         WIZCHIP_READ(WIZCHIP_OFFSET_INC(Sn_TX_FSR(sock), 1)));
+        attempts++;
+    } while ((val != val1) && (attempts < SEG_TX_FSR_MAX_ATTEMPTS));
+
+    return val;
+}
+
+// The watchdog is fed at the tail of the receive loop, so recv_beat at the head
+// proves the loop was entered, not that it finished. Between the two sits
+// ether_to_uart(), and the last run went fourteen seconds from its final log
+// line to the reset. Record where in that stretch each channel is standing.
+#define SEG_RECV_STEP_HEAD      1U   // loop entered, nothing called yet
+#define SEG_RECV_STEP_CTS       2U   // waiting on the flow-control gate
+#define SEG_RECV_STEP_RX_AVAIL  3U   // asking the chip how much is waiting
+#define SEG_RECV_STEP_TX_WAIT   4U   // platform_uart_tx_wait()
+#define SEG_RECV_STEP_SOCK_RECV 5U   // pulling the payload off the chip
+#define SEG_RECV_STEP_UART_TX   6U   // handing the payload to the UART
+#define SEG_RECV_STEP_TAIL      7U   // past the delay, about to feed
+
+static volatile uint8_t seg_recv_step[DEVICE_UART_CNT];
+
+// Four channels packed one byte each, so a single record says which of them
+// stopped and where.
+uint32_t seg_recv_steps_packed(void) {
+    uint32_t packed = 0;
+    int channel;
+
+    for (channel = 0; channel < DEVICE_UART_CNT; channel++) {
+        packed |= ((uint32_t)seg_recv_step[channel] << (channel * 8U));
+    }
+
+    return packed;
+}
+
 static void seg_socket_lock(void) {
     seg_wizchip_api_lock();
+    seg_sock_lock_seq++;
+    seg_sock_lock_step = SEG_SOCK_STEP_OTHER;
+    seg_sock_lock_since_us = time_us_32();
+    seg_sock_lock_owner = (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
+                          ? pcTaskGetName(NULL) : "init";
 }
 
 static void seg_socket_unlock(void) {
+    seg_sock_lock_owner = NULL;
     seg_wizchip_api_unlock();
+}
+
+// Reports how long the mutex has been held, and by whom as four characters of
+// the holder's name. Offset four is where the SEG_ tasks stop agreeing: U2E_,
+// Recv, Task. Reads nothing but two volatiles, so it is safe from the idle hook
+// while every other task is blocked.
+uint32_t seg_socket_lock_held_ms(uint32_t *owner_tag) {
+    // Sample the sequence around the read and discard the result if the lock
+    // changed hands meanwhile. Without that, a task cycling through here
+    // thousands of times a second can update the timestamp between the clock
+    // read and the timestamp read, making the difference negative - which wraps
+    // to an enormous unsigned value and reports a hold that never happened.
+    // That is exactly what the reports of a five-second hold turned out to be,
+    // and the same mistake the watchdog gap tracker already had to correct.
+    uint32_t seq = seg_sock_lock_seq;
+    uint32_t since = seg_sock_lock_since_us;
+    const char *owner = seg_sock_lock_owner;
+    uint32_t now = time_us_32();
+
+    if ((owner == NULL) || (seg_sock_lock_seq != seq)) {
+        return 0;
+    }
+
+    if (owner_tag != NULL) {
+        uint32_t tag = 0;
+        uint32_t len = (uint32_t)strlen(owner);
+
+        for (uint32_t i = 0; i < 3U; i++) {
+            uint32_t idx = i + 4U;
+            uint8_t c = (idx < len) ? (uint8_t)owner[idx] : (uint8_t)' ';
+
+            tag |= ((uint32_t)c << (i * 8U));
+        }
+        *owner_tag = tag | ((uint32_t)seg_sock_lock_step << 24U);
+    }
+
+    return (now - since) / 1000U;
 }
 
 // ioLibrary's sendto() remains in its SENDOK/TIMEOUT polling loop even when the
@@ -209,7 +352,7 @@ int32_t seg_wizchip_udp_send_nonblocking(uint8_t sock, uint8_t *buf,
     if (len > tx_max) {
         len = tx_max;
     }
-    if (getSn_TX_FSR(sock) < len) {
+    if (seg_tx_fsr_bounded(sock) < len) {
         goto out;
     }
 
@@ -240,6 +383,15 @@ static volatile uint16_t seg_s2e_last_send_len[DEVICE_UART_CNT];
 static volatile int16_t seg_s2e_last_send_rc[DEVICE_UART_CNT];
 static volatile uint32_t seg_s2e_tx_progress[DEVICE_UART_CNT];
 
+// send() returns SOCK_BUSY from two places that mean opposite things: one where
+// a SEND is still outstanding on the chip, and one where the transmit buffer is
+// simply too full for this request.  Which of the two produced a stall decides
+// whether the chip is holding an unacknowledged segment or the driver missed a
+// SEND_OK, and the flag that separates them - sock_is_sending - is a static
+// inside socket.c.  Mirror its transitions here instead; done under the same
+// lock as the send, the copy is exact.
+static volatile uint8_t seg_s2e_send_pending[DEVICE_UART_CNT];
+
 // Manual TCP keepalive is only useful while a connection is idle.  Issuing
 // SEND_KEEP merely outside the socket API mutex is not sufficient: send()
 // returns after starting Sn_CR_SEND, so that command may still be pending when
@@ -269,6 +421,83 @@ static void seg_tcp_mark_activity(int channel) {
 // higher priority and otherwise has no way to tell that it is starving the task it
 // shares seg_critical_sem with. Not diagnostics - seg_ch_u2e_task acts on it.
 static volatile uint32_t seg_task_heartbeat_ms[DEVICE_UART_CNT];
+
+// Every capture so far showed wizchip_critical_sem held at the sampling instant, so
+// record who took it and when. Done by re-registering ioLibrary's critical-section
+// callbacks instead of editing the driver port: wizchip_cris_initialize() runs once
+// at startup (App.c) and nothing re-registers after this, so the swap sticks.
+static const char *volatile seg_wiz_lock_owner;
+static volatile uint32_t seg_wiz_lock_since;
+static volatile uint8_t seg_wiz_lock_waiters;
+
+static void seg_wiz_cris_enter(void) {
+    // A task queued on this semaphore has not set itself as owner yet, so an
+    // unheld lock and a contended one look identical from outside. They are
+    // opposite findings, so say which it is.
+    seg_wiz_lock_waiters++;
+    xSemaphoreTake(wizchip_critical_sem, portMAX_DELAY);
+    seg_wiz_lock_waiters--;
+    // Hardware timer, not millis(): the 1 ms callback behind millis() is starved
+    // in the very fault this measures, so it would read zero exactly when the
+    // number matters.
+    seg_wiz_lock_since = time_us_32();
+    // Also reached before the scheduler starts, where there is no task to name.
+    seg_wiz_lock_owner = (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
+                         ? pcTaskGetName(NULL) : "init";
+}
+
+static void seg_wiz_cris_exit(void) {
+    seg_wiz_lock_owner = NULL;
+    xSemaphoreGive(wizchip_critical_sem);
+}
+
+static uint32_t seg_wiz_lock_held_ms(void) {
+    // Timestamp before clock, for the same reason as the socket mutex: the
+    // other order turns a lock taken between the two reads into a negative
+    // difference, and an unsigned one at that.
+    uint32_t since = seg_wiz_lock_since;
+    uint32_t now;
+
+    if (seg_wiz_lock_owner == NULL) {
+        return 0;
+    }
+    now = time_us_32();
+
+    return ((int32_t)(now - since) > 0) ? ((now - since) / 1000U) : 0U;
+}
+
+// The locks are two deep. Bounding the free-size read pushed the failure from
+// cycle 4-18 out to 63, but the postmortem still names the same task at the same
+// step - and 32 SPI accesses cannot take five seconds, so that read was never
+// what held it. What remains inside that step is this lock: every WIZCHIP_READ
+// takes the SPI critical section, so a task holding the app-wide socket mutex
+// can stand here waiting for whoever owns the inner one. FLOW_DIAG has been
+// printing wiz_owner=SEG_Task all along, but it needs the same lock to print, so
+// it falls silent exactly when the value is worth having. Read it from the idle
+// hook instead, which keeps running when every task is blocked.
+//
+// One character separates the holders: offset four is where the task names stop
+// agreeing (SEG_Task, SEG_U2E_Task, SEG_Recv_Task, SEGCP_udp_Task).
+uint32_t seg_wiz_lock_snapshot(uint8_t *owner_char, uint8_t *waiters) {
+    const char *owner = seg_wiz_lock_owner;
+
+    if (waiters != NULL) {
+        *waiters = seg_wiz_lock_waiters;
+    }
+
+    if (owner == NULL) {
+        if (owner_char != NULL) {
+            *owner_char = 0;
+        }
+        return 0;
+    }
+
+    if (owner_char != NULL) {
+        *owner_char = (strlen(owner) > 4U) ? (uint8_t)owner[4] : (uint8_t)'?';
+    }
+
+    return seg_wiz_lock_held_ms();
+}
 
 #if SEG_FLOW_STALL_DIAG_ENABLE
 #define SEG_FLOW_STALL_DIAG_MS 3000U
@@ -319,33 +548,6 @@ static uint32_t seg_flow_diag_recv_beat_at_rts_high[DEVICE_UART_CNT];
 // the stdio spin-lock/watchdog issue, so the host-side snapshot carries the
 // longitudinal part of this investigation.
 static uint8_t seg_flow_diag_reported[DEVICE_UART_CNT];
-
-// Every capture so far showed wizchip_critical_sem held at the sampling instant, so
-// record who took it and when. Done by re-registering ioLibrary's critical-section
-// callbacks instead of editing the driver port: wizchip_cris_initialize() runs once
-// at startup (App.c) and nothing re-registers after this, so the swap sticks.
-static const char *volatile seg_wiz_lock_owner;
-static volatile uint32_t seg_wiz_lock_since;
-
-static void seg_wiz_cris_enter(void) {
-    xSemaphoreTake(wizchip_critical_sem, portMAX_DELAY);
-    seg_wiz_lock_since = (uint32_t)millis();
-    // Also reached before the scheduler starts, where there is no task to name.
-    seg_wiz_lock_owner = (xTaskGetSchedulerState() == taskSCHEDULER_RUNNING)
-                         ? pcTaskGetName(NULL) : "init";
-}
-
-static void seg_wiz_cris_exit(void) {
-    seg_wiz_lock_owner = NULL;
-    xSemaphoreGive(wizchip_critical_sem);
-}
-
-static uint32_t seg_wiz_lock_held_ms(void) {
-    if (seg_wiz_lock_owner == NULL) {
-        return 0;
-    }
-    return (uint32_t)millis() - seg_wiz_lock_since;
-}
 
 // Second trigger, for the transmit direction. [FLOW_DIAG] fires on RTS being held
 // deasserted, which only ever reflects the receive buffer - an E2S stall leaves RTS
@@ -429,8 +631,8 @@ static void seg_flow_diag_poll(int channel) {
     // collecting it; the former points below uart_to_ether().
     uint8_t sock = seg_data_sock[channel];
     seg_socket_lock();
-    uint16_t tx_fsr_first = getSn_TX_FSR(sock);
-    uint16_t tx_fsr_second = getSn_TX_FSR(sock);
+    uint16_t tx_fsr_first = seg_tx_fsr_bounded(sock);
+    uint16_t tx_fsr_second = seg_tx_fsr_bounded(sock);
     uint16_t tx_rd = getSn_TX_RD(sock);
     uint16_t tx_wr = getSn_TX_WR(sock);
     uint16_t tx_max = getSn_TxMAX(sock);
@@ -447,6 +649,7 @@ static void seg_flow_diag_poll(int channel) {
     printf("[FLOW_DIAG] ch=%d rts_high_ms=%lu shadow=%u pin=%u ring=%u u2e=%u e2u=%u "
            "tx_fsr=%u/%u tx_rd=%u tx_wr=%u tx_max=%u tx_buf_kb=%u rx_rsr=%u "
            "sn_ir=0x%02x(sendok=%u timeout=%u discon=%u) sn_sr=0x%02x send_len=%u send_rc=%d "
+           "sending=%u "
            "seg_beat=%lu(+%lu) seg_phase=%u seg_step=%u cached_sr=0x%02x "
            "u2e_beat=%lu(+%lu) u2e_phase=%u "
            "recv_beat=%lu(+%lu) "
@@ -473,6 +676,7 @@ static void seg_flow_diag_poll(int channel) {
            (unsigned int)sn_sr,
            (unsigned int)seg_s2e_last_send_len[channel],
            (int)seg_s2e_last_send_rc[channel],
+           (unsigned int)seg_s2e_send_pending[channel],
            (unsigned long)seg_flow_diag_seg_beat[channel],
            (unsigned long)(seg_flow_diag_seg_beat[channel] - seg_flow_diag_seg_beat_at_rts_high[channel]),
            (unsigned int)seg_flow_diag_seg_phase[channel],
@@ -544,8 +748,8 @@ static void seg_s2e_recovery_poll(int channel) {
     }
 
     seg_socket_lock();
-    uint16_t tx_fsr_first = getSn_TX_FSR(sock);
-    uint16_t tx_fsr_second = getSn_TX_FSR(sock);
+    uint16_t tx_fsr_first = seg_tx_fsr_bounded(sock);
+    uint16_t tx_fsr_second = seg_tx_fsr_bounded(sock);
     uint8_t sn_ir = getSn_IR(sock);
     uint8_t sn_sr = getSn_SR(sock);
     seg_socket_unlock();
@@ -585,8 +789,8 @@ static void seg_s2e_recovery_poll(int channel) {
 
     ring_used = get_data_buffer_usedsize(channel);
     seg_socket_lock();
-    tx_fsr_first = getSn_TX_FSR(sock);
-    tx_fsr_second = getSn_TX_FSR(sock);
+    tx_fsr_first = seg_tx_fsr_bounded(sock);
+    tx_fsr_second = seg_tx_fsr_bounded(sock);
     sn_ir = getSn_IR(sock);
     sn_sr = getSn_SR(sock);
     seg_socket_unlock();
@@ -602,6 +806,8 @@ static void seg_s2e_recovery_poll(int channel) {
     uint16_t staged = u2e_size[channel];
     uint16_t send_len = seg_s2e_last_send_len[channel];
     int16_t send_rc = seg_s2e_last_send_rc[channel];
+    // Sampled before the recycle: closing the socket clears the mirror.
+    uint8_t sending = seg_s2e_send_pending[channel];
 
     process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
     set_device_status(ST_OPEN, channel);
@@ -611,13 +817,13 @@ static void seg_s2e_recovery_poll(int channel) {
     // Print after releasing the channel lock. USB stdio can block, and recovery
     // must not turn a socket fault into a channel-task lockout.
     printf("[S2E_RECOVERY] ch=%d sock=%u stalled_ms=%lu ring=%u u2e=%u "
-           "tx_fsr=%u/%u sn_ir=0x%02x sr=0x%02x send_len=%u send_rc=%d "
+           "tx_fsr=%u/%u sn_ir=0x%02x sr=0x%02x send_len=%u send_rc=%d sending=%u "
            "action=socket_recycle\r\n",
            channel, (unsigned int)sock, (unsigned long)stalled_ms,
            (unsigned int)ring_used, (unsigned int)staged,
            (unsigned int)tx_fsr_first, (unsigned int)tx_fsr_second,
            (unsigned int)sn_ir, (unsigned int)sn_sr,
-           (unsigned int)send_len, (int)send_rc);
+           (unsigned int)send_len, (int)send_rc, (unsigned int)sending);
 }
 #endif
 
@@ -693,6 +899,98 @@ void restore_serial_data(uint8_t idx);
     Serialize complete operations across every SEG data socket. This is kept
     separate from seg_critical_sem and is never held while waiting for UART.
 */
+// ioLibrary's send() ends with an unbounded `while (getSn_CR(sn))`, and callers
+// hold the app-wide socket mutex across the whole call. A SEND the chip never
+// retires therefore stops the receive task, the recovery poll and the reporter
+// behind that lock, and the watchdog resets the device with nothing logged -
+// confirmed by a postmortem naming SEG_U2E_Task as the holder, reproducible in
+// under a minute by cycling the peer's receive window.
+//
+// The driver is a submodule tracking the vendor's repository, so the wait is
+// bounded here instead. This performs the same sequence send() does for a TCP
+// socket; the differences are the limit on the command wait and keeping the
+// outstanding-send flag in this file rather than socket.c's static bitmap.
+// Only the raw SEG data path uses this, and nothing else calls send() on those
+// sockets while it does, so the two states never disagree.
+//
+// Retiring a command takes the chip microseconds. This allows several thousand
+// times that, and only runs out when the chip has stopped answering - at which
+// point releasing the mutex matters more than this one transfer. The data is
+// already staged in the transmit buffer and the stall recovery recycles the
+// socket if nothing moves again.
+#define SEG_SEND_CMD_POLL_LIMIT 20000UL
+
+static int16_t seg_tcp_send_locked(uint8_t sock, uint8_t *buf, uint16_t len,
+                                   int channel) {
+    uint32_t polls = 0;
+    uint16_t freesize;
+    uint8_t sr;
+
+    if (len == 0) {
+        return SOCKERR_DATALEN;
+    }
+
+    seg_sock_lock_step = SEG_SOCK_STEP_SEND_SR;
+    sr = getSn_SR(sock);
+    if ((sr != SOCK_ESTABLISHED) && (sr != SOCK_CLOSE_WAIT)) {
+        return SOCKERR_SOCKSTATUS;
+    }
+
+    if (seg_s2e_send_pending[channel]) {
+        uint8_t sn_ir;
+
+        seg_sock_lock_step = SEG_SOCK_STEP_SEND_IR;
+        sn_ir = getSn_IR(sock);
+
+        if (sn_ir & Sn_IR_SENDOK) {
+            setSn_IR(sock, Sn_IR_SENDOK);
+            seg_s2e_send_pending[channel] = 0;
+        } else if (sn_ir & Sn_IR_TIMEOUT) {
+            // Left open deliberately. send() closes here, but close() spins on
+            // the same command register this whole function exists to escape.
+            seg_s2e_send_pending[channel] = 0;
+            return SOCKERR_TIMEOUT;
+        } else {
+            return SOCK_BUSY;
+        }
+    }
+
+    seg_sock_lock_step = SEG_SOCK_STEP_SEND_FSR;
+    freesize = getSn_TxMAX(sock);
+    if (len > freesize) {
+        len = freesize;
+    }
+    if (len > seg_tx_fsr_bounded(sock)) {
+        return SOCK_BUSY;
+    }
+
+    seg_sock_lock_step = SEG_SOCK_STEP_SEND_DATA;
+    wiz_send_data(sock, buf, len);
+    setSn_CR(sock, Sn_CR_SEND);
+
+    seg_sock_lock_step = SEG_SOCK_STEP_SEND_CMD;
+    while (getSn_CR(sock)) {
+        if (++polls >= SEG_SEND_CMD_POLL_LIMIT) {
+            seg_s2e_send_pending[channel] = 1;
+            return SOCK_BUSY;
+        }
+    }
+
+    seg_s2e_send_pending[channel] = 1;
+
+    return (int16_t)len;
+}
+
+static void seg_send_pending_clear_sock(uint8_t sock) {
+    int channel;
+
+    for (channel = 0; channel < DEVICE_UART_CNT; channel++) {
+        if (seg_data_sock[channel] == sock) {
+            seg_s2e_send_pending[channel] = 0;
+        }
+    }
+}
+
 static int8_t seg_socket_open(uint8_t sock, uint8_t protocol,
                               uint16_t port, uint8_t flag) {
     int8_t result;
@@ -700,6 +998,7 @@ static int8_t seg_socket_open(uint8_t sock, uint8_t protocol,
     seg_socket_lock();
     seg_udp_send_reset_locked(sock);
     result = socket(sock, protocol, port, flag);
+    seg_send_pending_clear_sock(sock);
     seg_socket_unlock();
 
     return result;
@@ -778,6 +1077,7 @@ static int8_t seg_socket_disconnect(uint8_t sock) {
 
     seg_socket_lock();
     result = disconnect(sock);
+    seg_send_pending_clear_sock(sock);
     seg_socket_unlock();
 
     return result;
@@ -789,6 +1089,7 @@ static int8_t seg_socket_close(uint8_t sock) {
     seg_socket_lock();
     result = close(sock);
     seg_udp_send_reset_locked(sock);
+    seg_send_pending_clear_sock(sock);
     seg_socket_unlock();
 
     return result;
@@ -798,7 +1099,7 @@ static int16_t seg_socket_send(uint8_t sock, uint8_t *buf, uint16_t len, int cha
     int16_t sent;
 
     seg_socket_lock();
-    sent = (int16_t)send(sock, buf, len);
+    sent = seg_tcp_send_locked(sock, buf, len, channel);
     if (sent > 0) {
         seg_tcp_mark_activity(channel);
     }
@@ -813,11 +1114,12 @@ static int16_t seg_socket_send_available(uint8_t sock, uint8_t *buf,
     uint16_t freesize;
 
     seg_socket_lock();
-    freesize = getSn_TX_FSR(sock);
+    seg_sock_lock_step = SEG_SOCK_STEP_TX_FSR;
+    freesize = seg_tx_fsr_bounded(sock);
     if ((freesize > 0) && (*len > freesize)) {
         *len = freesize;
     }
-    sent = (int16_t)send(sock, buf, *len);
+    sent = seg_tcp_send_locked(sock, buf, *len, channel);
     if (sent > 0) {
         seg_tcp_mark_activity(channel);
     }
@@ -837,6 +1139,7 @@ static uint16_t seg_socket_rx_available(uint8_t sock, int channel) {
 
     (void)channel;
     seg_socket_lock();
+    seg_sock_lock_step = SEG_SOCK_STEP_RX_AVAIL;
     available = getSn_RX_RSR(sock);
     seg_socket_unlock();
 
@@ -849,6 +1152,7 @@ static int16_t seg_socket_recv(uint8_t sock, uint8_t *buf, uint16_t len,
     uint16_t reg_val = SIK_RECEIVED & 0x00FF;
 
     seg_socket_lock();
+    seg_sock_lock_step = SEG_SOCK_STEP_RECV;
     received = (int16_t)recv(sock, buf, len);
     ctlsocket(sock, CS_CLR_INTERRUPT, (void *)&reg_val);
     if (received > 0) {
@@ -2671,6 +2975,7 @@ static void ether_to_uart_unlocked(uint8_t sock, int channel) {
     // the DMA frees up. Any change here has to keep the pipe full - poll at finer
     // granularity, or bound the wait without letting recv() overwrite a buffer the
     // DMA is still reading.
+    seg_recv_step[channel] = SEG_RECV_STEP_CTS;
     if (serial_option->flow_control == flow_rts_cts) {
         if (!platform_uart_cts_ready(channel)) {
             return;
@@ -2690,6 +2995,7 @@ static void ether_to_uart_unlocked(uint8_t sock, int channel) {
         // rather than appends, so fetching now would overwrite it.
         if ((e2u_size[channel] == 0) &&
                 !(network_connection->working_mode == MQTT_CLIENT_MODE || network_connection->working_mode == MQTTS_CLIENT_MODE)) {
+            seg_recv_step[channel] = SEG_RECV_STEP_RX_AVAIL;
             len = seg_socket_rx_available(sock, channel);
             if (len > DATA_BUF_SIZE) {
                 len = DATA_BUF_SIZE;    // avoiding buffer overflow
@@ -2701,7 +3007,9 @@ static void ether_to_uart_unlocked(uint8_t sock, int channel) {
                 }
 
                 // The previous transmit may still be reading g_recv_buf by DMA.
+                seg_recv_step[channel] = SEG_RECV_STEP_TX_WAIT;
                 platform_uart_tx_wait(channel);
+                seg_recv_step[channel] = SEG_RECV_STEP_SOCK_RECV;
 
                 if (network_connection->working_mode == UDP_MODE) {
                     uint8_t previous_peer_ip[4];
@@ -3778,6 +4086,7 @@ void seg_ch_recv_task(void *argument)  {
         seg_flow_diag_recv_beat[channel]++;
         seg_postmortem_mark(SEG_PM_TASK_RECV, (uint8_t)channel);
 #endif
+        seg_recv_step[channel] = SEG_RECV_STEP_HEAD;
         switch (serial_mode) {
         case SEG_SERIAL_PROTOCOL_NONE :
             ether_to_uart(sock, channel);
@@ -3792,6 +4101,7 @@ void seg_ch_recv_task(void *argument)  {
             break;
         }
         vTaskDelay(1);
+        seg_recv_step[channel] = SEG_RECV_STEP_TAIL;
 #ifdef __USE_WATCHDOG__
         device_wdt_reset();
 #endif

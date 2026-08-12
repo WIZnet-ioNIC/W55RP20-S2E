@@ -77,10 +77,17 @@ void device_wdt_reset(void);
 #define SEG_PM_REASON_NONE      0U
 #define SEG_PM_REASON_HARDFAULT 1U
 #define SEG_PM_REASON_STACK     2U
+#define SEG_PM_REASON_SOCKLOCK  3U
+#define SEG_PM_REASON_WDT_GAP   4U
+
+// Under the 8.388 s watchdog, leaving room for the record to be written and for
+// the reset to be attributed to the holder that caused it rather than the next.
+#define SEG_SOCKET_LOCK_STUCK_MS 5000U
 
 // Largest observed gap between watchdog feeds. The deadline is 8.388 s, so a run
 // that never resets still shows how close it came.
 uint32_t device_wdt_max_gap_ms(void);
+uint32_t device_wdt_since_feed_ms(void);
 uint32_t device_wdt_max_gap_at_ms(void);
 void device_wdt_max_gap_clear(void);
 

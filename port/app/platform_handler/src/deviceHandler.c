@@ -105,6 +105,18 @@ void device_wdt_reset(void) {
     }
 }
 
+// How long since anything last fed the watchdog. Read from the passive idle
+// hook, which keeps running when the tasks that feed it do not.
+uint32_t device_wdt_since_feed_ms(void) {
+    uint32_t last = wdt_feed_last_ms;
+
+    if (last == 0) {
+        return 0;
+    }
+
+    return (time_us_32() / 1000U) - last;
+}
+
 uint32_t device_wdt_max_gap_ms(void) {
     return wdt_feed_max_gap_ms;
 }
@@ -155,6 +167,42 @@ void seg_postmortem_report(void) {
              (unsigned long)(seg_pm_boot_crumb & 0x00FFFFFFU),
              (unsigned long)seg_pm_boot_reason,
              (unsigned long)seg_pm_boot_detail);
+
+    if (seg_pm_boot_reason == SEG_PM_REASON_SOCKLOCK) {
+        // The holder is always SEG_U2E_Task, so the record now spends its room
+        // on the two things still unknown: which call it stopped in, and who
+        // held the SPI critical section underneath it.
+        //   step  1 free size   2 getSn_SR    3 getSn_IR   4 TxMAX+free size
+        //         5 send data   6 Sn_CR poll  7 recv       8 getSn_RX_RSR
+        //   spi   name character at offset four - T SEG_Task, U SEG_U2E_Task,
+        //         R SEG_Recv_Task, P SEGCP_*, '-' nobody holds it
+        //   wait  someone is queued on the SPI lock, which an unheld lock and a
+        //         contended one otherwise look identical from outside
+        unsigned int spi_owner = (unsigned int)((seg_pm_boot_detail >> 16) & 0xFFU);
+
+        PRT_INFO("[POSTMORTEM] socket mutex held past %u ms by SEG_U2E step=%u, "
+                 "spi owner=%c held=%u ms wait=%u, lock %s\r\n",
+                 (unsigned int)SEG_SOCKET_LOCK_STUCK_MS,
+                 (unsigned int)(seg_pm_boot_detail >> 24),
+                 (spi_owner != 0U) ? (char)spi_owner : '-',
+                 (unsigned int)(seg_pm_boot_detail & 0x3FFFU),
+                 (unsigned int)((seg_pm_boot_detail >> 15) & 1U),
+                 ((seg_pm_boot_detail >> 14) & 1U) ? "parked" : "spinning");
+    }
+
+    if (seg_pm_boot_reason == SEG_PM_REASON_WDT_GAP) {
+        // One byte per channel, saying where its receive loop was standing when
+        // the feeding stopped.
+        //   1 head        2 CTS gate   3 getSn_RX_RSR   4 uart tx wait
+        //   5 recv/uart   7 tail       0 never ran
+        PRT_INFO("[POSTMORTEM] no watchdog feed for %u ms, recv steps "
+                 "ch0=%u ch1=%u ch2=%u ch3=%u\r\n",
+                 (unsigned int)SEG_SOCKET_LOCK_STUCK_MS,
+                 (unsigned int)(seg_pm_boot_detail & 0xFFU),
+                 (unsigned int)((seg_pm_boot_detail >> 8) & 0xFFU),
+                 (unsigned int)((seg_pm_boot_detail >> 16) & 0xFFU),
+                 (unsigned int)((seg_pm_boot_detail >> 24) & 0xFFU));
+    }
 }
 
 void seg_postmortem_mark(uint8_t task_id, uint8_t channel) {

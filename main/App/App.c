@@ -383,6 +383,55 @@ void vApplicationPassiveIdleHook(void) {
     }
 #endif
 
+    // When the app-wide socket mutex is never released, every task that matters
+    // blocks on it and this hook is the only code still running - so this is the
+    // one place that can still observe it. Nothing here takes a lock or prints:
+    // stdio spins on a raw spin lock, and reporting from a task previously made
+    // resets more frequent rather than less. The record goes to a watchdog
+    // scratch register and the next boot reads it back.
+    {
+        // Whether the lock is being passed around or genuinely parked. The step
+        // number alone cannot say: it survives release, so a send that returns
+        // SOCK_BUSY leaves it pointing at the same place on every healthy pass.
+        static uint32_t last_seq;
+        static uint32_t last_seq_at_ms;
+        uint32_t owner_tag = 0;
+        uint32_t seq = seg_socket_lock_seq();
+        uint32_t now_ms = time_us_32() / 1000U;
+        uint8_t seq_stalled;
+
+        if ((seq != last_seq) || (last_seq_at_ms == 0U)) {
+            last_seq = seq;
+            last_seq_at_ms = now_ms;
+        }
+        seq_stalled = ((now_ms - last_seq_at_ms) >= SEG_SOCKET_LOCK_STUCK_MS)
+                      ? 1U : 0U;
+
+        if (seg_socket_lock_held_ms(&owner_tag) >= SEG_SOCKET_LOCK_STUCK_MS) {
+            // The socket mutex is only the outer lock. Carry the inner one -
+            // the SPI critical section - in the same record, since a holder
+            // standing on it is what the outer wait now points to.
+            uint8_t spi_owner = 0;
+            uint8_t spi_waiters = 0;
+            uint32_t spi_held_ms = seg_wiz_lock_snapshot(&spi_owner, &spi_waiters);
+
+            if (spi_held_ms > 0x3FFFU) {
+                spi_held_ms = 0x3FFFU;
+            }
+            seg_postmortem_record(SEG_PM_REASON_SOCKLOCK,
+                                  (owner_tag & 0xFF000000U) |
+                                  ((uint32_t)spi_owner << 16) |
+                                  ((spi_waiters != 0U) ? 0x8000U : 0U) |
+                                  ((seq_stalled != 0U) ? 0x4000U : 0U) |
+                                  spi_held_ms);
+        } else if (device_wdt_since_feed_ms() >= SEG_SOCKET_LOCK_STUCK_MS) {
+            // Nothing has fed the watchdog in five seconds and the socket mutex
+            // is not holding anyone. The feed sits at the tail of the receive
+            // loop, so whichever step those tasks are standing on is what
+            // stopped the device.
+            seg_postmortem_record(SEG_PM_REASON_WDT_GAP, seg_recv_steps_packed());
+        }
+    }
 }
 
 void vApplicationStackOverflowHook(TaskHandle_t pxTask, char *pcTaskName) {
