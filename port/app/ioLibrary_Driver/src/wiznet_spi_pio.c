@@ -12,6 +12,8 @@
 
 #include "hardware/dma.h"
 #include "hardware/clocks.h"
+#include "hardware/timer.h"
+#include "hardware/watchdog.h"
 
 #include "wiznet_spi_pio.h"
 
@@ -259,6 +261,49 @@ static void dump_bytes(const uint8_t *bptr, uint32_t len) {
 }
 #endif
 
+// Every wait in here runs while the caller holds the chip, so a wait that never
+// ends takes the whole device with it: the tasks that drive the data path all
+// need the chip, they stop feeding the watchdog, and it resets the board about
+// eight seconds later with no fault recorded and no clue as to why. A 2 KB burst
+// at this clock is well under a millisecond, so anything past this bound is a
+// stalled state machine rather than a slow one.
+#define WIZNET_SPI_WAIT_MS 100U
+
+static volatile uint32_t wiznet_spi_timeout_count;
+
+static bool wiznet_spi_wait_dma(uint dma_channel, const char *what) {
+    uint32_t started_us = time_us_32();
+
+    while (dma_channel_is_busy(dma_channel)) {
+        watchdog_update();
+        if ((time_us_32() - started_us) >= (WIZNET_SPI_WAIT_MS * 1000U)) {
+            wiznet_spi_timeout_count++;
+            printf("[SPI_STUCK] %s dma=%u count=%lu\r\n", what,
+                   (unsigned int)dma_channel,
+                   (unsigned long)wiznet_spi_timeout_count);
+            dma_channel_abort(dma_channel);
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool wiznet_spi_wait_tx_stall(spi_pio_state_t *state, uint32_t stall_bit) {
+    uint32_t started_us = time_us_32();
+
+    while (!(state->pio->fdebug & stall_bit)) {
+        watchdog_update();
+        if ((time_us_32() - started_us) >= (WIZNET_SPI_WAIT_MS * 1000U)) {
+            wiznet_spi_timeout_count++;
+            printf("[SPI_STUCK] tx_stall sm=%u count=%lu\r\n",
+                   (unsigned int)state->pio_sm,
+                   (unsigned long)wiznet_spi_timeout_count);
+            return false;
+        }
+    }
+    return true;
+}
+
 // send tx then receive rx
 // rx can be null if you just want to send, but tx and tx_length must be valid
 static bool pio_spi_transfer(spi_pio_state_t *state, const uint8_t *tx, size_t tx_length, uint8_t *rx, size_t rx_length) {
@@ -303,8 +348,8 @@ static bool pio_spi_transfer(spi_pio_state_t *state, const uint8_t *tx, size_t t
         pio_sm_set_enabled(state->pio, state->pio_sm, true);
         __compiler_memory_barrier();
 
-        dma_channel_wait_for_finish_blocking(state->dma_out);
-        dma_channel_wait_for_finish_blocking(state->dma_in);
+        wiznet_spi_wait_dma(state->dma_out, "txrx_out");
+        wiznet_spi_wait_dma(state->dma_in, "txrx_in");
 
         __compiler_memory_barrier();
     } else if (tx != NULL) {
@@ -336,9 +381,7 @@ static bool pio_spi_transfer(spi_pio_state_t *state, const uint8_t *tx, size_t t
         const uint32_t fDebugTxStall = 1u << (PIO_FDEBUG_TXSTALL_LSB + state->pio_sm);
         state->pio->fdebug = fDebugTxStall;
         pio_sm_set_enabled(state->pio, state->pio_sm, true);
-        while (!(state->pio->fdebug & fDebugTxStall)) {
-            tight_loop_contents(); // todo timeout
-        }
+        wiznet_spi_wait_tx_stall(state, fDebugTxStall);
         __compiler_memory_barrier();
         pio_sm_set_enabled(state->pio, state->pio_sm, false);
         pio_sm_set_consecutive_pindirs(state->pio, state->pio_sm, state->spi_config->data_in_pin, 1, false);
@@ -369,7 +412,7 @@ static bool pio_spi_transfer(spi_pio_state_t *state, const uint8_t *tx, size_t t
         pio_sm_set_enabled(state->pio, state->pio_sm, true);
         __compiler_memory_barrier();
 
-        dma_channel_wait_for_finish_blocking(state->dma_in);
+        wiznet_spi_wait_dma(state->dma_in, "rx_only");
 
         __compiler_memory_barrier();
 #endif
