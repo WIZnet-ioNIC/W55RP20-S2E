@@ -13,7 +13,7 @@
 // Defined here rather than in seg.c so App.c evaluates the same value and creates
 // seg_flow_diag_task; with it visible only inside seg.c the task was never started.
 #ifndef SEG_FLOW_STALL_DIAG_ENABLE
-#define SEG_FLOW_STALL_DIAG_ENABLE 1
+#define SEG_FLOW_STALL_DIAG_ENABLE 0
 #endif
 
 // Recover a raw-TCP S2E channel whose W5500 transmit operation remains stuck
@@ -82,6 +82,10 @@ extern const uint8_t seg_data_sock[DEVICE_UART_CNT];  // channel -> data socket 
 // non-atomic bitmaps, so SPI transaction locking alone is not sufficient.
 void seg_wizchip_api_lock(void);
 void seg_wizchip_api_unlock(void);
+uint32_t seg_socket_lock_held_ms(uint32_t *owner_tag);
+uint32_t seg_recv_steps_packed(void);
+uint32_t seg_wiz_lock_snapshot(uint8_t *owner_char, uint8_t *waiters);
+uint32_t seg_socket_lock_seq(void);
 
 // Start a UDP SEND command without waiting under the process-wide socket mutex
 // for SENDOK/TIMEOUT.  Completion is reaped on the next call for that socket.
