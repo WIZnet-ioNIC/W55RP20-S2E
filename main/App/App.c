@@ -241,9 +241,14 @@ void start_task(void *argument) {
     boot_wdt = (int)watchdog_caused_reboot();
     boot_wdt_timeout = (int)watchdog_enable_caused_reboot();
 
+    // Must run before any task can leave a breadcrumb, and it reads the previous
+    // run's record before clearing it for this one.
+    seg_postmortem_init();
+
     display_Dev_Info_main();
     display_Net_Info();
     printf("[BOOT] watchdog=%d timeout=%d\r\n", boot_wdt, boot_wdt_timeout);
+    seg_postmortem_report();
 
     set_W5X00_NetTimeout();
 
@@ -320,8 +325,37 @@ void start_task(void *argument) {
     // mutexed, so a caller descheduled while holding it leaves the next one spinning at
     // priority 31 and feeding no watchdog. Twelve lines over a twelve hour run is close
     // enough to the silence the last clean run had.
+    // The banner above goes out before USB CDC has re-enumerated and is discarded,
+    // which is exactly what happened to the first post-mortem line. Repeat it while
+    // a capture that attaches shortly after boot can still catch it, then stop.
+    for (int i = 0; i < 6; i++) {
+        vTaskDelay(pdMS_TO_TICKS(5000));
+        printf("[BOOT] watchdog=%d timeout=%d\r\n", boot_wdt, boot_wdt_timeout);
+        seg_postmortem_report();
+    }
+
+    // Wake every minute for the watchdog margin, but only speak when a new worst
+    // gap appears, so a healthy run stays as quiet as it was before. The stack
+    // report keeps its hourly cadence underneath.
+    uint32_t reported_gap_ms = 0;
+    int stack_countdown = 60;
+
     while (1) {
-        vTaskDelay(pdMS_TO_TICKS(3600000));
+        vTaskDelay(pdMS_TO_TICKS(60000));
+
+        uint32_t gap_ms = device_wdt_max_gap_ms();
+
+        if (gap_ms > reported_gap_ms) {
+            reported_gap_ms = gap_ms;
+            printf("[WDT_MARGIN] max_gap_ms=%lu at_ms=%lu deadline_ms=8388\r\n",
+                   (unsigned long)gap_ms,
+                   (unsigned long)device_wdt_max_gap_at_ms());
+        }
+
+        if (--stack_countdown > 0) {
+            continue;
+        }
+        stack_countdown = 60;
 
         printf("[STACK] boot_wdt=%d/%d", boot_wdt, boot_wdt_timeout);
         for (int i = 0; i < watched_task_cnt; i++) {
@@ -370,6 +404,10 @@ void vApplicationStackOverflowHook(TaskHandle_t pxTask, char *pcTaskName) {
     //
     // Original:
     //     configASSERT((volatile void *) NULL);
+    //
+    // The line below is written to USB CDC, which is lost if nothing is capturing
+    // it, so leave a record that survives the reboot as well.
+    seg_postmortem_record(SEG_PM_REASON_STACK, (uint32_t)(uintptr_t)pxTask);
     printf("vApplicationStackOverflowHook [%s]\r\n", pcTaskName);
     for (;;) {
         ;

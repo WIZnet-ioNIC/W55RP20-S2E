@@ -63,6 +63,31 @@ void device_socket_termination(void);
 void device_reboot(void);
 void device_raw_reboot(void);
 void device_wdt_reset(void);
+
+// A watchdog reset takes RAM with it, so nothing survives to say what the device
+// was doing when it stopped. These four scratch registers do survive - the SDK
+// only claims scratch[4] upwards - and carry a breadcrumb and a fault record
+// across the reset, which the next boot prints.
+#define SEG_PM_TASK_NONE    0U
+#define SEG_PM_TASK_U2E     1U
+#define SEG_PM_TASK_RECV    2U
+#define SEG_PM_TASK_SEG     3U
+#define SEG_PM_TASK_PIO_RX  4U
+
+#define SEG_PM_REASON_NONE      0U
+#define SEG_PM_REASON_HARDFAULT 1U
+#define SEG_PM_REASON_STACK     2U
+
+// Largest observed gap between watchdog feeds. The deadline is 8.388 s, so a run
+// that never resets still shows how close it came.
+uint32_t device_wdt_max_gap_ms(void);
+uint32_t device_wdt_max_gap_at_ms(void);
+void device_wdt_max_gap_clear(void);
+
+void seg_postmortem_init(void);
+void seg_postmortem_report(void);
+void seg_postmortem_mark(uint8_t task_id, uint8_t channel);
+void seg_postmortem_record(uint32_t reason, uint32_t detail);
 void reset_timer_callback(TimerHandle_t xTimer);
 uint8_t get_reset_flag(void);
 //void disable_interrupts(void);

@@ -1,6 +1,9 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include "hardware/watchdog.h"
+#include "hardware/structs/watchdog.h"
+#include "hardware/timer.h"
 #include "common.h"
 #include "ConfigData.h"
 #include "wizchip_conf.h"
@@ -66,9 +69,131 @@ void device_raw_reboot(void) {
     while (1);
 }
 
+// The watchdog only reports the one gap that killed the device, and a run that
+// survives says nothing about how close it came. Track the largest gap between
+// feeds so a short run can show the near misses: 8.388 s is the deadline, and a
+// device that normally feeds every few milliseconds but occasionally goes quiet
+// for seconds is already showing the fault, reset or not.
+static volatile uint32_t wdt_feed_last_ms;
+static volatile uint32_t wdt_feed_max_gap_ms;
+static volatile uint32_t wdt_feed_max_gap_at_ms;
+
 void device_wdt_reset(void) {
     if (get_reset_flag() == 0) {
+        // millis() counts in the 1 ms repeating-timer callback, so it stops
+        // whenever that interrupt is starved - which is one of the ways the
+        // watchdog can expire. Measuring the gap with it would report nothing at
+        // exactly the moment worth measuring. Read the hardware timer instead.
+        uint32_t last = wdt_feed_last_ms;
+        uint32_t now = time_us_32() / 1000U;
+
+        // Both cores feed without synchronising, so the other core can publish a
+        // newer timestamp between these two reads. Compare as signed: a negative
+        // difference is that stale sample, not a gap. Losing a sample only
+        // understates the maximum, and the largest one still surfaces.
+        if (last != 0) {
+            int32_t gap = (int32_t)(now - last);
+
+            if ((gap > 0) && ((uint32_t)gap > wdt_feed_max_gap_ms)) {
+                wdt_feed_max_gap_ms = (uint32_t)gap;
+                wdt_feed_max_gap_at_ms = now;
+            }
+        }
+        wdt_feed_last_ms = now;
+
         watchdog_update();
+    }
+}
+
+uint32_t device_wdt_max_gap_ms(void) {
+    return wdt_feed_max_gap_ms;
+}
+
+uint32_t device_wdt_max_gap_at_ms(void) {
+    return wdt_feed_max_gap_at_ms;
+}
+
+void device_wdt_max_gap_clear(void) {
+    wdt_feed_max_gap_ms = 0;
+    wdt_feed_max_gap_at_ms = 0;
+}
+
+// "SGPM". Scratch survives the reset but powers up holding whatever was there,
+// so the record is only believed when this marker is present.
+#define SEG_PM_MAGIC 0x5347504DU
+
+static uint32_t seg_pm_boot_crumb;
+static uint32_t seg_pm_boot_reason;
+static uint32_t seg_pm_boot_detail;
+static uint8_t seg_pm_boot_valid;
+
+void seg_postmortem_init(void) {
+    if (watchdog_hw->scratch[0] == SEG_PM_MAGIC) {
+        seg_pm_boot_valid = 1;
+        seg_pm_boot_crumb = watchdog_hw->scratch[1];
+        seg_pm_boot_reason = watchdog_hw->scratch[2];
+        seg_pm_boot_detail = watchdog_hw->scratch[3];
+    }
+
+    watchdog_hw->scratch[0] = SEG_PM_MAGIC;
+    watchdog_hw->scratch[1] = 0;
+    watchdog_hw->scratch[2] = SEG_PM_REASON_NONE;
+    watchdog_hw->scratch[3] = 0;
+}
+
+void seg_postmortem_report(void) {
+    if (!seg_pm_boot_valid) {
+        PRT_INFO("[POSTMORTEM] no record from the previous run\r\n");
+        return;
+    }
+
+    // The timestamp is the millisecond count when that task last completed a pass.
+    // Comparing it with the reset moment gives the length of the silence.
+    PRT_INFO("[POSTMORTEM] last_task=%lu ch=%lu at_ms=%lu reason=%lu detail=0x%08lX\r\n",
+             (unsigned long)(seg_pm_boot_crumb >> 28),
+             (unsigned long)((seg_pm_boot_crumb >> 24) & 0x0FU),
+             (unsigned long)(seg_pm_boot_crumb & 0x00FFFFFFU),
+             (unsigned long)seg_pm_boot_reason,
+             (unsigned long)seg_pm_boot_detail);
+}
+
+void seg_postmortem_mark(uint8_t task_id, uint8_t channel) {
+    // Hardware timer, not millis(): the breadcrumb has to keep its own time even
+    // when the 1 ms callback that drives millis() is the thing that stopped.
+    watchdog_hw->scratch[1] = ((uint32_t)task_id << 28) |
+                              (((uint32_t)channel & 0x0FU) << 24) |
+                              ((time_us_32() / 1000U) & 0x00FFFFFFU);
+}
+
+void seg_postmortem_record(uint32_t reason, uint32_t detail) {
+    watchdog_hw->scratch[0] = SEG_PM_MAGIC;
+    watchdog_hw->scratch[2] = reason;
+    watchdog_hw->scratch[3] = detail;
+}
+
+// The stacked PC says where the fault happened. Which stack holds the frame
+// depends on bit 2 of the EXC_RETURN value still in lr on entry.
+void __attribute__((naked)) isr_hardfault(void) {
+    __asm volatile(
+        "movs r0, #4                          \n"
+        "mov  r1, lr                          \n"
+        "tst  r0, r1                          \n"
+        "beq  1f                              \n"
+        "mrs  r0, psp                         \n"
+        "b    2f                              \n"
+        "1:                                   \n"
+        "mrs  r0, msp                         \n"
+        "2:                                   \n"
+        "ldr  r1, =seg_postmortem_hardfault   \n"
+        "bx   r1                              \n"
+    );
+}
+
+void seg_postmortem_hardfault(uint32_t *frame) {
+    // frame[6] is the stacked PC on Cortex-M0+.
+    seg_postmortem_record(SEG_PM_REASON_HARDFAULT, frame[6]);
+    for (;;) {
+        ;
     }
 }
 

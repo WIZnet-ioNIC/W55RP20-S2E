@@ -428,6 +428,7 @@ static void pio_data_uart_rx_task(void *argument) {
         // If this stops while the rest of the product keeps running, the shared
         // consumer task itself (or the core executing it) has stopped.
         pio_uart_rx_task_heartbeat++;
+        seg_postmortem_mark(SEG_PM_TASK_PIO_RX, 0);
 
         for (int channel = UART_HW_CH_CNT; channel < DEVICE_UART_CNT; channel++) {
             uint ring_row = (uint)(channel - UART_HW_CH_CNT);

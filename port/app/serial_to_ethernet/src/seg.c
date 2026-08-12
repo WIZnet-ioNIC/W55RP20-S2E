@@ -3631,6 +3631,7 @@ void seg_ch_task(void *argument)  {
 
     while (1) {
         seg_task_heartbeat_ms[channel] = (uint32_t)millis();
+        seg_postmortem_mark(SEG_PM_TASK_SEG, (uint8_t)channel);
 #if SEG_FLOW_STALL_DIAG_ENABLE
         seg_flow_diag_seg_beat[channel]++;
         seg_flow_diag_seg_phase[channel] = SEG_FLOW_DIAG_SEG_WAIT_NET;
@@ -3696,6 +3697,7 @@ void seg_ch_u2e_task(void *argument)  {
         xSemaphoreTake(seg_u2e_sem[channel], portMAX_DELAY);
 #if SEG_FLOW_STALL_DIAG_ENABLE
         seg_flow_diag_u2e_beat[channel]++;
+        seg_postmortem_mark(SEG_PM_TASK_U2E, (uint8_t)channel);
         seg_flow_diag_u2e_phase[channel] = SEG_FLOW_DIAG_U2E_WAIT_CRITICAL;
 #endif
         switch (serial_mode) {
@@ -3774,6 +3776,7 @@ void seg_ch_recv_task(void *argument)  {
         // ether_to_uart() below can block indefinitely, and a reporter sitting in
         // this loop goes down with the very fault it is meant to describe.
         seg_flow_diag_recv_beat[channel]++;
+        seg_postmortem_mark(SEG_PM_TASK_RECV, (uint8_t)channel);
 #endif
         switch (serial_mode) {
         case SEG_SERIAL_PROTOCOL_NONE :
