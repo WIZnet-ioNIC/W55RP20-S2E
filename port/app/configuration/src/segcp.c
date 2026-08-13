@@ -1537,6 +1537,12 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
 
                 // SET status pin mode selector
                 case SEGCP_SC:
+#if (DEVICE_BOARD_NAME == W55RP20_S2E)
+                    // This board has no dedicated DTR/DSR pins; the signals share the
+                    // RTS/CTS pins and flow_control alone picks which function they serve.
+                    // Accepting the selector would store a value nothing reads.
+                    ret |= SEGCP_RET_ERR_NOTAVAIL;
+#else
                     str_to_hex(param, &tmp_byte);
 
                     tmp_int = (tmp_byte & 0xF0) >> 4;   // [0] PHY link / [1] DTR
@@ -1550,9 +1556,10 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
 
                         // Set the DTR pin to high when the DTR signal enabled (== PHY link status disabled)
                         if (dev_config->serial_option[0].dtr_en == SEGCP_ENABLE) {
-                            set_flowcontrol_dtr_pin(0, ON);
+                            set_flowcontrol_dtr_pin(ON, SEG_DATA0_CH);
                         }
                     }
+#endif
                     break;
                 case SEGCP_S0:
                 case SEGCP_S1:
