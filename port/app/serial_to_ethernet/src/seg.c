@@ -405,18 +405,6 @@ static void seg_tcp_mark_activity(int channel) {
     }
 }
 
-/*
-    One-shot stall recorder for the long-run RTS/CTS S2E failure.
-
-    Purely observational: it never gives or takes a semaphore and never changes
-    flow-control state. It records the state of a channel once RTS has been
-    blocking that channel's peer for three seconds.
-
-    It runs in seg_flow_diag_task, not in any channel task. An earlier version
-    polled from seg_ch_recv_task and went silent whenever that task was stuck too -
-    which is exactly the case worth reporting. The switch is in seg.h so App.c sees
-    the same value and actually creates the task.
-*/
 // Stamped by seg_ch_task once per loop and read by seg_ch_u2e_task, which runs at a
 // higher priority and otherwise has no way to tell that it is starving the task it
 // shares seg_critical_sem with. Not diagnostics - seg_ch_u2e_task acts on it.
@@ -499,202 +487,6 @@ uint32_t seg_wiz_lock_snapshot(uint8_t *owner_char, uint8_t *waiters) {
     return seg_wiz_lock_held_ms();
 }
 
-#if SEG_FLOW_STALL_DIAG_ENABLE
-#define SEG_FLOW_STALL_DIAG_MS 3000U
-
-typedef enum {
-    SEG_FLOW_DIAG_SEG_WAIT_NET = 1,
-    SEG_FLOW_DIAG_SEG_WAIT_CRITICAL,
-    SEG_FLOW_DIAG_SEG_SOCKET,
-    SEG_FLOW_DIAG_SEG_FLOW_CONTROL,
-    SEG_FLOW_DIAG_SEG_DELAY,
-    SEG_FLOW_DIAG_SEG_CLOSE_DRAIN,      // inside drain_socket_to_uart()
-} seg_flow_diag_seg_phase_t;
-
-// Sub-steps within do_seg(), recorded in seg_flow_diag_seg_step.
-typedef enum {
-    SEG_STEP_ENTER = 1,         // do_seg() entered, mode not dispatched yet
-    SEG_STEP_MODE_PROC,         // inside proc_SEG_*(), socket state read
-    SEG_STEP_SOCK_HANDLED,      // returned from proc_SEG_*()
-    SEG_STEP_FLOW_CONTROL,      // inside check_uart_flow_control()
-    SEG_STEP_WAKEUP_RESTORE,    // inside restore_u2e_wakeup()
-    SEG_STEP_DONE,              // do_seg() about to return
-} seg_flow_diag_step_t;
-
-typedef enum {
-    SEG_FLOW_DIAG_U2E_WAIT_NET = 1,
-    SEG_FLOW_DIAG_U2E_WAIT_WAKEUP,
-    SEG_FLOW_DIAG_U2E_WAIT_CRITICAL,
-    SEG_FLOW_DIAG_U2E_DRAIN,
-    SEG_FLOW_DIAG_U2E_RELEASE,
-} seg_flow_diag_u2e_phase_t;
-
-static volatile uint32_t seg_flow_diag_seg_beat[DEVICE_UART_CNT];
-static volatile uint32_t seg_flow_diag_u2e_beat[DEVICE_UART_CNT];
-static volatile uint32_t seg_flow_diag_recv_beat[DEVICE_UART_CNT];
-// Sub-step inside do_seg(). seg_phase only says "somewhere in do_seg()", which is as
-// far as the captures got: the SPI lock turned out to cycle normally and the
-// CLOSE_WAIT drain was never entered, so the remaining candidates are the calls
-// do_seg() makes on the way through.
-static volatile uint8_t seg_flow_diag_seg_step[DEVICE_UART_CNT];
-static volatile uint8_t seg_flow_diag_sock_state[DEVICE_UART_CNT];
-static volatile uint8_t seg_flow_diag_seg_phase[DEVICE_UART_CNT];
-static volatile uint8_t seg_flow_diag_u2e_phase[DEVICE_UART_CNT];
-static uint32_t seg_flow_diag_rts_high_since[DEVICE_UART_CNT];
-static uint32_t seg_flow_diag_seg_beat_at_rts_high[DEVICE_UART_CNT];
-static uint32_t seg_flow_diag_u2e_beat_at_rts_high[DEVICE_UART_CNT];
-static uint32_t seg_flow_diag_recv_beat_at_rts_high[DEVICE_UART_CNT];
-// One report per continuous RTS assertion.  Repeated CDC output can itself trigger
-// the stdio spin-lock/watchdog issue, so the host-side snapshot carries the
-// longitudinal part of this investigation.
-static uint8_t seg_flow_diag_reported[DEVICE_UART_CNT];
-
-// Second trigger, for the transmit direction. [FLOW_DIAG] fires on RTS being held
-// deasserted, which only ever reflects the receive buffer - an E2S stall leaves RTS
-// alone, so that trigger is blind to it. Observed repeatedly as the host getting
-// ~268 frames into a channel over TCP, nothing reaching the wire, and the host then
-// blocking; the channel it hits varies between runs.
-#define SEG_E2S_STALL_DIAG_MS 3000U
-
-static uint32_t seg_e2s_diag_recv_beat[DEVICE_UART_CNT];
-static uint32_t seg_e2s_diag_since[DEVICE_UART_CNT];
-static uint8_t seg_e2s_diag_reported[DEVICE_UART_CNT];
-
-static void seg_e2s_diag_poll(int channel) {
-    uint32_t now = millis();
-    uint32_t beat = seg_flow_diag_recv_beat[channel];
-
-    if (beat != seg_e2s_diag_recv_beat[channel]) {
-        // Still looping, so nothing to report.
-        seg_e2s_diag_recv_beat[channel] = beat;
-        seg_e2s_diag_since[channel] = now;
-        seg_e2s_diag_reported[channel] = 0;
-        return;
-    }
-
-    if (seg_e2s_diag_since[channel] == 0) {
-        seg_e2s_diag_since[channel] = now;
-        return;
-    }
-
-    if (seg_e2s_diag_reported[channel] ||
-            ((uint32_t)(now - seg_e2s_diag_since[channel]) < SEG_E2S_STALL_DIAG_MS)) {
-        return;
-    }
-
-    seg_e2s_diag_reported[channel] = 1;
-    // cts=1 means the peer is holding the transmitter off (active low); with the
-    // PL011 doing CTS in hardware that also stops the TX DMA from ever completing,
-    // which is what seg_ch_recv_task waits on.
-    printf("[E2S_DIAG] ch=%d stalled_ms=%lu recv_beat=%lu cts=%u tx_dma_busy=%u "
-           "e2u=%u ring=%u sock_rsr=%u sock_sr=0x%02x state=%u\r\n",
-           channel,
-           (unsigned long)(now - seg_e2s_diag_since[channel]),
-           (unsigned long)beat,
-           (unsigned int)uart_cts_level(channel),
-           (unsigned int)uart_tx_dma_busy(channel),
-           (unsigned int)e2u_size[channel],
-           (unsigned int)get_data_buffer_usedsize(channel),
-           (unsigned int)getSn_RX_RSR(seg_data_sock[channel]),
-           (unsigned int)seg_flow_diag_sock_state[channel],
-           (unsigned int)get_device_status(channel));
-}
-
-static void seg_flow_diag_poll(int channel) {
-    struct __serial_option *serial_option =
-        (struct __serial_option *)&get_DevConfig_pointer()->serial_option[channel];
-    uint32_t now = millis();
-
-    if ((serial_option->flow_control != flow_rts_cts) ||
-            (!uart_rts_is_blocked(channel) && !uart_rts_pin_is_blocked(channel))) {
-        seg_flow_diag_rts_high_since[channel] = 0;
-        seg_flow_diag_reported[channel] = 0;
-        return;
-    }
-
-    if (seg_flow_diag_rts_high_since[channel] == 0) {
-        seg_flow_diag_rts_high_since[channel] = now;
-        seg_flow_diag_seg_beat_at_rts_high[channel] = seg_flow_diag_seg_beat[channel];
-        seg_flow_diag_u2e_beat_at_rts_high[channel] = seg_flow_diag_u2e_beat[channel];
-        seg_flow_diag_recv_beat_at_rts_high[channel] = seg_flow_diag_recv_beat[channel];
-        return;
-    }
-
-    if (((uint32_t)(now - seg_flow_diag_rts_high_since[channel]) < SEG_FLOW_STALL_DIAG_MS) ||
-            seg_flow_diag_reported[channel]) {
-        return;
-    }
-
-    seg_flow_diag_reported[channel] = 1;
-    // Read the socket state as a single ordered sample.  The two free-space reads
-    // distinguish a stable zero from a value that changes while the diagnostic is
-    // collecting it; the former points below uart_to_ether().
-    uint8_t sock = seg_data_sock[channel];
-    seg_socket_lock();
-    uint16_t tx_fsr_first = seg_tx_fsr_bounded(sock);
-    uint16_t tx_fsr_second = seg_tx_fsr_bounded(sock);
-    uint16_t tx_rd = getSn_TX_RD(sock);
-    uint16_t tx_wr = getSn_TX_WR(sock);
-    uint16_t tx_max = getSn_TxMAX(sock);
-    uint8_t tx_buf_kb = getSn_TXBUF_SIZE(sock);
-    uint16_t rx_rsr = getSn_RX_RSR(sock);
-    uint8_t sn_ir = getSn_IR(sock);
-    uint8_t sn_sr = getSn_SR(sock);
-    seg_socket_unlock();
-
-    // Beat deltas of 0 mean that task has not looped since RTS was deasserted.
-    // recv_beat matters most: the poll used to live in seg_ch_recv_task, so a
-    // channel whose E2S path was also stuck reported nothing at all - the fault
-    // silenced its own reporter. That is why this runs in its own task now.
-    printf("[FLOW_DIAG] ch=%d rts_high_ms=%lu shadow=%u pin=%u ring=%u u2e=%u e2u=%u "
-           "tx_fsr=%u/%u tx_rd=%u tx_wr=%u tx_max=%u tx_buf_kb=%u rx_rsr=%u "
-           "sn_ir=0x%02x(sendok=%u timeout=%u discon=%u) sn_sr=0x%02x send_len=%u send_rc=%d "
-           "sending=%u "
-           "seg_beat=%lu(+%lu) seg_phase=%u seg_step=%u cached_sr=0x%02x "
-           "u2e_beat=%lu(+%lu) u2e_phase=%u "
-           "recv_beat=%lu(+%lu) "
-           "seg_critical=%lu u2e_wakeup=%lu wiz_critical=%lu wiz_owner=%s wiz_held_ms=%lu "
-           "state=%u\r\n",
-           channel,
-           (unsigned long)(now - seg_flow_diag_rts_high_since[channel]),
-           (unsigned int)uart_rts_is_blocked(channel),
-           (unsigned int)uart_rts_pin_is_blocked(channel),
-           (unsigned int)get_data_buffer_usedsize(channel),
-           (unsigned int)u2e_size[channel],
-           (unsigned int)e2u_size[channel],
-           (unsigned int)tx_fsr_first,
-           (unsigned int)tx_fsr_second,
-           (unsigned int)tx_rd,
-           (unsigned int)tx_wr,
-           (unsigned int)tx_max,
-           (unsigned int)tx_buf_kb,
-           (unsigned int)rx_rsr,
-           (unsigned int)sn_ir,
-           (unsigned int)((sn_ir & Sn_IR_SENDOK) != 0),
-           (unsigned int)((sn_ir & Sn_IR_TIMEOUT) != 0),
-           (unsigned int)((sn_ir & Sn_IR_DISCON) != 0),
-           (unsigned int)sn_sr,
-           (unsigned int)seg_s2e_last_send_len[channel],
-           (int)seg_s2e_last_send_rc[channel],
-           (unsigned int)seg_s2e_send_pending[channel],
-           (unsigned long)seg_flow_diag_seg_beat[channel],
-           (unsigned long)(seg_flow_diag_seg_beat[channel] - seg_flow_diag_seg_beat_at_rts_high[channel]),
-           (unsigned int)seg_flow_diag_seg_phase[channel],
-           (unsigned int)seg_flow_diag_seg_step[channel],
-           (unsigned int)seg_flow_diag_sock_state[channel],
-           (unsigned long)seg_flow_diag_u2e_beat[channel],
-           (unsigned long)(seg_flow_diag_u2e_beat[channel] - seg_flow_diag_u2e_beat_at_rts_high[channel]),
-           (unsigned int)seg_flow_diag_u2e_phase[channel],
-           (unsigned long)seg_flow_diag_recv_beat[channel],
-           (unsigned long)(seg_flow_diag_recv_beat[channel] - seg_flow_diag_recv_beat_at_rts_high[channel]),
-           (unsigned long)uxSemaphoreGetCount(seg_critical_sem[channel]),
-           (unsigned long)uxSemaphoreGetCount(seg_u2e_sem[channel]),
-           (unsigned long)uxSemaphoreGetCount(wizchip_critical_sem),
-           seg_wiz_lock_owner ? seg_wiz_lock_owner : "-",
-           (unsigned long)seg_wiz_lock_held_ms(),
-           (unsigned int)get_device_status(channel));
-}
-#endif
 
 #if SEG_S2E_STALL_RECOVERY_ENABLE
 // A full-duplex 44 kB/s soak intentionally creates short periods of legitimate
@@ -1263,11 +1055,6 @@ static BaseType_t ensure_channel_timer(TimerHandle_t *timer,
 static void drain_socket_to_uart(uint8_t sock, int channel) {
     uint32_t started = millis();
 
-#if SEG_FLOW_STALL_DIAG_ENABLE
-    // Distinguishes "stalled in this loop" from "stalled elsewhere in do_seg()"
-    // if the channel parks again.
-    seg_flow_diag_seg_phase[channel] = SEG_FLOW_DIAG_SEG_CLOSE_DRAIN;
-#endif
 
     while (getSn_RX_RSR(sock) || e2u_size[channel]) {
         ether_to_uart(sock, channel);    // receive remaining packets
@@ -1279,11 +1066,6 @@ static void drain_socket_to_uart(uint8_t sock, int channel) {
         }
     }
 
-#if SEG_FLOW_STALL_DIAG_ENABLE
-    // Back to the caller's phase, so a later stall elsewhere in do_seg() is not
-    // misreported as this loop.
-    seg_flow_diag_seg_phase[channel] = SEG_FLOW_DIAG_SEG_SOCKET;
-#endif
 }
 
 // The RX ISR is the only producer of seg_u2e_sem while packing_time is 0, which
@@ -1321,14 +1103,8 @@ void do_seg(uint8_t sock, int channel) {
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
     struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option[channel]);
 
-#if SEG_FLOW_STALL_DIAG_ENABLE
-    seg_flow_diag_seg_step[channel] = SEG_STEP_ENTER;
-#endif
 
     if (opmode == DEVICE_GW_MODE) {
-#if SEG_FLOW_STALL_DIAG_ENABLE
-        seg_flow_diag_seg_step[channel] = SEG_STEP_MODE_PROC;
-#endif
         switch (network_connection->working_mode) {
         case TCP_CLIENT_MODE:
             proc_SEG_tcp_client(sock, channel);
@@ -1368,28 +1144,15 @@ void do_seg(uint8_t sock, int channel) {
 
         // XON/XOFF Software flow control: Check the Buffer usage and Send the start/stop commands
         // [WIZnet Device] -> [Peer]
-#if SEG_FLOW_STALL_DIAG_ENABLE
-        seg_flow_diag_seg_phase[channel] = SEG_FLOW_DIAG_SEG_FLOW_CONTROL;
-        seg_flow_diag_seg_step[channel] = SEG_STEP_SOCK_HANDLED;
-#endif
         if ((serial_option->flow_control == flow_xon_xoff) ||
                 (serial_option->flow_control == flow_rts_cts) ||
                 (serial_option->flow_control == flow_dtr_dsr)) {
-#if SEG_FLOW_STALL_DIAG_ENABLE
-            seg_flow_diag_seg_step[channel] = SEG_STEP_FLOW_CONTROL;
-#endif
             check_uart_flow_control(serial_option->flow_control, channel);
         }
 
-#if SEG_FLOW_STALL_DIAG_ENABLE
-        seg_flow_diag_seg_step[channel] = SEG_STEP_WAKEUP_RESTORE;
-#endif
         restore_u2e_wakeup(channel);
     }
 
-#if SEG_FLOW_STALL_DIAG_ENABLE
-    seg_flow_diag_seg_step[channel] = SEG_STEP_DONE;
-#endif
 }
 
 void set_device_status(teDEVSTATUS status, int channel) {
@@ -1498,9 +1261,6 @@ void proc_SEG_udp(uint8_t sock, int channel) {
 
     // Socket state
     uint8_t state = getSn_SR(sock);
-#if SEG_FLOW_STALL_DIAG_ENABLE
-    seg_flow_diag_sock_state[channel] = state;
-#endif
 
     uint8_t flag = 0;
 
@@ -1556,9 +1316,7 @@ void proc_SEG_udp(uint8_t sock, int channel) {
 
     default:
         if (seg_udp_transient_timed_out(channel, state) == TRUE) {
-            PRT_SEG(" > SEG:UDP_MODE:STATE_RECOVERY ch=%d sock=%u sr=0x%02X age_ms=%u\r\n",
-                    channel, (unsigned int)sock, (unsigned int)state,
-                    (unsigned int)SEG_TCP_SERVER_STUCK_TIMEOUT_MS);
+            PRT_SEG(" > SEG:UDP_MODE:STATE_RECOVERY ch=%d\r\n", channel);
             process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             set_device_status(ST_OPEN, channel);
             seg_udp_peer_reset(channel);
@@ -1584,9 +1342,6 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
 
     // Socket state
     uint8_t state = getSn_SR(sock);
-#if SEG_FLOW_STALL_DIAG_ENABLE
-    seg_flow_diag_sock_state[channel] = state;
-#endif
     int ret;
     uint16_t reg_val;
 
@@ -1727,9 +1482,6 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
 
     // Socket state
     uint8_t state = getSn_SR(sock);
-#if SEG_FLOW_STALL_DIAG_ENABLE
-    seg_flow_diag_sock_state[channel] = state;
-#endif
 
     int ret = 0;
     uint16_t reg_val;
@@ -1928,9 +1680,6 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
 
     uint8_t serial_mode = get_serial_communation_protocol(channel);
     uint8_t state = getSn_SR(sock);
-#if SEG_FLOW_STALL_DIAG_ENABLE
-    seg_flow_diag_sock_state[channel] = state;
-#endif
     int ret;
     uint16_t reg_val;
     // MQTT connection completion must not be shared between channels.
@@ -2142,9 +1891,6 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
 
     uint8_t serial_mode = get_serial_communation_protocol(channel);
     uint8_t state = getSn_SR(sock);
-#if SEG_FLOW_STALL_DIAG_ENABLE
-    seg_flow_diag_sock_state[channel] = state;
-#endif
     int ret;
     uint16_t reg_val;
     // MQTTS connection completion must not be shared between channels.
@@ -2377,9 +2123,6 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
 
     // Socket state
     uint8_t state = getSn_SR(sock);
-#if SEG_FLOW_STALL_DIAG_ENABLE
-    seg_flow_diag_sock_state[channel] = state;
-#endif
     uint16_t reg_val;
 
     switch (state) {
@@ -2391,9 +2134,7 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
         listen_rc = seg_socket_listen(sock);
         listen_state = getSn_SR(sock);
         if ((listen_rc != SOCK_OK) || (listen_state != SOCK_LISTEN)) {
-            PRT_SEG(" > SEG:TCP_SERVER_MODE:LISTEN_RECOVERY_FAILED ch=%d sock=%u rc=%d sr=0x%02X\r\n",
-                    channel, (unsigned int)sock, (int)listen_rc,
-                    (unsigned int)listen_state);
+            PRT_SEG(" > SEG:TCP_SERVER_MODE:LISTEN_RECOVERY_FAILED ch=%d\r\n", channel);
             process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
         }
         seg_tcp_server_transient_reset(channel);
@@ -2422,8 +2163,8 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
             if (serial_common->serial_debug_en) {
                 seg_socket_getopt(sock, SO_DESTIP, &destip);
                 seg_socket_getopt(sock, SO_DESTPORT, &destport);
-                PRT_SEG(" > SEG:CONNECTED ch=%d sock=%u FROM - %d.%d.%d.%d : %d\r\n",
-                        channel, (unsigned int)sock,
+                PRT_SEG(" > SEG:CONNECTED ch=%d FROM - %d.%d.%d.%d : %d\r\n",
+                        channel,
                         destip[0], destip[1], destip[2], destip[3], destport);
             }
 
@@ -2514,19 +2255,17 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
 
             if ((listen_rc == SOCK_OK) && (listen_state == SOCK_LISTEN)) {
                 if (serial_common->serial_debug_en) {
-                    PRT_SEG(" > SEG:TCP_SERVER_MODE:SOCKOPEN ch=%d sock=%u port=%u\r\n",
-                            channel, (unsigned int)sock,
-                            (unsigned int)getSn_PORT(sock));
+                    PRT_SEG(" > SEG:TCP_SERVER_MODE:SOCKOPEN ch=%d\r\n", channel);
                 }
             } else {
-                PRT_SEG(" > SEG:TCP_SERVER_MODE:SOCKOPEN FAILED ch=%d sock=%u rc=%d sr=0x%02X\r\n",
-                        channel, (unsigned int)sock, (int)listen_rc,
-                        (unsigned int)listen_state);
+                if (serial_common->serial_debug_en) {
+                    PRT_SEG(" > SEG:TCP_SERVER_MODE:SOCKOPEN FAILED ch=%d\r\n", channel);
+                }
                 process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             }
         } else {
             if (serial_common->serial_debug_en) {
-                PRT_SEG(" > SEG:TCP_SERVER_MODE:SOCKOPEN FAILED\r\n");
+                PRT_SEG(" > SEG:TCP_SERVER_MODE:SOCKOPEN FAILED ch=%d\r\n", channel);
             }
             process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
         }
@@ -2534,13 +2273,7 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
 
     default:
         if (seg_tcp_server_transient_timed_out(channel, state) == TRUE) {
-            uint8_t ir = getSn_IR(sock);
-            uint16_t local_port = getSn_PORT(sock);
-
-            PRT_SEG(" > SEG:TCP_SERVER_MODE:STATE_RECOVERY ch=%d sock=%u sr=0x%02X ir=0x%02X port=%u age_ms=%u\r\n",
-                    channel, (unsigned int)sock, (unsigned int)state,
-                    (unsigned int)ir, (unsigned int)local_port,
-                    (unsigned int)SEG_TCP_SERVER_STUCK_TIMEOUT_MS);
+            PRT_SEG(" > SEG:TCP_SERVER_MODE:STATE_RECOVERY ch=%d\r\n", channel);
             process_socket_termination(sock, SOCK_TERMINATION_DELAY, channel, FALSE);
             seg_tcp_server_transient_reset(channel);
         }
@@ -2566,9 +2299,6 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
 
     // Socket state
     uint8_t state = getSn_SR(sock);
-#if SEG_FLOW_STALL_DIAG_ENABLE
-    seg_flow_diag_sock_state[channel] = state;
-#endif
     int ret;
     uint16_t reg_val;
 
@@ -3480,10 +3210,6 @@ uint8_t check_connect_pw_auth(int channel, uint8_t *buf, uint16_t len,
         if ((progress >= expected_len) ||
                 (buf[i] != (uint8_t)tcp_option->pw_connect[progress])) {
             connect_pw_progress[channel] = 0;
-#ifdef _SEG_DEBUG_
-            PRT_SEG(" >> Connection password auth failed ch=%d at=%u\r\n",
-                    channel, (unsigned int)progress);
-#endif
             return SEG_AUTH_FAILED;
         }
 
@@ -3491,10 +3217,6 @@ uint8_t check_connect_pw_auth(int channel, uint8_t *buf, uint16_t len,
         *consumed = i + 1U;
         if (connect_pw_progress[channel] == expected_len) {
             connect_pw_progress[channel] = 0;
-#ifdef _SEG_DEBUG_
-            PRT_SEG(" >> Connection password auth success ch=%d len=%u\r\n",
-                    channel, (unsigned int)expected_len);
-#endif
             return SEG_AUTH_SUCCESS;
         }
     }
@@ -3940,26 +3662,13 @@ void seg_ch_task(void *argument)  {
     while (1) {
         seg_task_heartbeat_ms[channel] = (uint32_t)millis();
         seg_postmortem_mark(SEG_PM_TASK_SEG, (uint8_t)channel);
-#if SEG_FLOW_STALL_DIAG_ENABLE
-        seg_flow_diag_seg_beat[channel]++;
-        seg_flow_diag_seg_phase[channel] = SEG_FLOW_DIAG_SEG_WAIT_NET;
-#endif
         if (get_net_status() == NET_LINK_DISCONNECTED) {
             PRT_SEGCP("get_net_status() != NET_LINK_DISCONNECTED\r\n");
             xSemaphoreTake(net_seg_sem[channel], portMAX_DELAY);
         }
-#if SEG_FLOW_STALL_DIAG_ENABLE
-        seg_flow_diag_seg_phase[channel] = SEG_FLOW_DIAG_SEG_WAIT_CRITICAL;
-#endif
         xSemaphoreTake(seg_critical_sem[channel], portMAX_DELAY);
-#if SEG_FLOW_STALL_DIAG_ENABLE
-        seg_flow_diag_seg_phase[channel] = SEG_FLOW_DIAG_SEG_SOCKET;
-#endif
         do_seg(sock, channel);
         xSemaphoreGive(seg_critical_sem[channel]);
-#if SEG_FLOW_STALL_DIAG_ENABLE
-        seg_flow_diag_seg_phase[channel] = SEG_FLOW_DIAG_SEG_DELAY;
-#endif
         xSemaphoreTake(seg_sem[channel], pdMS_TO_TICKS(10));
     }
 }
@@ -3991,29 +3700,19 @@ void seg_ch_u2e_task(void *argument)  {
     struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option[channel]);
 
     while (1) {
-#if SEG_FLOW_STALL_DIAG_ENABLE
-        seg_flow_diag_u2e_phase[channel] = SEG_FLOW_DIAG_U2E_WAIT_NET;
-#endif
         if (get_net_status() == NET_LINK_DISCONNECTED) {
             PRT_SEGCP("get_net_status() != NET_LINK_DISCONNECTED\r\n");
             xSemaphoreTake(net_seg_u2e_sem[channel], portMAX_DELAY);
         }
 
-#if SEG_FLOW_STALL_DIAG_ENABLE
-        seg_flow_diag_u2e_phase[channel] = SEG_FLOW_DIAG_U2E_WAIT_WAKEUP;
-#endif
         xSemaphoreTake(seg_u2e_sem[channel], portMAX_DELAY);
-#if SEG_FLOW_STALL_DIAG_ENABLE
-        seg_flow_diag_u2e_beat[channel]++;
+        // Outside the diagnostics guard: the postmortem names the task that was
+        // last running when the watchdog fired, and a breadcrumb this task never
+        // leaves makes it name a different one.
         seg_postmortem_mark(SEG_PM_TASK_U2E, (uint8_t)channel);
-        seg_flow_diag_u2e_phase[channel] = SEG_FLOW_DIAG_U2E_WAIT_CRITICAL;
-#endif
         switch (serial_mode) {
         case SEG_SERIAL_PROTOCOL_NONE :
             xSemaphoreTake(seg_critical_sem[channel], portMAX_DELAY);
-#if SEG_FLOW_STALL_DIAG_ENABLE
-            seg_flow_diag_u2e_phase[channel] = SEG_FLOW_DIAG_U2E_DRAIN;
-#endif
             if (get_data_buffer_usedsize(channel) || u2e_size[channel]) {
                 if ((network_connection->working_mode == TCP_MIXED_MODE) && (mixed_state[channel] == MIXED_SERVER) && (ST_OPEN == get_device_status(channel))) {
                     mixed_state[channel] = MIXED_CLIENT;
@@ -4028,9 +3727,6 @@ void seg_ch_u2e_task(void *argument)  {
                 check_uart_flow_control(serial_option->flow_control, channel);
             }
             xSemaphoreGive(seg_critical_sem[channel]);
-#if SEG_FLOW_STALL_DIAG_ENABLE
-            seg_flow_diag_u2e_phase[channel] = SEG_FLOW_DIAG_U2E_RELEASE;
-#endif
             if ((uint32_t)((uint32_t)millis() - seg_task_heartbeat_ms[channel]) >= SEG_U2E_YIELD_WINDOW_MS) {
                 vTaskDelay(1);
             }
@@ -4079,13 +3775,7 @@ void seg_ch_recv_task(void *argument)  {
     uint8_t serial_mode = get_serial_communation_protocol(channel);
 
     while (1) {
-#if SEG_FLOW_STALL_DIAG_ENABLE
-        // Only a liveness beat here. The poll itself moved to seg_flow_diag_task:
-        // ether_to_uart() below can block indefinitely, and a reporter sitting in
-        // this loop goes down with the very fault it is meant to describe.
-        seg_flow_diag_recv_beat[channel]++;
         seg_postmortem_mark(SEG_PM_TASK_RECV, (uint8_t)channel);
-#endif
         seg_recv_step[channel] = SEG_RECV_STEP_HEAD;
         switch (serial_mode) {
         case SEG_SERIAL_PROTOCOL_NONE :
@@ -4169,30 +3859,23 @@ static void seg_keepalive_timer_restart(TimerHandle_t timer, uint32_t delay_ms) 
     xTimerStart(timer, 0);
 }
 
-#if SEG_FLOW_STALL_DIAG_ENABLE || SEG_S2E_STALL_RECOVERY_ENABLE
+#if SEG_S2E_STALL_RECOVERY_ENABLE
 // Polls every channel from an independent task so it remains available when a
 // channel's data tasks stop making useful progress.
-void seg_flow_diag_task(void *argument) {
+void seg_s2e_monitor_task(void *argument) {
     (void)argument;
 
-#if SEG_FLOW_STALL_DIAG_ENABLE
     // Take over ioLibrary's critical-section callbacks so the SPI lock's holder is
     // recorded. Safe here: wizchip_cris_initialize() already ran during startup and
     // is never called again, and both callbacks use the same semaphore as before.
+    //
+    // Outside the diagnostics guard because the idle hook reads the result: with the
+    // default callbacks installed the owner is permanently NULL, so the postmortem's
+    // SPI-lock reason records zeros and says nothing. The added cost is two counter
+    // updates, one timer read and a task-name pointer per critical section - no
+    // stdio and no extra lock, unlike the instrumentation that had to be switched off.
     reg_wizchip_cris_cbfunc(seg_wiz_cris_enter, seg_wiz_cris_exit);
 
-    // A two second beat line was tried here and removed. It answered its question, but
-    // the answer was about itself: reset frequency tracked printf frequency almost
-    // exactly - none at all over three hours with the diagnostics silent, once every
-    // few hours with a stack line each minute, and once every twenty to ninety seconds
-    // with a beat line every two. It reset with no traffic at all, which rules the data
-    // path out. Every occurrence looks the same - every task stops in the same instant,
-    // this one included, and the watchdog fires 8.4 s later.
-    //
-    // pico-sdk guards stdio with a spin lock rather than a FreeRTOS mutex, so a task
-    // that loses the CPU while holding it leaves the next caller spinning at priority
-    // 31 - feeding nothing. Printing less is the only lever from here.
-#endif
     for (;;) {
 #if (DEVICE_UART_CNT > 2)
         // DATA2/DATA3 share one PIO RX consumer task. This poll is normally
@@ -4201,10 +3884,6 @@ void seg_flow_diag_task(void *argument) {
         pio_uart_rx_diag_poll();
 #endif
         for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
-#if SEG_FLOW_STALL_DIAG_ENABLE
-            seg_flow_diag_poll(ch);     // receive side: RTS held deasserted
-            seg_e2s_diag_poll(ch);      // transmit side: recv task not looping
-#endif
 #if SEG_S2E_STALL_RECOVERY_ENABLE
             seg_s2e_recovery_poll(ch);  // permanent raw-TCP send stall
 #endif

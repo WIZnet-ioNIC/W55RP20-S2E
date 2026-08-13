@@ -389,7 +389,6 @@ uint8_t parse_SEGCP(uint8_t * pmsg, uint8_t * param) {
     }
 
     if (*pcmd == 0) {
-        PRT_SEGCP("[UNKNOWN]:%s\r\n", pmsg);
         return SEGCP_UNKNOWN;
     }
 
@@ -418,7 +417,6 @@ uint8_t parse_SEGCP(uint8_t * pmsg, uint8_t * param) {
 
     else if ((cmdnum == (uint8_t)SEGCP_OC) || (cmdnum == (uint8_t)SEGCP_LC) || \
              (cmdnum == (uint8_t)SEGCP_PK)) { //|| (cmdnum == (uint8_t)SEGCP_UP))
-        PRT_SEGCP("cmd == %s\r\n", tbSEGCPCMD[cmdnum]);
         len = strlen(pmsg);
 
         if (*(pmsg + len) == NULL) {
@@ -1791,7 +1789,6 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
 
                     tmp_ptr += strlen(tmp_ptr);
                     while ((len = segcp_socket_rx_available(SEGCP_UDP_SOCK)) > 0) {
-                        PRT_SEGCP("while((len = getSn_RX_RSR(SEGCP_UDP_SOCK)) > 0)\r\n");
                         size_t used = (size_t)(tmp_ptr - temp_buf);
                         size_t remaining;
 
@@ -1844,7 +1841,6 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                             strcat(trep, SEGCP_DELIMETER);
                         }
                     }
-                    PRT_SEGCP("g_clica_buf = \r\n%s\r\n", temp_buf);
                     vPortFree(temp_buf);
                     return ret;
                 }
@@ -1863,7 +1859,6 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
 
                     tmp_ptr += strlen(tmp_ptr);
                     while ((len = segcp_socket_rx_available(SEGCP_UDP_SOCK)) > 0) {
-                        PRT_SEGCP("while((len = getSn_RX_RSR(SEGCP_UDP_SOCK)) > 0)\r\n");
                         size_t used = (size_t)(tmp_ptr - temp_buf);
                         size_t remaining;
 
@@ -1916,7 +1911,6 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                             strcat(trep, SEGCP_DELIMETER);
                         }
                     }
-                    PRT_SEGCP("pkey_data = \r\n%s\r\n", temp_buf);
                     vPortFree(temp_buf);
                     return ret;
                 }
@@ -2600,11 +2594,6 @@ uint16_t proc_SEGCP_udp(uint8_t* segcp_req, uint8_t* segcp_rep) {
                                                 14 + strlen(tpar) + strlen(trep),
                                                 (uint8_t *)"\xFF\xFF\xFF\xFF", destport);
 
-                            //PRT_SEGCP("tpar_len = %d, trep_len = %d\r\n", strlen(tpar), strlen(trep));
-
-                            //PRT_SEGCP("tpar = %s, trep = %s\r\n", tpar, trep);
-                            //PRT_SEGCP("send to len = %d\r\n", 14+strlen(tpar)+strlen(trep));
-                            PRT_SEGCP(">> strtok: %s\r\n", segcp_rep);
                         }
                     }
                 } else {
@@ -2799,7 +2788,6 @@ uint16_t uart_get_commandline(uint8_t* buf, uint16_t maxSize) {
             }
         }
         buf[i + 1] = 0x00; // end of string
-        PRT_SEGCP("buf = %s\r\n", buf);
         if (dev_config->serial_command.serial_command_echo == SEGCP_ENABLE) {
             platform_uart_puts(buf, i, SEG_DATA0_CH);
         }
@@ -2829,12 +2817,8 @@ void segcp_udp_task(void *argument) {
 
     while (1) {
         if (get_net_status() == NET_LINK_DISCONNECTED) {
-            PRT_SEGCP("get_net_status() != NET_LINK_DISCONNECTED\r\n");
             xSemaphoreTake(net_segcp_udp_sem, portMAX_DELAY);
-            PRT_SEGCP("xSemaphoreTake(net_segcp_sem, portMAX_DELAY)\r\n");
         }
-        //xSemaphoreTake(recv_segcp_sem, portMAX_DELAY);
-        //PRT_SEGCP("start do_segcp_udp\r\n");
         do_segcp_udp();
         vTaskDelay(200);
     }
@@ -2844,12 +2828,8 @@ void segcp_tcp_task(void *argument) {
 
     while (1) {
         if (get_net_status() == NET_LINK_DISCONNECTED) {
-            PRT_SEGCP("get_net_status() != NET_LINK_DISCONNECTED\r\n");
             xSemaphoreTake(net_segcp_tcp_sem, portMAX_DELAY);
-            PRT_SEGCP("xSemaphoreTake(net_segcp_sem, portMAX_DELAY)\r\n");
         }
-        //xSemaphoreTake(recv_segcp_sem, portMAX_DELAY);
-        //PRT_SEGCP("start do_segcp_tcp\r\n");
         do_segcp_tcp();
         vTaskDelay(200);
     }

@@ -9,13 +9,6 @@
 
 #define _SEG_DEBUG_
 
-// TEMPORARY - S2E stall investigation. Set to 0 to remove all instrumentation.
-// Defined here rather than in seg.c so App.c evaluates the same value and creates
-// seg_flow_diag_task; with it visible only inside seg.c the task was never started.
-#ifndef SEG_FLOW_STALL_DIAG_ENABLE
-#define SEG_FLOW_STALL_DIAG_ENABLE 0
-#endif
-
 // Recover a raw-TCP S2E channel whose W5500 transmit operation remains stuck
 // after normal RTS/CTS backpressure has had ample time to drain.  This is kept
 // separate from diagnostics so the safety path remains available when verbose
@@ -188,7 +181,7 @@ void keepalive_timer_callback(TimerHandle_t xTimer);
 void inactivity_timer_callback(TimerHandle_t xTimer);
 void auth_timer_callback(TimerHandle_t xTimer);
 void seg_timer_task(void *argument);
-void seg_flow_diag_task(void *argument);    // S2E stall diagnostics / bounded recovery
+void seg_s2e_monitor_task(void *argument);  // bounded S2E stall recovery
 
 void ether_to_spi(uint8_t sock);
 void seg_spi_data_transfer_task(void);

@@ -89,7 +89,6 @@ void device_wdt_reset(void);
 uint32_t device_wdt_max_gap_ms(void);
 uint32_t device_wdt_since_feed_ms(void);
 uint32_t device_wdt_max_gap_at_ms(void);
-void device_wdt_max_gap_clear(void);
 
 void seg_postmortem_init(void);
 void seg_postmortem_report(void);
@@ -104,7 +103,6 @@ void jump_to_app(uint32_t app_addr);
 void display_Dev_Info_main(void);
 void display_Dev_Info_dhcp(void);
 void display_Dev_Info_dns(int channel);
-void devConfig_print_all(void);
 
 int device_bank_check(uint8_t bank_num);
 int device_bank_copy(void);

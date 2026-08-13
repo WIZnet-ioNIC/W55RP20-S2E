@@ -214,8 +214,6 @@ static uint8_t pio_uart_parity[DEVICE_UART_CNT];
 static uint8_t pio_uart_payload_bits[DEVICE_UART_CNT];
 static uint8_t pio_uart_stop_bits[DEVICE_UART_CNT];
 static uint8_t pio_uart_de_mode[DEVICE_UART_CNT];   // RS-422/485 owns the RTS pin
-static volatile uint32_t pio_uart_framing_err[DEVICE_UART_CNT];
-static volatile uint32_t pio_uart_parity_err[DEVICE_UART_CNT];
 
 // RX-not-empty generated almost one CPU interrupt per PIO byte: DATA2/DATA3 at
 // 460800 baud therefore consumed roughly 90,000 IRQs/s.  Since PIO0_IRQ_0 has a
@@ -245,7 +243,6 @@ static volatile uint32_t pio_uart_rx_task_heartbeat;
 static volatile uint32_t pio_uart_rx_consumed[DEVICE_UART_CNT];
 static volatile uint32_t pio_uart_rx_stored[DEVICE_UART_CNT];
 static volatile uint32_t pio_uart_rx_dropped[DEVICE_UART_CNT];
-static volatile uint32_t pio_uart_rx_rearm[DEVICE_UART_CNT];
 
 static uint8_t pio_uart_resolve_data_bits(uint8_t cfg) {
     switch (cfg) {
@@ -413,11 +410,7 @@ static uint8_t pio_uart_decode_rx_word(int channel, uint32_t fifo_word) {
     uint8_t data_bits = pio_uart_data_bits[channel];
     uint32_t payload = uart_rx_program_extract(fifo_word, pio_uart_payload_bits[channel]);
     uint8_t ch = (uint8_t)(payload & ((1u << data_bits) - 1u));
-    uint32_t received_parity = (payload >> data_bits) & 1u;
 
-    if (received_parity != pio_uart_parity_bit(channel, ch)) {
-        pio_uart_parity_err[channel]++;
-    }
     return ch;
 }
 
@@ -451,10 +444,11 @@ static void pio_data_uart_rx_task(void *argument) {
                 (uint16_t)(((write_addr - ring_base) / sizeof(uint32_t)) & PIO_UART_RX_DMA_MASK);
 
             // The RX program's optional framing flag is independent of the DMA
-            // data path. It is normally compiled out, but retain the counter.
+            // data path and is only raised when SEG_PIO_RX_FRAMING_CHECK builds
+            // it in. Clear it anyway so turning that option on cannot start from
+            // a latched flag.
             if (pio_interrupt_get(PIO_DATA_UART, pio_rx_sm[channel])) {
                 pio_interrupt_clear(PIO_DATA_UART, pio_rx_sm[channel]);
-                pio_uart_framing_err[channel]++;
             }
 
             while (pio_uart_rx_dma_read[channel] != write_index) {
@@ -517,7 +511,6 @@ static void pio_data_uart_rx_dma_rearm(int channel) {
     write_addr = (volatile void *)(uintptr_t)
                  dma_channel_hw_addr(pio_uart_rx_dma[channel])->write_addr;
     pio_data_uart_rx_dma_start(channel, write_addr);
-    pio_uart_rx_rearm[channel]++;
 }
 
 static void pio_data_uart_dma_enable(void) {
@@ -1113,25 +1106,6 @@ void check_uart_flow_control(uint8_t flow_ctrl, int channel) {
         }
     }
 }
-
-#if (DEVICE_UART_CNT > 2)
-// PIO receive errors, counted from the RX ISR. HW channels return 0: the PL011
-// latches its own framing/parity flags but nothing reads them yet, so a count here
-// would be misleading.
-uint32_t get_uart_framing_error_count(int channel) {
-    if ((channel < UART_HW_CH_CNT) || (channel >= DEVICE_UART_CNT)) {
-        return 0;
-    }
-    return pio_uart_framing_err[channel];
-}
-
-uint32_t get_uart_parity_error_count(int channel) {
-    if ((channel < UART_HW_CH_CNT) || (channel >= DEVICE_UART_CNT)) {
-        return 0;
-    }
-    return pio_uart_parity_err[channel];
-}
-#endif
 
 // TEMPORARY - E2S stall investigation. The transmit side stalls with the host's
 // frames accepted over TCP but nothing reaching the wire, and RTS is not involved,

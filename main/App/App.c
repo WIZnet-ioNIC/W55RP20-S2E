@@ -126,15 +126,6 @@ TimerHandle_t seg_keepalive_timer[DEVICE_UART_CNT] = {NULL, };
 TimerHandle_t seg_auth_timer[DEVICE_UART_CNT] = {NULL, };
 TimerHandle_t reset_timer = NULL;
 
-// Stack high water marks have never been measured, and the hook that is supposed to
-// catch an overflow could not stop one in a Release build, so an overrun would have
-// run on silently and surfaced later as something unrelated. Handles are kept so the
-// headroom can be read back; the count is the four common tasks plus three per
-// channel plus the timer task.
-#define WATCHED_TASK_MAX (5 + (3 * DEVICE_UART_CNT))
-static TaskHandle_t watched_task[WATCHED_TASK_MAX];
-static int watched_task_cnt;
-
 // Why the last reset happened, latched at startup. Both clear means it was not a
 // watchdog reset at all - supply or brownout rather than firmware.
 static int boot_wdt;
@@ -227,7 +218,6 @@ void start_task(void *argument) {
     }
 
     Net_Conf();
-    //devConfig_print_all();
     // Resets have been observed with nothing logged before them - no stall report, no
     // overflow hook, no reboot message - and stacks and heap were steady right up to
     // each one. These two bits are what separates the remaining possibilities: a
@@ -247,8 +237,6 @@ void start_task(void *argument) {
 
     display_Dev_Info_main();
     display_Net_Info();
-    printf("[BOOT] watchdog=%d timeout=%d\r\n", boot_wdt, boot_wdt_timeout);
-    seg_postmortem_report();
 
     set_W5X00_NetTimeout();
 
@@ -283,24 +271,24 @@ void start_task(void *argument) {
         seg_recv_sem[ch]     = xSemaphoreCreateMutex();
     }
 
-    xTaskCreate(net_status_task, "Net_Status_Task", NET_TASK_STACK_SIZE, NULL, NET_TASK_PRIORITY, &watched_task[watched_task_cnt++]);
-    xTaskCreate(segcp_udp_task, "SEGCP_udp_Task", SEGCP_UDP_TASK_STACK_SIZE, NULL, SEGCP_UDP_TASK_PRIORITY, &watched_task[watched_task_cnt++]);
-    xTaskCreate(segcp_serial_task, "SEGCP_serial_Task", SEGCP_SERIAL_TASK_STACK_SIZE, NULL, SEGCP_SERIAL_TASK_PRIORITY, &watched_task[watched_task_cnt++]);
-    xTaskCreate(segcp_tcp_task, "SEGCP_tcp_Task", SEGCP_TCP_TASK_STACK_SIZE, NULL, SEGCP_TCP_TASK_PRIORITY, &watched_task[watched_task_cnt++]);
+    xTaskCreate(net_status_task, "Net_Status_Task", NET_TASK_STACK_SIZE, NULL, NET_TASK_PRIORITY, NULL);
+    xTaskCreate(segcp_udp_task, "SEGCP_udp_Task", SEGCP_UDP_TASK_STACK_SIZE, NULL, SEGCP_UDP_TASK_PRIORITY, NULL);
+    xTaskCreate(segcp_serial_task, "SEGCP_serial_Task", SEGCP_SERIAL_TASK_STACK_SIZE, NULL, SEGCP_SERIAL_TASK_PRIORITY, NULL);
+    xTaskCreate(segcp_tcp_task, "SEGCP_tcp_Task", SEGCP_TCP_TASK_STACK_SIZE, NULL, SEGCP_TCP_TASK_PRIORITY, NULL);
 
     for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
-        xTaskCreate(seg_ch_task,      "SEG_Task",      SEG_TASK_STACK_SIZE, (void *)(uintptr_t)ch, SEG_TASK_PRIORITY,          &watched_task[watched_task_cnt++]);
-        xTaskCreate(seg_ch_u2e_task,  "SEG_U2E_Task",  SEG_U2E_TASK_STACK_SIZE, (void *)(uintptr_t)ch, SEG_U2E_TASK_PRIORITY,      &watched_task[watched_task_cnt++]);
-        xTaskCreate(seg_ch_recv_task, "SEG_Recv_Task", SEG_RECV_TASK_STACK_SIZE, (void *)(uintptr_t)ch, SEG_RECV_TASK_PRIORITY + ch, &watched_task[watched_task_cnt++]);
+        xTaskCreate(seg_ch_task,      "SEG_Task",      SEG_TASK_STACK_SIZE, (void *)(uintptr_t)ch, SEG_TASK_PRIORITY,          NULL);
+        xTaskCreate(seg_ch_u2e_task,  "SEG_U2E_Task",  SEG_U2E_TASK_STACK_SIZE, (void *)(uintptr_t)ch, SEG_U2E_TASK_PRIORITY,      NULL);
+        xTaskCreate(seg_ch_recv_task, "SEG_Recv_Task", SEG_RECV_TASK_STACK_SIZE, (void *)(uintptr_t)ch, SEG_RECV_TASK_PRIORITY + ch, NULL);
     }
-    xTaskCreate(seg_timer_task, "SEG_Timer_task", SEG_TIMER_TASK_STACK_SIZE, NULL, SEG_TIMER_TASK_PRIORITY, &watched_task[watched_task_cnt++]);
-#if SEG_FLOW_STALL_DIAG_ENABLE || SEG_S2E_STALL_RECOVERY_ENABLE
+    xTaskCreate(seg_timer_task, "SEG_Timer_task", SEG_TIMER_TASK_STACK_SIZE, NULL, SEG_TIMER_TASK_PRIORITY, NULL);
+#if SEG_S2E_STALL_RECOVERY_ENABLE
     // S2E monitor. Reports from its own task so a channel whose seg_ch_task and
     // seg_ch_recv_task are both stuck can still be diagnosed and recovered.
     // Priority 31 is the ceiling here (configMAX_PRIORITIES is 32), which is the
     // same level the seg tasks actually run at; it only wakes every 250 ms, and the
     // spin waits in the data path call taskYIELD(), so it does get scheduled.
-    xTaskCreate(seg_flow_diag_task, "SEG_Flow_Diag", 1024, NULL, 31, NULL);
+    xTaskCreate(seg_s2e_monitor_task, "SEG_S2E_Monitor", 1024, NULL, 31, NULL);
 #endif
     // HTTP web server removed (sockets reassigned to DATA2/DATA3)
     // if (dev_config->config_common.pw_search[0] == 0) {
@@ -315,30 +303,23 @@ void start_task(void *argument) {
     watchdog_enable(8388, 0);
 #endif
 
-    // start_task has nothing left to do, so it carries the stack report rather than
-    // sleeping forever. Words remaining, not bytes: a value approaching zero is a task
-    // about to overrun.
-    //
-    // Hourly, not by the minute. At a minute the device began resetting every few
-    // hours, and a two second report elsewhere took that down to under ninety seconds -
-    // with no traffic at all, so not the data path. stdio is spin locked rather than
-    // mutexed, so a caller descheduled while holding it leaves the next one spinning at
-    // priority 31 and feeding no watchdog. Twelve lines over a twelve hour run is close
-    // enough to the silence the last clean run had.
-    // The banner above goes out before USB CDC has re-enumerated and is discarded,
-    // which is exactly what happened to the first post-mortem line. Repeat it while
-    // a capture that attaches shortly after boot can still catch it, then stop.
-    for (int i = 0; i < 6; i++) {
+    // Only a run that ended badly is worth a line. Both bits clear means the reset
+    // was not a watchdog at all - a normal power-on - and there is nothing to say.
+    // Delayed because anything printed at startup goes out before USB CDC has
+    // re-enumerated and is discarded.
+    if (boot_wdt || boot_wdt_timeout) {
         vTaskDelay(pdMS_TO_TICKS(5000));
         printf("[BOOT] watchdog=%d timeout=%d\r\n", boot_wdt, boot_wdt_timeout);
         seg_postmortem_report();
     }
 
-    // Wake every minute for the watchdog margin, but only speak when a new worst
-    // gap appears, so a healthy run stays as quiet as it was before. The stack
-    // report keeps its hourly cadence underneath.
-    uint32_t reported_gap_ms = 0;
-    int stack_countdown = 60;
+    // Wake every minute to watch how close the watchdog came to expiring, but only
+    // speak when the margin is actually eaten into. A healthy run feeds it within
+    // tens of milliseconds of an 8388 ms deadline, and reporting that says nothing.
+    // A quarter of the deadline gone means something held the CPU for two seconds,
+    // which is worth a line while there is still room to recover.
+    const uint32_t gap_report_floor_ms = 2000;
+    uint32_t reported_gap_ms = gap_report_floor_ms;
 
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(60000));
@@ -351,23 +332,6 @@ void start_task(void *argument) {
                    (unsigned long)gap_ms,
                    (unsigned long)device_wdt_max_gap_at_ms());
         }
-
-        if (--stack_countdown > 0) {
-            continue;
-        }
-        stack_countdown = 60;
-
-        printf("[STACK] boot_wdt=%d/%d", boot_wdt, boot_wdt_timeout);
-        for (int i = 0; i < watched_task_cnt; i++) {
-            if (watched_task[i] == NULL) {
-                continue;
-            }
-            printf(" %s=%lu", pcTaskGetName(watched_task[i]),
-                   (unsigned long)uxTaskGetStackHighWaterMark(watched_task[i]));
-        }
-        printf(" heap_free=%lu heap_min=%lu\r\n",
-               (unsigned long)xPortGetFreeHeapSize(),
-               (unsigned long)xPortGetMinimumEverFreeHeapSize());
     }
 
 }
