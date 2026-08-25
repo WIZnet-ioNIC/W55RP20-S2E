@@ -76,6 +76,39 @@ static void flash_mudation_operation(void *param) {
     }
 }
 
+// Writing flash means both cores must stop fetching from it, and
+// flash_safe_execute arranges that by starting a task on the other core and
+// waiting for it to answer.  It creates that task at configMAX_PRIORITIES - 1,
+// which here is 31 - the priority fifteen tasks already share, because
+// xTaskCreate clamps everything above it down to it.  So the task does not
+// preempt them, it queues with them, and a core whose tasks are busy can be
+// slow to answer.
+//
+// The wait was unbounded.  A save issued while the other core was busy parked
+// the calling task for good, and that caller is whichever configuration task
+// handled the request - so the device went on running while it stopped
+// answering on that one path, and only a power cycle brought it back.  Bound
+// the wait: a save that did not happen can be retried, a task that never
+// returns cannot.
+#define FLASH_MUTATE_TIMEOUT_MS 3000U
+#define FLASH_MUTATE_ATTEMPTS   3U
+
+static bool flash_mutate(mutation_operation_t *mop) {
+    for (uint32_t attempt = 0; attempt < FLASH_MUTATE_ATTEMPTS; attempt++) {
+        if (flash_safe_execute(flash_mudation_operation, mop,
+                               FLASH_MUTATE_TIMEOUT_MS) == PICO_OK) {
+            return true;
+        }
+        // Leave the other core a window in which it can reach a point where it
+        // is free to answer.
+        vTaskDelay(pdMS_TO_TICKS(100));
+    }
+
+    PRT_ERR(" > FLASH: %s at 0x%08lX refused, the other core would not pause\r\n",
+            mop->op_is_erase ? "erase" : "write", (unsigned long)mop->addr);
+    return false;
+}
+
 void write_flash(uint32_t addr, uint8_t * data, uint32_t data_len) {
     mutation_operation_t mop;
 
@@ -85,9 +118,14 @@ void write_flash(uint32_t addr, uint8_t * data, uint32_t data_len) {
     mop.data_len = data_len;
 
     flash_buf = pvPortMalloc(FLASH_SECTOR_SIZE);
+    if (flash_buf == NULL) {
+        PRT_ERR(" > FLASH: no memory for the sector buffer\r\n");
+        return;
+    }
     memset(flash_buf, 0x00, FLASH_SECTOR_SIZE);
-    flash_safe_execute(flash_mudation_operation, &mop, 0xFFFFFFFF);
+    (void)flash_mutate(&mop);
     vPortFree(flash_buf);
+    flash_buf = NULL;
 }
 
 
@@ -101,5 +139,5 @@ void erase_flash_sector(uint32_t addr) {
 
     mop.op_is_erase = 1;
     mop.addr = addr;
-    flash_safe_execute(flash_mudation_operation, &mop, 0xFFFFFFFF);
+    (void)flash_mutate(&mop);
 }
