@@ -75,31 +75,13 @@ void device_raw_reboot(void) {
 // device that normally feeds every few milliseconds but occasionally goes quiet
 // for seconds is already showing the fault, reset or not.
 static volatile uint32_t wdt_feed_last_ms;
-static volatile uint32_t wdt_feed_max_gap_ms;
-static volatile uint32_t wdt_feed_max_gap_at_ms;
 
 void device_wdt_reset(void) {
     if (get_reset_flag() == 0) {
         // millis() counts in the 1 ms repeating-timer callback, so it stops
         // whenever that interrupt is starved - which is one of the ways the
-        // watchdog can expire. Measuring the gap with it would report nothing at
-        // exactly the moment worth measuring. Read the hardware timer instead.
-        uint32_t last = wdt_feed_last_ms;
-        uint32_t now = time_us_32() / 1000U;
-
-        // Both cores feed without synchronising, so the other core can publish a
-        // newer timestamp between these two reads. Compare as signed: a negative
-        // difference is that stale sample, not a gap. Losing a sample only
-        // understates the maximum, and the largest one still surfaces.
-        if (last != 0) {
-            int32_t gap = (int32_t)(now - last);
-
-            if ((gap > 0) && ((uint32_t)gap > wdt_feed_max_gap_ms)) {
-                wdt_feed_max_gap_ms = (uint32_t)gap;
-                wdt_feed_max_gap_at_ms = now;
-            }
-        }
-        wdt_feed_last_ms = now;
+        // watchdog can expire. Read the hardware timer instead.
+        wdt_feed_last_ms = time_us_32() / 1000U;
 
         watchdog_update();
     }
@@ -115,14 +97,6 @@ uint32_t device_wdt_since_feed_ms(void) {
     }
 
     return (time_us_32() / 1000U) - last;
-}
-
-uint32_t device_wdt_max_gap_ms(void) {
-    return wdt_feed_max_gap_ms;
-}
-
-uint32_t device_wdt_max_gap_at_ms(void) {
-    return wdt_feed_max_gap_at_ms;
 }
 
 // "SGPM". Scratch survives the reset but powers up holding whatever was there,

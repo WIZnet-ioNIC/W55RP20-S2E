@@ -116,8 +116,16 @@ static uint8_t data_uart_dtr_status[DEVICE_UART_CNT];
 // inside a tick, from paying that tick.
 #define UART_TX_DMA_YIELD_MS 2U
 
-// A full 2 KB transfer is 44 ms at 460800 baud. Anything past this is wedged.
-#define UART_TX_DMA_STUCK_MS 1000U
+// A full 2 KB transfer is 44 ms at 460800 baud, so this is 227x a healthy one.
+//
+// It was 1 s, which turned out to be inside the range of an ordinary host pause.
+// A soak that had run 17 h with the peer's read gap pinned at 0.11 s hit a single
+// 2.78 s stall; all four adapters dropped RTS while it lasted, every channel
+// passed the old threshold, and the aborts below threw away what was in flight -
+// the first integrity errors that run had produced. Waiting costs nothing when
+// the peer comes back, and a peer that never comes back is caught by the E2S
+// gate recovery instead, so this only has to outlast a hiccup.
+#define UART_TX_DMA_STUCK_MS 10000U
 
 static inline void uart_tx_spin_wait_bounded(uint32_t *started_ms, uint32_t yield_ms) {
     device_wdt_reset();
@@ -238,11 +246,6 @@ static uint pio_uart_rx_dma[DEVICE_UART_CNT];
 static uint16_t pio_uart_rx_dma_read[DEVICE_UART_CNT];
 static uint32_t pio_uart_rx_dma_ring[DEVICE_UART_CNT - UART_HW_CH_CNT][PIO_UART_RX_DMA_WORDS]
 __attribute__((aligned(1U << PIO_UART_RX_DMA_RING_BITS)));
-static TaskHandle_t pio_uart_rx_task_handle;
-static volatile uint32_t pio_uart_rx_task_heartbeat;
-static volatile uint32_t pio_uart_rx_consumed[DEVICE_UART_CNT];
-static volatile uint32_t pio_uart_rx_stored[DEVICE_UART_CNT];
-static volatile uint32_t pio_uart_rx_dropped[DEVICE_UART_CNT];
 
 static uint8_t pio_uart_resolve_data_bits(uint8_t cfg) {
     switch (cfg) {
@@ -420,10 +423,6 @@ static void pio_data_uart_rx_task(void *argument) {
     (void)argument;
 
     for (;;) {
-        // One beat represents a complete attempt to service both DATA2 and DATA3.
-        // If this stops while the rest of the product keeps running, the shared
-        // consumer task itself (or the core executing it) has stopped.
-        pio_uart_rx_task_heartbeat++;
         seg_postmortem_mark(SEG_PM_TASK_PIO_RX, 0);
 
         for (int channel = UART_HW_CH_CNT; channel < DEVICE_UART_CNT; channel++) {
@@ -466,9 +465,6 @@ static void pio_data_uart_rx_task(void *argument) {
 
                 uint16_t stored = pio_uart_store_batch(batch, count, channel);
 
-                pio_uart_rx_consumed[channel] += count;
-                pio_uart_rx_stored[channel] += stored;
-                pio_uart_rx_dropped[channel] += (uint32_t)(count - stored);
                 if (stored > 0) {
                     input_flag = 1;
                 }
@@ -522,210 +518,11 @@ static void pio_data_uart_dma_enable(void) {
         pio_data_uart_rx_dma_start(channel, pio_uart_rx_dma_ring[ring_row]);
     }
 
+    // DATA2 and DATA3 have no other consumer, so losing this leaves both
+    // channels receiving nothing at all.
     if (xTaskCreate(pio_data_uart_rx_task, "PIO_UART_RX", 768, NULL,
-                    configMAX_PRIORITIES - 1,
-                    &pio_uart_rx_task_handle) != pdPASS) {
-        pio_uart_rx_task_handle = NULL;
-    }
-}
-
-typedef struct {
-    uint32_t transfer_count;
-    uint32_t consumed;
-    uint32_t stored;
-    uint32_t dropped;
-    uint32_t overflow;
-    uint16_t write_index;
-    uint16_t read_index;
-    uint16_t ring_used;
-    uint8_t dma_channel;
-    uint8_t dma_busy;
-    uint8_t fifo_level;
-    uint8_t sm_enabled;
-    uint8_t sm_pc;
-    uint8_t rx_pin;
-    uint8_t rts_shadow;
-    uint8_t rts_pin;
-} pio_uart_rx_diag_snapshot_t;
-
-static void pio_uart_rx_diag_snapshot(int channel,
-                                      pio_uart_rx_diag_snapshot_t *snapshot) {
-    uint ring_row = (uint)(channel - UART_HW_CH_CNT);
-    uintptr_t ring_base = (uintptr_t)&pio_uart_rx_dma_ring[ring_row][0];
-    dma_channel_hw_t *channel_hw = dma_channel_hw_addr(pio_uart_rx_dma[channel]);
-    uintptr_t write_addr = (uintptr_t)channel_hw->write_addr;
-
-    snapshot->transfer_count = channel_hw->transfer_count;
-    snapshot->consumed = pio_uart_rx_consumed[channel];
-    snapshot->stored = pio_uart_rx_stored[channel];
-    snapshot->dropped = pio_uart_rx_dropped[channel];
-    snapshot->overflow = get_data_buffer_overflow_count(channel);
-    snapshot->write_index =
-        (uint16_t)(((write_addr - ring_base) / sizeof(uint32_t)) & PIO_UART_RX_DMA_MASK);
-    snapshot->read_index = pio_uart_rx_dma_read[channel];
-    snapshot->ring_used = get_data_buffer_usedsize(channel);
-    snapshot->dma_channel = (uint8_t)pio_uart_rx_dma[channel];
-    snapshot->dma_busy = dma_channel_is_busy(pio_uart_rx_dma[channel]) ? 1U : 0U;
-    snapshot->fifo_level = (uint8_t)pio_sm_get_rx_fifo_level(PIO_DATA_UART,
-                           pio_rx_sm[channel]);
-    snapshot->sm_enabled =
-        (PIO_DATA_UART->ctrl & (1U << pio_rx_sm[channel])) ? 1U : 0U;
-    snapshot->sm_pc = pio_sm_get_pc(PIO_DATA_UART, pio_rx_sm[channel]);
-    snapshot->rx_pin = (uint8_t)gpio_get(pio_uart_rx_pin[channel]);
-    snapshot->rts_shadow = uart_rts_is_blocked(channel);
-    snapshot->rts_pin = uart_rts_pin_is_blocked(channel);
-}
-
-static void pio_uart_rx_diag_emit(const char *tag, const char *reason,
-                                  int fault_channel, uint32_t stalled_ms) {
-    pio_uart_rx_diag_snapshot_t data2;
-    pio_uart_rx_diag_snapshot_t data3;
-    uint32_t task_state = 0xFFU;
-    uint32_t task_hwm = 0U;
-
-    pio_uart_rx_diag_snapshot(SEG_DATA2_CH, &data2);
-    pio_uart_rx_diag_snapshot(SEG_DATA3_CH, &data3);
-    if (pio_uart_rx_task_handle != NULL) {
-        task_state = (uint32_t)eTaskGetState(pio_uart_rx_task_handle);
-        task_hwm = (uint32_t)uxTaskGetStackHighWaterMark(pio_uart_rx_task_handle);
-    }
-
-    // Keep this to one stdio call. pico-sdk serializes stdio with a spin lock,
-    // and frequent multi-call diagnostics previously caused watchdog resets.
-    printf("[%s] reason=%s fault_ch=%d stalled_ms=%lu "
-           "task_hb=%lu task_state=%lu task_hwm=%lu "
-           "ch2{dma=%u busy=%u tc=%lu wr=%u rd=%u fifo=%u sm=%u pc=%u pin=%u "
-           "rts=%u/%u consumed=%lu stored=%lu dropped=%lu ring=%u overflow=%lu} "
-           "ch3{dma=%u busy=%u tc=%lu wr=%u rd=%u fifo=%u sm=%u pc=%u pin=%u "
-           "rts=%u/%u consumed=%lu stored=%lu dropped=%lu ring=%u overflow=%lu}\r\n",
-           tag, reason, fault_channel, (unsigned long)stalled_ms,
-           (unsigned long)pio_uart_rx_task_heartbeat,
-           (unsigned long)task_state, (unsigned long)task_hwm,
-           (unsigned int)data2.dma_channel, (unsigned int)data2.dma_busy,
-           (unsigned long)data2.transfer_count,
-           (unsigned int)data2.write_index, (unsigned int)data2.read_index,
-           (unsigned int)data2.fifo_level, (unsigned int)data2.sm_enabled,
-           (unsigned int)data2.sm_pc, (unsigned int)data2.rx_pin,
-           (unsigned int)data2.rts_shadow, (unsigned int)data2.rts_pin,
-           (unsigned long)data2.consumed, (unsigned long)data2.stored,
-           (unsigned long)data2.dropped, (unsigned int)data2.ring_used,
-           (unsigned long)data2.overflow,
-           (unsigned int)data3.dma_channel, (unsigned int)data3.dma_busy,
-           (unsigned long)data3.transfer_count,
-           (unsigned int)data3.write_index, (unsigned int)data3.read_index,
-           (unsigned int)data3.fifo_level, (unsigned int)data3.sm_enabled,
-           (unsigned int)data3.sm_pc, (unsigned int)data3.rx_pin,
-           (unsigned int)data3.rts_shadow, (unsigned int)data3.rts_pin,
-           (unsigned long)data3.consumed, (unsigned long)data3.stored,
-           (unsigned long)data3.dropped, (unsigned int)data3.ring_used,
-           (unsigned long)data3.overflow);
-}
-
-void pio_uart_rx_diag_poll(void) {
-    enum {
-        PIO_RX_DIAG_STALL_MS = 3000U,
-        PIO_RX_DIAG_REPEAT_MS = 60000U,
-    };
-    static uint32_t last_heartbeat;
-    static uint32_t heartbeat_progress_at;
-    static uint32_t last_transfer_count[DEVICE_UART_CNT];
-    static uint32_t last_consumed[DEVICE_UART_CNT];
-    static uint32_t last_stored[DEVICE_UART_CNT];
-    static uint32_t dma_not_consumed_since[DEVICE_UART_CNT];
-    static uint32_t store_stalled_since[DEVICE_UART_CNT];
-    static uint32_t dma_stopped_since[DEVICE_UART_CNT];
-    static uint32_t last_report_at;
-    static uint8_t sample_valid;
-    static uint8_t fault_reported;
-    const char *reason = NULL;
-    int fault_channel = -1;
-    uint32_t stalled_ms = 0U;
-    uint32_t now = (uint32_t)millis();
-    uint32_t heartbeat = pio_uart_rx_task_heartbeat;
-
-    if (pio_uart_rx_task_handle == NULL) {
-        reason = "task_create_failed";
-    } else if (!sample_valid || (heartbeat != last_heartbeat)) {
-        last_heartbeat = heartbeat;
-        heartbeat_progress_at = now;
-    } else {
-        stalled_ms = now - heartbeat_progress_at;
-        if (stalled_ms >= PIO_RX_DIAG_STALL_MS) {
-            reason = "shared_task_stalled";
-        }
-    }
-
-    for (int channel = UART_HW_CH_CNT;
-            (reason == NULL) && (channel < DEVICE_UART_CNT); channel++) {
-        uint32_t transfer_count =
-            dma_channel_hw_addr(pio_uart_rx_dma[channel])->transfer_count;
-        uint32_t consumed = pio_uart_rx_consumed[channel];
-        uint32_t stored = pio_uart_rx_stored[channel];
-        uint8_t sm_enabled =
-            (PIO_DATA_UART->ctrl & (1U << pio_rx_sm[channel])) ? 1U : 0U;
-
-        if (dma_channel_is_busy(pio_uart_rx_dma[channel])) {
-            dma_stopped_since[channel] = 0U;
-        }
-
-        if (!sm_enabled) {
-            reason = "rx_sm_disabled";
-            fault_channel = channel;
-        } else if (!dma_channel_is_busy(pio_uart_rx_dma[channel])) {
-            // The consumer task briefly stops the channel to re-arm its transfer
-            // count, so only a stop that outlives that window is a real fault.
-            if (dma_stopped_since[channel] == 0U) {
-                dma_stopped_since[channel] = now;
-            }
-            stalled_ms = now - dma_stopped_since[channel];
-            if (stalled_ms >= PIO_RX_DIAG_STALL_MS) {
-                reason = "rx_dma_stopped";
-                fault_channel = channel;
-            }
-        } else if (sample_valid && (transfer_count != last_transfer_count[channel]) &&
-                   (consumed == last_consumed[channel])) {
-            if (dma_not_consumed_since[channel] == 0U) {
-                dma_not_consumed_since[channel] = now;
-            }
-            stalled_ms = now - dma_not_consumed_since[channel];
-            if (stalled_ms >= PIO_RX_DIAG_STALL_MS) {
-                reason = "dma_not_consumed";
-                fault_channel = channel;
-            }
-        } else {
-            dma_not_consumed_since[channel] = 0U;
-        }
-
-        if ((reason == NULL) && sample_valid &&
-                (consumed != last_consumed[channel]) &&
-                (stored == last_stored[channel])) {
-            if (store_stalled_since[channel] == 0U) {
-                store_stalled_since[channel] = now;
-            }
-            stalled_ms = now - store_stalled_since[channel];
-            if (stalled_ms >= PIO_RX_DIAG_STALL_MS) {
-                reason = "store_stalled";
-                fault_channel = channel;
-            }
-        } else if ((consumed == last_consumed[channel]) ||
-                   (stored != last_stored[channel])) {
-            store_stalled_since[channel] = 0U;
-        }
-
-        last_transfer_count[channel] = transfer_count;
-        last_consumed[channel] = consumed;
-        last_stored[channel] = stored;
-    }
-    sample_valid = 1U;
-
-    if (reason == NULL) {
-        fault_reported = 0U;
-        return;
-    }
-    if (!fault_reported || ((uint32_t)(now - last_report_at) >= PIO_RX_DIAG_REPEAT_MS)) {
-        pio_uart_rx_diag_emit("PIO_RX_DIAG", reason, fault_channel, stalled_ms);
-        last_report_at = now;
-        fault_reported = 1U;
+                    configMAX_PRIORITIES - 1, NULL) != pdPASS) {
+        PRT_ERR("PIO UART RX task creation failed\r\n");
     }
 }
 
@@ -1253,13 +1050,14 @@ void platform_uart_tx_wait(int channel) {
         while (dma_channel_is_busy(dma_uart_tx[channel])) {
             uart_tx_spin_wait_bounded(&waited_since, UART_TX_DMA_YIELD_MS);
 
-            // 2 KB at 460800 baud takes 44 ms, so a transfer still running after
-            // a second is not slow, it is stuck. With CTS handshaking the PIO
-            // state machine samples the line before every byte: if it stops
-            // draining its FIFO the DREQ stops and the DMA never finishes. That
-            // used to park this loop for good, which killed the channel's
-            // ethernet-to-serial direction until the device was restarted while
-            // the other direction kept working.
+            // With CTS handshaking the PIO state machine samples the line before
+            // every byte: if the peer stops draining its FIFO the DREQ stops and
+            // the DMA never finishes. That used to park this loop for good, which
+            // killed the channel's ethernet-to-serial direction until the device
+            // was restarted while the other direction kept working. Abandoning the
+            // transfer is still the escape, but it loses the bytes that had not
+            // been handed over, so it waits long enough to be sure the peer is
+            // gone rather than merely late.
             if ((time_us_32() - entered_us) < (UART_TX_DMA_STUCK_MS * 1000U)) {
                 continue;
             }

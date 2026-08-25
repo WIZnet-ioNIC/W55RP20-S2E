@@ -84,11 +84,9 @@ void device_wdt_reset(void);
 // the reset to be attributed to the holder that caused it rather than the next.
 #define SEG_SOCKET_LOCK_STUCK_MS 5000U
 
-// Largest observed gap between watchdog feeds. The deadline is 8.388 s, so a run
-// that never resets still shows how close it came.
-uint32_t device_wdt_max_gap_ms(void);
+// How long since anything last fed the watchdog, for the postmortem to record
+// when the deadline is missed.
 uint32_t device_wdt_since_feed_ms(void);
-uint32_t device_wdt_max_gap_at_ms(void);
 
 void seg_postmortem_init(void);
 void seg_postmortem_report(void);

@@ -313,27 +313,11 @@ void start_task(void *argument) {
         seg_postmortem_report();
     }
 
-    // Wake every minute to watch how close the watchdog came to expiring, but only
-    // speak when the margin is actually eaten into. A healthy run feeds it within
-    // tens of milliseconds of an 8388 ms deadline, and reporting that says nothing.
-    // A quarter of the deadline gone means something held the CPU for two seconds,
-    // which is worth a line while there is still room to recover.
-    const uint32_t gap_report_floor_ms = 2000;
-    uint32_t reported_gap_ms = gap_report_floor_ms;
-
+    // Everything the device does runs in its own task from here; this one
+    // only has to stay out of the way.
     while (1) {
         vTaskDelay(pdMS_TO_TICKS(60000));
-
-        uint32_t gap_ms = device_wdt_max_gap_ms();
-
-        if (gap_ms > reported_gap_ms) {
-            reported_gap_ms = gap_ms;
-            printf("[WDT_MARGIN] max_gap_ms=%lu at_ms=%lu deadline_ms=8388\r\n",
-                   (unsigned long)gap_ms,
-                   (unsigned long)device_wdt_max_gap_at_ms());
-        }
     }
-
 }
 
 void vApplicationPassiveIdleHook(void) {

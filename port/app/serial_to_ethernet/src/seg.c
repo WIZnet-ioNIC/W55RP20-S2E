@@ -205,6 +205,64 @@ static uint16_t seg_tx_fsr_bounded(uint8_t sock) {
 
 static volatile uint8_t seg_recv_step[DEVICE_UART_CNT];
 
+// S2E has a stall recovery; E2S has none, and the difference is not deliberate.
+// ether_to_uart() returns at its flow-control gate without reading the socket,
+// and nothing on that path prints, so a peer that stops asserting CTS parks the
+// channel silently until the device is restarted - observed on DATA0, DATA1 and
+// DATA3, always with the host's E2S counters frozen and the device log empty.
+// Record when the gate first refused so the monitor can say so and, eventually,
+// break the deadlock.
+static volatile uint32_t seg_e2s_gate_since_us[DEVICE_UART_CNT];
+static volatile uint8_t seg_e2s_gate_blocked[DEVICE_UART_CNT];
+static volatile uint8_t seg_e2s_gate_reported[DEVICE_UART_CNT];
+static volatile uint16_t seg_e2s_cts_edges[DEVICE_UART_CNT];
+static volatile uint8_t seg_e2s_cts_last[DEVICE_UART_CNT];
+
+// Ten seconds is far past any real RTS/CTS pause at these rates but well short
+// of anything worth acting on, so it only speaks.
+#define SEG_E2S_GATE_REPORT_MS   10000U
+
+// Two ways out, because time alone is a poor test. A peer applying genuine
+// backpressure keeps moving CTS as its buffer drains and refills; the failure
+// seen here freezes the line instead - four channels held it still for a full
+// five minutes while their serial ports stayed open and writable, and only
+// closing and reopening the port on the host cleared it.
+//
+// So a line with no edges at all is treated as dead and recovered early, while
+// a line that is still moving is left alone however long it takes. Earlier
+// attempts guessed a duration (3 s, then 6 s) and cut healthy connections
+// because duration cannot tell the two apart. This asks the question directly.
+#define SEG_E2S_GATE_RECOVER_MS       300000U  // moving line: last resort only
+#define SEG_E2S_GATE_FROZEN_MS         30000U  // no edges at all: act sooner
+
+static void seg_e2s_gate_mark_blocked(int channel) {
+    if (!seg_e2s_gate_blocked[channel]) {
+        seg_e2s_gate_since_us[channel] = time_us_32();
+        seg_e2s_gate_blocked[channel] = 1;
+    }
+}
+
+static void seg_e2s_gate_mark_clear(int channel) {
+    seg_e2s_gate_blocked[channel] = 0;
+    seg_e2s_gate_reported[channel] = 0;
+    seg_e2s_cts_edges[channel] = 0;
+}
+
+// Sampled from the monitor task every 250 ms while a channel sits at the gate.
+// A peer applying real backpressure lets CTS go both ways; a line that never
+// moves for five minutes is not backpressure, it is a dead signal - and that
+// separates "the host really is refusing" from "this pin is stuck".
+static void seg_e2s_cts_watch(int channel) {
+    uint8_t level = uart_cts_level(channel);
+
+    if (level != seg_e2s_cts_last[channel]) {
+        seg_e2s_cts_last[channel] = level;
+        if (seg_e2s_cts_edges[channel] < 0xFFFFU) {
+            seg_e2s_cts_edges[channel]++;
+        }
+    }
+}
+
 // Four channels packed one byte each, so a single record says which of them
 // stopped and where.
 uint32_t seg_recv_steps_packed(void) {
@@ -630,16 +688,29 @@ static void seg_s2e_recovery_poll(int channel) {
     xSemaphoreGive(seg_critical_sem[channel]);
     seg_s2e_recovery_reset(channel, seg_s2e_tx_progress[channel]);
 
+    // Two channels have now wedged inside the same millisecond more than once,
+    // which no per-socket cause explains, so name the shared resources: who
+    // holds the app-wide socket mutex and who holds the SPI critical section.
+    // Both are lock-free reads of volatile state - no SPI, no mutex.
+    uint32_t sock_owner_tag = 0;
+    uint32_t sock_held_ms = seg_socket_lock_held_ms(&sock_owner_tag);
+    uint8_t spi_owner = 0;
+    uint8_t spi_waiters = 0;
+    uint32_t spi_held_ms = seg_wiz_lock_snapshot(&spi_owner, &spi_waiters);
+
     // Print after releasing the channel lock. USB stdio can block, and recovery
     // must not turn a socket fault into a channel-task lockout.
     printf("[S2E_RECOVERY] ch=%d sock=%u stalled_ms=%lu ring=%u u2e=%u "
            "tx_fsr=%u/%u sn_ir=0x%02x sr=0x%02x send_len=%u send_rc=%d sending=%u "
-           "action=socket_recycle\r\n",
+           "socklock=%lu/%08lx spi=%c/%u/%lu action=socket_recycle\r\n",
            channel, (unsigned int)sock, (unsigned long)stalled_ms,
            (unsigned int)ring_used, (unsigned int)staged,
            (unsigned int)tx_fsr_first, (unsigned int)tx_fsr_second,
            (unsigned int)sn_ir, (unsigned int)sn_sr,
-           (unsigned int)send_len, (int)send_rc, (unsigned int)sending);
+           (unsigned int)send_len, (int)send_rc, (unsigned int)sending,
+           (unsigned long)sock_held_ms, (unsigned long)sock_owner_tag,
+           spi_owner ? (char)spi_owner : '-',
+           (unsigned int)spi_waiters, (unsigned long)spi_held_ms);
 }
 #endif
 
@@ -2732,14 +2803,17 @@ static void ether_to_uart_unlocked(uint8_t sock, int channel) {
     seg_recv_step[channel] = SEG_RECV_STEP_CTS;
     if (serial_option->flow_control == flow_rts_cts) {
         if (!platform_uart_cts_ready(channel)) {
+            seg_e2s_gate_mark_blocked(channel);
             return;
         }
     } else if (serial_option->flow_control == flow_dtr_dsr) {
         // DSR takes CTS's place: the peer is only ready while it is asserted.
         if (get_flowcontrol_dsr_pin(channel) != IO_LOW) {
+            seg_e2s_gate_mark_blocked(channel);
             return;
         }
     }
+    seg_e2s_gate_mark_clear(channel);
 
     do {
         // H/W Socket buffer -> User's buffer
@@ -3886,6 +3960,84 @@ static void seg_keepalive_timer_restart(TimerHandle_t timer, uint32_t delay_ms) 
 #if SEG_S2E_STALL_RECOVERY_ENABLE
 // Polls every channel from an independent task so it remains available when a
 // channel's data tasks stop making useful progress.
+// Runs in the monitor task, never in a channel task: the channel task is the
+// one standing at the gate. Touches no W5500 register and takes no lock, so it
+// cannot become the stall it reports - the mistake the flow diagnostics made.
+static void seg_e2s_gate_poll(int channel) {
+    uint32_t since;
+    uint8_t was_blocked = seg_e2s_gate_blocked[channel];
+    uint32_t now;
+    uint32_t blocked_ms;
+    uint32_t sock_owner_tag;
+    uint32_t sock_held_ms;
+    uint8_t spi_owner;
+    uint8_t spi_waiters;
+    uint32_t spi_held_ms;
+
+    if (was_blocked) {
+        seg_e2s_cts_watch(channel);
+    }
+    if (!seg_e2s_gate_blocked[channel]) {
+        return;
+    }
+    if (get_device_status(channel) != ST_CONNECT) {
+        return;
+    }
+
+    // Timestamp before clock. The other order lets a gate that blocked between
+    // the two reads produce a negative difference, and an unsigned one at that.
+    since = seg_e2s_gate_since_us[channel];
+    now = time_us_32();
+    if (!seg_e2s_gate_blocked[channel]) {
+        return;                 // cleared while we were reading
+    }
+    blocked_ms = (now - since) / 1000U;
+
+    // Named for the same reason as in the S2E report: channels have stalled in
+    // the same millisecond, so the shared resources have to be on the record.
+    sock_owner_tag = 0;
+    sock_held_ms = seg_socket_lock_held_ms(&sock_owner_tag);
+    spi_owner = 0;
+    spi_waiters = 0;
+    spi_held_ms = seg_wiz_lock_snapshot(&spi_owner, &spi_waiters);
+
+    // A line that has not moved once since the gate closed is not holding us
+    // off, it is stuck. Anything with even one edge is still talking, so it
+    // only qualifies for the long timeout.
+    uint8_t frozen = (seg_e2s_cts_edges[channel] == 0U) &&
+                     (blocked_ms >= SEG_E2S_GATE_FROZEN_MS);
+
+    if (frozen || (blocked_ms >= SEG_E2S_GATE_RECOVER_MS)) {
+        printf("[E2S_STALL] ch=%d cts=%u blocked_ms=%lu cts_edges=%u "
+               "socklock=%lu/%08lx spi=%c/%u/%lu reason=%s action=socket_recycle\r\n",
+               channel, (unsigned int)platform_uart_cts_ready(channel),
+               (unsigned long)blocked_ms,
+               (unsigned int)seg_e2s_cts_edges[channel],
+               (unsigned long)sock_held_ms, (unsigned long)sock_owner_tag,
+               spi_owner ? (char)spi_owner : '-',
+               (unsigned int)spi_waiters, (unsigned long)spi_held_ms,
+               frozen ? "frozen_cts" : "timeout");
+        seg_e2s_gate_mark_clear(channel);
+        process_socket_termination(seg_data_sock[channel], SOCK_TERMINATION_DELAY,
+                                   channel, TRUE);
+        return;
+    }
+
+    if (!seg_e2s_gate_reported[channel] &&
+            (blocked_ms >= SEG_E2S_GATE_REPORT_MS)) {
+        seg_e2s_gate_reported[channel] = 1;
+        printf("[E2S_STALL] ch=%d cts=%u blocked_ms=%lu rts_blocked=%u cts_edges=%u "
+               "socklock=%lu/%08lx spi=%c/%u/%lu\r\n",
+               channel, (unsigned int)platform_uart_cts_ready(channel),
+               (unsigned long)blocked_ms,
+               (unsigned int)uart_rts_is_blocked(channel),
+               (unsigned int)seg_e2s_cts_edges[channel],
+               (unsigned long)sock_held_ms, (unsigned long)sock_owner_tag,
+               spi_owner ? (char)spi_owner : '-',
+               (unsigned int)spi_waiters, (unsigned long)spi_held_ms);
+    }
+}
+
 void seg_s2e_monitor_task(void *argument) {
     (void)argument;
 
@@ -3901,16 +4053,11 @@ void seg_s2e_monitor_task(void *argument) {
     reg_wizchip_cris_cbfunc(seg_wiz_cris_enter, seg_wiz_cris_exit);
 
     for (;;) {
-#if (DEVICE_UART_CNT > 2)
-        // DATA2/DATA3 share one PIO RX consumer task. This poll is normally
-        // silent and emits a snapshot only when that shared path stops making
-        // progress for long enough to explain a simultaneous two-channel stall.
-        pio_uart_rx_diag_poll();
-#endif
         for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
 #if SEG_S2E_STALL_RECOVERY_ENABLE
             seg_s2e_recovery_poll(ch);  // permanent raw-TCP send stall
 #endif
+            seg_e2s_gate_poll(ch);      // peer stopped asserting CTS
         }
         vTaskDelay(pdMS_TO_TICKS(250));
     }

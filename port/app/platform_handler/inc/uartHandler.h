@@ -125,7 +125,6 @@ uint8_t uart_tx_dma_busy(int channel);
 #if (DEVICE_UART_CNT > 2)
 // Long-soak diagnostics for the DATA2/DATA3 shared PIO RX consumer task.
 // Silent unless it detects a persistent PIO RX fault.
-void pio_uart_rx_diag_poll(void);
 #endif
 uint8_t platform_uart_cts_ready(int channel);
 void platform_uart_tx_wait(int channel);
