@@ -154,6 +154,42 @@ static int8_t segcp_socket_close(uint8_t sock) {
     return result;
 }
 
+// A reply that cannot be handed to the chip is simply lost: the request has
+// already been taken out of the receive buffer, so the tool's retry arrives as
+// a fresh one and meets the same refusal.  Several ways for that to become
+// permanent share this one symptom - transmit free space that never returns
+// because a send was booked and never completed, or a command register that
+// never clears - and none of them leave the socket in a state the status switch
+// would reopen, so the device answers no search again until it is power cycled
+// while its data channels carry on.
+//
+// Rather than tell those causes apart, notice that replies have stopped leaving
+// and reopen the socket, which clears all of them.  Only a run of failures
+// counts: a single refusal is ordinary back-pressure.
+#define SEGCP_UDP_REPLY_STUCK_MS 10000U
+
+static uint32_t segcp_udp_reply_refused_since_ms;
+
+static void segcp_udp_reply_sent(int32_t result) {
+    uint32_t now = (uint32_t)millis();
+
+    if (result > 0) {
+        segcp_udp_reply_refused_since_ms = 0;
+        return;
+    }
+
+    if (segcp_udp_reply_refused_since_ms == 0) {
+        // Never zero, so the next refusal can tell "first" from "still".
+        segcp_udp_reply_refused_since_ms = (now != 0) ? now : 1;
+        return;
+    }
+
+    if ((now - segcp_udp_reply_refused_since_ms) >= SEGCP_UDP_REPLY_STUCK_MS) {
+        segcp_udp_reply_refused_since_ms = 0;
+        segcp_socket_close(SEGCP_UDP_SOCK);
+    }
+}
+
 static int8_t segcp_socket_clear_interrupt(uint8_t sock, uint16_t interrupt) {
     int8_t result;
 
@@ -2590,9 +2626,11 @@ uint16_t proc_SEGCP_udp(uint8_t* segcp_req, uint8_t* segcp_rep) {
                             trep += (strlen(tpar) + 4);
                             ret = proc_SEGCP(treq, trep, segcp_privilege);
 
-                            segcp_socket_sendto(SEGCP_UDP_SOCK, segcp_rep,
-                                                14 + strlen(tpar) + strlen(trep),
-                                                (uint8_t *)"\xFF\xFF\xFF\xFF", destport);
+                            segcp_udp_reply_sent(
+                                segcp_socket_sendto(SEGCP_UDP_SOCK, segcp_rep,
+                                                    14 + strlen(tpar) + strlen(trep),
+                                                    (uint8_t *)"\xFF\xFF\xFF\xFF",
+                                                    destport));
 
                         }
                     }
@@ -2607,7 +2645,24 @@ uint16_t proc_SEGCP_udp(uint8_t* segcp_req, uint8_t* segcp_rep) {
         //            ctlsocket(SEGCP_UDP_SOCK, CS_CLR_INTERRUPT, (void *)&reg_val);
         break;
     case SOCK_CLOSED:
-        segcp_socket_open(SEGCP_UDP_SOCK, Sn_MR_UDP, DEVICE_SEGCP_PORT, 0x00);
+        // Non-blocking like every other socket here.  ioLibrary's recvfrom()
+        // offers its SOCK_BUSY exit only to a socket opened this way; without
+        // it, a read that finds the receive size at zero spins forever holding
+        // seg_socket_sem, which stops the data channels as well as this one.
+        // The size is read and the datagram taken under two separate
+        // acquisitions, so another task draining the socket in between is all
+        // it takes to arrive with nothing there.
+        segcp_socket_open(SEGCP_UDP_SOCK, Sn_MR_UDP, DEVICE_SEGCP_PORT,
+                          SF_IO_NONBLOCK);
+        break;
+
+    default:
+        // A UDP socket only reports these two states, and the cases above carry
+        // it between them.  Any other reading has no way back - the socket is
+        // never reopened, so the device answers no search again until it is
+        // power cycled, while its data channels carry on.  Close it and let the
+        // next pass reopen it.
+        segcp_socket_close(SEGCP_UDP_SOCK);
         break;
     }
     return ret;

@@ -275,6 +275,22 @@ uint32_t seg_socket_lock_held_ms(uint32_t *owner_tag) {
 // the complete W5500 retry window.  Keep a tiny per-socket completion state and
 // return as soon as the W5500 has accepted Sn_CR_SEND instead.
 static uint8_t seg_udp_send_pending[_WIZCHIP_SOCK_NUM_] = {0, };
+static uint32_t seg_udp_send_started_us[_WIZCHIP_SOCK_NUM_];
+
+// The flag above is only ever cleared by reading the completion the chip owes
+// us, so a send the W5500 answers with neither SENDOK nor TIMEOUT leaves it set
+// for good: every later datagram on that socket returns unsent from the same
+// branch and only a reboot clears it.  On the configuration socket that is a
+// device which has stopped answering searches while its data channels still
+// run, and the reply is discarded without a word because proc_SEGCP_udp()
+// ignores the return value.  Data channels in UDP mode share this helper and
+// would stop transmitting the same way.
+//
+// Give up on a completion that is this late.  RTR and RCR are left at their
+// resets, so the chip raises TIMEOUT after 9 x 200 ms; the deadline has to
+// clear that window by enough that a peer which is merely unreachable is still
+// reported as a timeout rather than abandoned here.
+#define SEG_UDP_SEND_PENDING_MAX_US 5000000U
 
 static void seg_udp_send_reset_locked(uint8_t sock) {
     if (sock < _WIZCHIP_SOCK_NUM_) {
@@ -337,9 +353,16 @@ int32_t seg_wizchip_udp_send_nonblocking(uint8_t sock, uint8_t *buf,
             goto out;
         }
         if (!(interrupt & Sn_IR_SENDOK)) {
-            goto out;
+            if ((uint32_t)(time_us_32() - seg_udp_send_started_us[sock]) <
+                    SEG_UDP_SEND_PENDING_MAX_US) {
+                goto out;
+            }
+            // Abandon it.  Clear both completion bits, so one arriving late
+            // cannot be read as the next send's.
+            setSn_IR(sock, Sn_IR_SENDOK | Sn_IR_TIMEOUT);
+        } else {
+            setSn_IR(sock, Sn_IR_SENDOK);
         }
-        setSn_IR(sock, Sn_IR_SENDOK);
         seg_udp_send_pending[sock] = SEG_DISABLE;
     } else {
         // Clear stale completion bits left by a previous socket generation.
@@ -360,6 +383,7 @@ int32_t seg_wizchip_udp_send_nonblocking(uint8_t sock, uint8_t *buf,
     setSn_DPORT(sock, port);
     wiz_send_data(sock, buf, len);
     setSn_CR(sock, Sn_CR_SEND);
+    seg_udp_send_started_us[sock] = time_us_32();
     seg_udp_send_pending[sock] = SEG_ENABLE;
     result = (int32_t)len;
 
