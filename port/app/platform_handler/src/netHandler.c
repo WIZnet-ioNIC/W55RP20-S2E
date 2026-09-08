@@ -118,6 +118,7 @@ void net_status_task(void *argument) {
             g_net_status = NET_IP_UP;
             xSemaphoreGive(net_seg_sem[SEG_DATA0_CH]);
             xSemaphoreGive(net_seg_sem[SEG_DATA1_CH]);
+            xSemaphoreGive(net_seg_sem[SEG_DATA2_CH]);
             xSemaphoreGive(net_segcp_tcp_sem);
             xSemaphoreGive(net_http_webserver_sem);
             break;

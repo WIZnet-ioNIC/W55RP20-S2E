@@ -19,6 +19,7 @@
 
 #define SEG_DATA0_CH        0
 #define SEG_DATA1_CH        1
+#define SEG_DATA2_CH        2   // 3rd channel (virtual): extra Modbus-TCP socket sharing CH0's physical RTU bus
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 #define SOCK_TERMINATION_DELAY 10 //ms

@@ -391,22 +391,14 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
             if (tcp_option->inactivity) {
                 flag_inactivity[channel] = SEG_DISABLE;
                 if (seg_inactivity_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_0", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    } else if (channel == 1) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_1", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    }
+                    seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
                 }
                 xTimerStart(seg_inactivity_timer[channel], 0);
             }
 
             if (tcp_option->keepalive_en) {
                 if (seg_keepalive_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_0", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    } else if (channel == 1) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_1", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    }
+                    seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
                 } else {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
@@ -568,22 +560,14 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
             if (tcp_option->inactivity) {
                 flag_inactivity[channel] = SEG_DISABLE;
                 if (seg_inactivity_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_0", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    } else if (channel == 1) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_1", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    }
+                    seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
                 }
                 xTimerStart(seg_inactivity_timer[channel], 0);
             }
 
             if (tcp_option->keepalive_en) {
                 if (seg_keepalive_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_0", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    } else if (channel == 1) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_1", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    }
+                    seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
                 } else {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
@@ -749,22 +733,14 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
             if (tcp_option->inactivity) {
                 flag_inactivity[channel] = SEG_DISABLE;
                 if (seg_inactivity_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_0", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    } else if (channel == 1) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_1", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    }
+                    seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
                 }
                 xTimerStart(seg_inactivity_timer[channel], 0);
             }
 
             if (tcp_option->keepalive_en) {
                 if (seg_keepalive_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_0", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    } else if (channel == 1) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_1", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    }
+                    seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
                 } else {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
@@ -949,22 +925,14 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
             if (tcp_option->inactivity) {
                 flag_inactivity[channel] = SEG_DISABLE;
                 if (seg_inactivity_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_0", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    } else if (channel == 1) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_1", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    }
+                    seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
                 }
                 xTimerStart(seg_inactivity_timer[channel], 0);
             }
 
             if (tcp_option->keepalive_en) {
                 if (seg_keepalive_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_0", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    } else if (channel == 1) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_1", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    }
+                    seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
                 } else {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
@@ -1097,22 +1065,14 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
             if (tcp_option->inactivity) {
                 flag_inactivity[channel] = SEG_DISABLE;
                 if (seg_inactivity_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_0", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    } else if (channel == 1) {
-                        seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer_1", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
-                    }
+                    seg_inactivity_timer[channel] = xTimerCreate("seg_inactivity_timer", pdMS_TO_TICKS(tcp_option->inactivity * 1000), pdFALSE, (void *)channel, inactivity_timer_callback);
                 }
                 xTimerStart(seg_inactivity_timer[channel], 0);
             }
 
             if (tcp_option->keepalive_en) {
                 if (seg_keepalive_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_0", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    } else if (channel == 1) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_1", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    }
+                    seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
                 } else {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
@@ -1124,11 +1084,7 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
             if (tcp_option->pw_connect_en) { // TCP server mode only (+ mixed_server)
                 flag_auth_time[channel] = SEG_DISABLE;
                 if (seg_auth_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_auth_timer[channel] = xTimerCreate("seg_auth_timer_0", pdMS_TO_TICKS(MAX_CONNECTION_AUTH_TIME), pdFALSE, (void *)channel, auth_timer_callback);
-                    } else if (channel == 1) {
-                        seg_auth_timer[channel] = xTimerCreate("seg_auth_timer_1", pdMS_TO_TICKS(MAX_CONNECTION_AUTH_TIME), pdFALSE, (void *)channel, auth_timer_callback);
-                    }
+                    seg_auth_timer[channel] = xTimerCreate("seg_auth_timer", pdMS_TO_TICKS(MAX_CONNECTION_AUTH_TIME), pdFALSE, (void *)channel, auth_timer_callback);
                 }
                 xTimerStart(seg_auth_timer[channel], 0);
             }
@@ -1348,11 +1304,7 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
 
             if (tcp_option->keepalive_en) {
                 if (seg_keepalive_timer[channel] == NULL) {
-                    if (channel == 0) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_0", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    } else if (channel == 1) {
-                        seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer_1", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
-                    }
+                    seg_keepalive_timer[channel] = xTimerCreate("seg_keepalive_timer", pdMS_TO_TICKS(tcp_option->keepalive_wait_time), pdFALSE, (void *)channel, keepalive_timer_callback);
                 } else {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
@@ -1900,6 +1852,7 @@ void init_trigger_modeswitch(uint8_t mode) {
         opmode = DEVICE_AT_MODE;
         set_device_status(ST_ATMODE, SEG_DATA0_CH);
         set_device_status(ST_ATMODE, SEG_DATA1_CH);
+        set_device_status(ST_ATMODE, SEG_DATA2_CH);
 
         if (serial_common->serial_debug_en) {
             PRT_SEG(" > SEG:AT Mode\r\n");
@@ -1909,6 +1862,7 @@ void init_trigger_modeswitch(uint8_t mode) {
         opmode = DEVICE_GW_MODE;
         set_device_status(ST_OPEN, SEG_DATA0_CH);
         set_device_status(ST_OPEN, SEG_DATA1_CH);
+        set_device_status(ST_OPEN, SEG_DATA2_CH);
 
         for (int i = 0; i < DEVICE_UART_CNT; i++) {
             network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[i]);
@@ -1925,10 +1879,13 @@ void init_trigger_modeswitch(uint8_t mode) {
 
     u2e_size[SEG_DATA0_CH] = 0;
     u2e_size[SEG_DATA1_CH] = 0;
+    u2e_size[SEG_DATA2_CH] = 0;
     data_buffer_flush(SEG_DATA0_CH);
     data_buffer_flush(SEG_DATA1_CH);
+    data_buffer_flush(SEG_DATA2_CH);
     reset_SEG_timeflags(SEG_DATA0_CH);
     reset_SEG_timeflags(SEG_DATA1_CH);
+    reset_SEG_timeflags(SEG_DATA2_CH);
 }
 
 uint8_t check_modeswitch_trigger(uint8_t ch) {
@@ -2262,13 +2219,8 @@ void seg_timer_msec(void) {
                 case UDP_MODE:
                 case MQTT_CLIENT_MODE:
                 case MQTTS_CLIENT_MODE:
-                    if (i == SEG_DATA0_CH) {
-                        xSemaphoreGiveFromISR(seg_u2e_sem[SEG_DATA0_CH], &xHigherPriorityTaskWoken);
-                        portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
-                    } else if (i == SEG_DATA1_CH) {
-                        xSemaphoreGiveFromISR(seg_u2e_sem[SEG_DATA1_CH], &xHigherPriorityTaskWoken);
-                        portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
-                    }
+                    xSemaphoreGiveFromISR(seg_u2e_sem[i], &xHigherPriorityTaskWoken);
+                    portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
                     break;
                 }
 
@@ -2305,6 +2257,8 @@ void seg_task(void *argument)  {
         do_seg(SEG_DATA0_SOCK, SEG_DATA0_CH);
         vTaskDelay(20);
         do_seg(SEG_DATA1_SOCK, SEG_DATA1_CH);
+        vTaskDelay(20);
+        do_seg(SEG_DATA2_SOCK, SEG_DATA2_CH);
         xSemaphoreTake(seg_sem[SEG_DATA0_CH], pdMS_TO_TICKS(5));
         //taskYIELD();
     }
@@ -2588,44 +2542,36 @@ void timers_stop(uint8_t channel) {
 void keepalive_timer_callback(TimerHandle_t xTimer) {
     int timer_id = (int)pvTimerGetTimerID(xTimer);
 
-    if (timer_id == SEG_DATA0_CH) {
-        flag_send_keepalive[SEG_DATA0_CH] = SEG_ENABLE;
-    } else if (timer_id == SEG_DATA1_CH) {
-        flag_send_keepalive[SEG_DATA1_CH] = SEG_ENABLE;
-    } else {
+    if (timer_id < 0 || timer_id >= DEVICE_UART_CNT) {
         return;
     }
+    flag_send_keepalive[timer_id] = SEG_ENABLE;
     xSemaphoreGive(seg_timer_sem);
 }
 
 void inactivity_timer_callback(TimerHandle_t xTimer) {
     int timer_id = (int)pvTimerGetTimerID(xTimer);
 
-    if (timer_id == SEG_DATA0_CH) {
-        flag_inactivity[SEG_DATA0_CH] = SEG_ENABLE;
-    } else if (timer_id == SEG_DATA1_CH) {
-        flag_inactivity[SEG_DATA1_CH] = SEG_ENABLE;
-    } else {
+    if (timer_id < 0 || timer_id >= DEVICE_UART_CNT) {
         return;
     }
+    flag_inactivity[timer_id] = SEG_ENABLE;
     xSemaphoreGive(seg_timer_sem);
 }
 
 void auth_timer_callback(TimerHandle_t xTimer) {
     int timer_id = (int)pvTimerGetTimerID(xTimer);
     PRT_INFO("Timer ID: %d\r\n", timer_id);
-    if (timer_id == SEG_DATA0_CH) {
-        flag_auth_time[SEG_DATA0_CH] = SEG_ENABLE;
-    } else if (timer_id == SEG_DATA1_CH) {
-        flag_auth_time[SEG_DATA1_CH] = SEG_ENABLE;
-    } else {
+    if (timer_id < 0 || timer_id >= DEVICE_UART_CNT) {
         return;
     }
+    flag_auth_time[timer_id] = SEG_ENABLE;
     xSemaphoreGive(seg_timer_sem);
 }
 
 void seg_timer_task(void *argument)  {
     struct __tcp_option *tcp_option;
+    const uint8_t ch_sock[DEVICE_UART_CNT] = {SEG_DATA0_SOCK, SEG_DATA1_SOCK, SEG_DATA2_SOCK};
 
     while (1) {
         xSemaphoreTake(seg_timer_sem, portMAX_DELAY);
@@ -2637,11 +2583,7 @@ void seg_timer_task(void *argument)  {
                 PRT_SEG(" > INACTIVITY TIMER: TIMEOUT\r\n");
                 flag_inactivity[i] = SEG_DISABLE;
 #endif
-                if (i == SEG_DATA0_CH) {
-                    process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
-                } else if (i == SEG_DATA1_CH) {
-                    process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
-                }
+                process_socket_termination(ch_sock[i], SOCK_TERMINATION_DELAY, i, TRUE);
             }
 
             if (flag_send_keepalive[i] == SEG_ENABLE) {
@@ -2649,11 +2591,7 @@ void seg_timer_task(void *argument)  {
                 //            PRT_SEG(" >> send_keepalive_packet\r\n");
                 //#endif
                 flag_send_keepalive[i] = SEG_DISABLE;
-                if (i == SEG_DATA0_CH) {
-                    send_keepalive_packet_manual(SEG_DATA0_SOCK);    // <-> send_keepalive_packet_auto()
-                } else if (i == SEG_DATA1_CH) {
-                    send_keepalive_packet_manual(SEG_DATA1_SOCK);    // <-> send_keepalive_packet_auto()
-                }
+                send_keepalive_packet_manual(ch_sock[i]);    // <-> send_keepalive_packet_auto()
 
                 if (xTimerGetPeriod(seg_keepalive_timer[i]) != pdMS_TO_TICKS(tcp_option->keepalive_retry_time)) {
                     xTimerChangePeriod(seg_keepalive_timer[i], pdMS_TO_TICKS(tcp_option->keepalive_retry_time), 0);
@@ -2669,11 +2607,7 @@ void seg_timer_task(void *argument)  {
 #ifdef _SEG_DEBUG_
                     printf(" > CONNECTION PW: AUTH TIMEOUT\r\n");
 #endif
-                    if (i == SEG_DATA0_CH) {
-                        process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
-                    } else if (i == SEG_DATA1_CH) {
-                        process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
-                    }
+                    process_socket_termination(ch_sock[i], SOCK_TERMINATION_DELAY, i, TRUE);
                 }
             }
         }

@@ -480,7 +480,7 @@ uint8_t update_module_firmware(st_http_request * p_http_request, uint8_t *buf) {
 
 
 void http_webserver_task(void *argument)  {
-    const uint8_t socknumlist[MAX_HTTPSOCK] = {SOCK_HTTPSERVER_1, SOCK_HTTPSERVER_2, SOCK_HTTPSERVER_3};
+    const uint8_t socknumlist[MAX_HTTPSOCK] = {SOCK_HTTPSERVER_1, SOCK_HTTPSERVER_2};
     uint8_t i;
 
     httpServer_init(gSEGCPREQ, gSEGCPREP, MAX_HTTPSOCK, socknumlist);

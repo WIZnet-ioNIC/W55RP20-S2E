@@ -44,8 +44,10 @@ void device_set_factory_default(void) {
 void device_socket_termination(void) {
     process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, FALSE);
     process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, FALSE);
+    process_socket_termination(SEG_DATA2_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA2_CH, FALSE);
 
     for (int i = SEG_DATA1_SOCK + 1; i < _WIZCHIP_SOCK_NUM_; i++) {
+        if (i == SEG_DATA2_SOCK) continue;   // DATA2 already gracefully terminated above
         close(i);
     }
 }
@@ -337,7 +339,7 @@ void display_Dev_Info_header(void) {
     PRT_INFO(" %s \r\n", DEVICE_ID_DEFAULT); //PRT_INFO(" %s \r\n", dev_config->device_common.device_name);
     PRT_INFO(" >> WIZnet Device Server\r\n");
 
-    PRT_INFO(" >> Firmware version: %d.%d.%d %s\r\n", dev_config->device_common.fw_ver[0],
+    PRT_INFO(" >> Firmware version: %d.%d.%d_%s\r\n", dev_config->device_common.fw_ver[0],
              dev_config->device_common.fw_ver[1],
              dev_config->device_common.fw_ver[2],
              STR_VERSION_STATUS);

@@ -59,7 +59,8 @@ enum baud {
     baud_115200 = 12,
     baud_230400 = 13,
     baud_460800 = 14,
-    baud_921600 = 15
+    baud_921600 = 15,
+    baud_max            // count of baud entries; used as upper bound in SEGCP baud validation
 };
 
 enum word_len {

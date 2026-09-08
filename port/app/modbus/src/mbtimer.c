@@ -20,6 +20,11 @@ bool vMBPortTimersCallbackCh1(struct repeating_timer *t) {
     return true; // Indicate that the timer callback was successful
 }
 
+bool vMBPortTimersCallbackCh2(struct repeating_timer *t) {
+    xMBRTUTimerT35Expired(SEG_DATA2_CH);
+    return true; // Indicate that the timer callback was successful
+}
+
 void vMBPortTimersCallback(struct repeating_timer *t) {
     if (t == &g_mb_timer[SEG_DATA0_CH]) {
         xMBRTUTimerT35Expired(SEG_DATA0_CH);
@@ -53,6 +58,8 @@ void vMBPortTimersEnable(int channel) {
         add_repeating_timer_us(mb_timeout[channel], vMBPortTimersCallbackCh0, NULL, &g_mb_timer[channel]);
     } else if (channel == SEG_DATA1_CH) {
         add_repeating_timer_us(mb_timeout[channel], vMBPortTimersCallbackCh1, NULL, &g_mb_timer[channel]);
+    } else if (channel == SEG_DATA2_CH) {
+        add_repeating_timer_us(mb_timeout[channel], vMBPortTimersCallbackCh2, NULL, &g_mb_timer[channel]);
     }
 #else
     add_repeating_timer_us(mb_timeout[channel], vMBPortTimersCallback, NULL, &g_mb_timer[channel]);

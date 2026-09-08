@@ -35,14 +35,23 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #if (DEVICE_BOARD_NAME == WIZ5XXSR_RP)
 #define DEVICE_ID_DEFAULT                   "WIZ5XXSR-RP"
 #elif (DEVICE_BOARD_NAME == W55RP20_S2E || DEVICE_BOARD_NAME == PLATYPUS_S2E)
-#define DEVICE_ID_DEFAULT                   "W55RP20-S2E"
+// DEVICE_ID_DEFAULT is set by channel count below (after DEVICE_UART_CNT): "W55RP20-S2E-<n>CH"
 #elif (DEVICE_BOARD_NAME == W232N)
 #define DEVICE_ID_DEFAULT                   "W232N"
 #elif (DEVICE_BOARD_NAME == IP20)
 #define DEVICE_ID_DEFAULT                   "IP20"
 #endif
 #define DEVICE_CLOCK_SELECT                 CLOCK_SOURCE_EXTERNAL // or CLOCK_SOURCE_INTERNAL
-#define DEVICE_UART_CNT                     (2)
+#define DEVICE_UART_CNT                     (3)
+#if (DEVICE_BOARD_NAME == W55RP20_S2E || DEVICE_BOARD_NAME == PLATYPUS_S2E)
+#if   (DEVICE_UART_CNT == 4)
+#define DEVICE_ID_DEFAULT                   "W55RP20-S2E-4CH"   // model name reported via SEGCP MN (tool auto-detect)
+#elif (DEVICE_UART_CNT == 3)
+#define DEVICE_ID_DEFAULT                   "W55RP20-S2E-3CH"
+#else
+#define DEVICE_ID_DEFAULT                   "W55RP20-S2E-2CH"
+#endif
+#endif
 #define DEVICE_SETTING_PASSWORD_DEFAULT     "00000000"
 #define DEVICE_GROUP_DEFAULT                "WORKGROUP" // Device group
 #define DEVICE_TARGET_SYSTEM_CLOCK   PLL_SYS_KHZ

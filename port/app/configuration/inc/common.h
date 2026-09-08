@@ -9,12 +9,12 @@
 /* Application Firmware Version */
 #define MAJOR_VER               1
 #define MINOR_VER               2
-#define MAINTENANCE_VER         4
+#define MAINTENANCE_VER         5
 
 #define DEV_CONFIG_VER          104
 
 //#define STR_VERSION_STATUS      "Develop" // or "Stable"
-#define STR_VERSION_STATUS      "Develop"
+#define STR_VERSION_STATUS      "GreenCS"
 
 //////////////////////////////////
 // W5500 HW Socket Definition  //
@@ -32,13 +32,15 @@
 #define SOCK_NETBIOS            4
 #define SOCK_NTP                4
 
-#define MAX_HTTPSOCK	3
+#define MAX_HTTPSOCK	2   // was 3: socket 7 reassigned to SOCK_DATA2 (3rd channel)
 #define SOCK_HTTPSERVER_1       5
 #define SOCK_HTTPSERVER_2       6
-#define SOCK_HTTPSERVER_3       7
+//#define SOCK_HTTPSERVER_3     7   // reassigned to SOCK_DATA2 (3rd channel, shares CH0 RTU bus)
+#define SOCK_DATA2              7
 
 #define SEG_DATA0_SOCK          SOCK_DATA0
 #define SEG_DATA1_SOCK          SOCK_DATA1
+#define SEG_DATA2_SOCK          SOCK_DATA2
 #define SEGCP_UDP_SOCK          SOCK_CONFIG_UDP
 #define SEGCP_TCP_SOCK          SOCK_CONFIG_TCP
 

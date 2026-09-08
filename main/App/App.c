@@ -215,20 +215,33 @@ void start_task(void *argument) {
         eMBAsciiInit(SEG_DATA1_CH);
     }
 
+    serial_mode = get_serial_communation_protocol(SEG_DATA2_CH);
+    if (serial_mode == SEG_SERIAL_MODBUS_RTU) {
+        PRT_INFO(" > CH2 Modbus Mode\r\n");
+        eMBRTUInit(dev_config->serial_option[SEG_DATA0_CH].baud_rate, SEG_DATA2_CH);   // T35 tied to physical bus (CH0) baud
+    } else if (serial_mode == SEG_SERIAL_MODBUS_ASCII) {
+        PRT_INFO(" > CH2 Modbus ASCII Mode\r\n");
+        eMBAsciiInit(SEG_DATA2_CH);
+    }
+
     net_segcp_udp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     net_segcp_tcp_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     net_http_webserver_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     net_seg_sem[SEG_DATA0_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     net_seg_sem[SEG_DATA1_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    net_seg_sem[SEG_DATA2_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     segcp_uart_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_e2s_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_u2e_sem[SEG_DATA0_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_u2e_sem[SEG_DATA1_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    seg_u2e_sem[SEG_DATA2_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_timer_sem = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_sem[SEG_DATA0_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_sem[SEG_DATA1_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
+    seg_sem[SEG_DATA2_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)0);
     seg_critical_sem[SEG_DATA0_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)1);
     seg_critical_sem[SEG_DATA1_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)1);
+    seg_critical_sem[SEG_DATA2_CH] = xSemaphoreCreateCounting((unsigned portBASE_TYPE)0x7fffffff, (unsigned portBASE_TYPE)1);
 
     xTaskCreate(net_status_task, "Net_Status_Task", NET_TASK_STACK_SIZE, NULL, NET_TASK_PRIORITY, NULL);
     xTaskCreate(segcp_udp_task, "SEGCP_udp_Task", SEGCP_UDP_TASK_STACK_SIZE, NULL, SEGCP_UDP_TASK_PRIORITY, NULL);
