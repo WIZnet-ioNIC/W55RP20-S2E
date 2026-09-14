@@ -80,7 +80,7 @@ void init_uart_if_sel_pin(void) {
 uint8_t get_uart_if_sel_pin(int channel) {
     // Status of UART interface selector pin input; [0] RS-232/TTL mode, [1] RS-422/485 mode
 #ifdef __USE_UART_IF_SELECTOR__
-    if (GPIO_Input_Read(channel ? DATA1_UART_IF_SEL_PIN : DATA0_UART_IF_SEL_PIN)) {
+    if (GPIO_Input_Read(DATA_UART_PHY_CH(channel) ? DATA1_UART_IF_SEL_PIN : DATA0_UART_IF_SEL_PIN)) {
         return UART_IF_RS485;
     } else {
         return UART_IF_DEFAULT;

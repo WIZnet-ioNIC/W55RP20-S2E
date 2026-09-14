@@ -171,10 +171,12 @@ void init_flowcontrol_dtr_pin(void) {
 }
 
 void set_flowcontrol_dtr_pin(uint8_t set, int channel) {
+    int phy_ch = DATA_UART_PHY_CH(channel);
+
     if (set == ON) {
-        GPIO_Output_Set(channel ? DATA1_UART_DTR_PIN : DATA0_UART_DTR_PIN);
+        GPIO_Output_Set(phy_ch ? DATA1_UART_DTR_PIN : DATA0_UART_DTR_PIN);
     } else {
-        GPIO_Output_Reset(channel ? DATA1_UART_DTR_PIN : DATA0_UART_DTR_PIN);
+        GPIO_Output_Reset(phy_ch ? DATA1_UART_DTR_PIN : DATA0_UART_DTR_PIN);
     }
 }
 
@@ -186,7 +188,7 @@ void init_flowcontrol_dsr_pin(void) {
 }
 
 uint8_t get_flowcontrol_dsr_pin(int channel) {
-    return GPIO_Input_Read(channel ? DATA1_UART_DSR_PIN : DATA0_UART_DSR_PIN);
+    return GPIO_Input_Read(DATA_UART_PHY_CH(channel) ? DATA1_UART_DSR_PIN : DATA0_UART_DSR_PIN);
 }
 
 void init_connection_status_io(void) {

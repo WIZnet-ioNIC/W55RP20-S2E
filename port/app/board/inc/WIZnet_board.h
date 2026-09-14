@@ -43,6 +43,13 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #endif
 #define DEVICE_CLOCK_SELECT                 CLOCK_SOURCE_EXTERNAL // or CLOCK_SOURCE_INTERNAL
 #define DEVICE_UART_CNT                     (3)
+
+// The SiP has two physical data UARTs: DATA0 (uart1) and DATA1 (uart0).
+// Logical channels past those are virtual - they own no port of their own and
+// ride DATA0's bus (see UART_read/UART_write in mbserial.c). Resolve a logical
+// channel to its physical data port before touching UART/DMA/pin resources.
+#define DATA_UART_PORT_CNT                  (2)
+#define DATA_UART_PHY_CH(ch)                (((ch) == 1) ? 1 : 0)
 #if (DEVICE_BOARD_NAME == W55RP20_S2E || DEVICE_BOARD_NAME == PLATYPUS_S2E)
 #if   (DEVICE_UART_CNT == 4)
 #define DEVICE_ID_DEFAULT                   "W55RP20-S2E-4CH"   // model name reported via SEGCP MN (tool auto-detect)
