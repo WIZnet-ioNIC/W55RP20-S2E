@@ -133,6 +133,7 @@ void net_status_task(void *argument) {
                             wizchip_recovery();
                             process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
                             process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
+                            process_socket_termination(SEG_DATA2_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA2_CH, TRUE);
                             break;
                         }
                     }
@@ -144,9 +145,11 @@ void net_status_task(void *argument) {
                     if (get_device_status(SEG_DATA0_CH) != ST_ATMODE) {
                         set_device_status(ST_OPEN, SEG_DATA0_CH);
                         set_device_status(ST_OPEN, SEG_DATA1_CH);
+                        set_device_status(ST_OPEN, SEG_DATA2_CH);
                     }
                     process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
                     process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
+                    process_socket_termination(SEG_DATA2_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA2_CH, TRUE);
 #else   //device reset
                     device_raw_reboot();
 #endif

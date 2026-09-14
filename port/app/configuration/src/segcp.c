@@ -916,6 +916,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     } else {
                         process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
                         process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
+                        process_socket_termination(SEG_DATA2_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA2_CH, TRUE);
                         dev_config->network_connection[0].working_mode = tmp_byte;
                     }
                     break;
@@ -927,6 +928,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     } else {
                         process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
                         process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
+                        process_socket_termination(SEG_DATA2_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA2_CH, TRUE);
                         dev_config->network_connection[1].working_mode = tmp_byte;
                     }
                     break;
@@ -1719,6 +1721,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
 
                         process_socket_termination(SEG_DATA0_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA0_CH, TRUE);
                         process_socket_termination(SEG_DATA1_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA1_CH, TRUE);
+                        process_socket_termination(SEG_DATA2_SOCK, SOCK_TERMINATION_DELAY, SEG_DATA2_CH, TRUE);
                         PRT_SEGCP("SEGCP_FW:OK\r\n");
                     }
                     break;
