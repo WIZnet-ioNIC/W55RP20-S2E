@@ -13,7 +13,9 @@
 #include "ConfigData.h"
 #include "storageHandler.h"
 #include "deviceHandler.h"
+#ifdef __USE_S2E_OVER_TLS__
 #include "SSLInterface.h"
+#endif
 
 #include "seg.h"
 #include "segcp.h"
@@ -241,7 +243,9 @@ extern xSemaphoreHandle net_segcp_tcp_sem;
 extern xSemaphoreHandle segcp_uart_sem;
 
 #ifdef __USE_S2E_OVER_TLS__
+#ifdef __USE_S2E_OVER_TLS__
 extern wiz_tls_context s2e_tlsContext[DEVICE_UART_CNT];
+#endif
 #endif
 
 
@@ -783,6 +787,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                 case SEGCP_TR:
                     sprintf(trep, "%d", dev_config->network_option.tcp_rcr_val);
                     break;
+#if defined(__USE_S2E_OVER_TLS__) || defined(__USE_MQTT__)
                 case SEGCP_RC: // root ca option
                     sprintf(trep, "%d", dev_config->ssl_option[0].root_ca_option);
                     break;
@@ -865,6 +870,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                 case SEGCP_QO: // mqtt qos level
                     sprintf(trep, "%d", dev_config->mqtt_option[0].qos);
                     break;
+#endif
 
                 case SEGCP_UF: // fw bank copy flag
                     sprintf(trep, "%d", dev_config->firmware_update.fwup_copy_flag);
@@ -953,7 +959,9 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                 case SEGCP_XA: sprintf(trep, "%d", dev_config->tcp_option[2].keepalive_en); break;
                 case SEGCP_XS: sprintf(trep, "%d", dev_config->tcp_option[2].keepalive_wait_time); break;
                 case SEGCP_XE: sprintf(trep, "%d", dev_config->tcp_option[2].keepalive_retry_time); break;
+#ifdef __USE_S2E_OVER_TLS__
                 case SEGCP_XO: sprintf(trep, "%d", dev_config->ssl_option[2].recv_timeout); break;
+#endif
                 case SEGCP_WO: sprintf(trep, "%d", dev_config->serial_option[2].protocol); break;
                 case SEGCP_XD:
                     if (dev_config->device_option.device_serial_connect_data[2][0] == 0) {
@@ -1012,7 +1020,9 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                 case SEGCP_ZA: sprintf(trep, "%d", dev_config->tcp_option[3].keepalive_en); break;
                 case SEGCP_ZS: sprintf(trep, "%d", dev_config->tcp_option[3].keepalive_wait_time); break;
                 case SEGCP_ZE: sprintf(trep, "%d", dev_config->tcp_option[3].keepalive_retry_time); break;
+#ifdef __USE_S2E_OVER_TLS__
                 case SEGCP_ZO: sprintf(trep, "%d", dev_config->ssl_option[3].recv_timeout); break;
+#endif
                 case SEGCP_YO: sprintf(trep, "%d", dev_config->serial_option[3].protocol); break;
                 case SEGCP_ZD:
                     if (dev_config->device_option.device_serial_connect_data[3][0] == 0) {
@@ -1586,6 +1596,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     }
                     break;
 
+#if defined(__USE_S2E_OVER_TLS__) || defined(__USE_MQTT__)
                 case SEGCP_RC: // root ca option
                     tmp_byte = atoi(param);
                     if (tmp_byte > 2) { //0: Verify_none / 1: Verify_option / 2: Verify_require
@@ -1691,6 +1702,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     }
                     dev_config->mqtt_option[0].qos = tmp_byte;
                     break;
+#endif
                 case SEGCP_UF: // Current Bank
                     tmp_byte = atoi(param);
                     if (tmp_byte > 1) {
@@ -2213,6 +2225,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         dev_config->tcp_option[2].keepalive_retry_time = (uint16_t)tmp_long;
                     }
                     break;
+#ifdef __USE_S2E_OVER_TLS__
                 case SEGCP_XO: // ssl recv timeout
                     tmp_int = atoi(param);
                     if (tmp_int > SSL_RECV_MAX_TIMEOUT) {
@@ -2221,6 +2234,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         dev_config->ssl_option[2].recv_timeout = tmp_int;
                     }
                     break;
+#endif
                 case SEGCP_WO: // protocol
                     tmp_int = atoi(param);
                     if (param_len > 2 || tmp_int > modbus_ascii) {
@@ -2430,6 +2444,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         dev_config->tcp_option[3].keepalive_retry_time = (uint16_t)tmp_long;
                     }
                     break;
+#ifdef __USE_S2E_OVER_TLS__
                 case SEGCP_ZO: // ssl recv timeout
                     tmp_int = atoi(param);
                     if (tmp_int > SSL_RECV_MAX_TIMEOUT) {
@@ -2438,6 +2453,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         dev_config->ssl_option[3].recv_timeout = tmp_int;
                     }
                     break;
+#endif
                 case SEGCP_YO: // protocol
                     tmp_int = atoi(param);
                     if (param_len > 2 || tmp_int > modbus_ascii) {

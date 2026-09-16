@@ -89,7 +89,11 @@ void make_json_devinfo(uint8_t * buf, uint16_t * len) {
                    dev_config->network_connection[0].local_port,
                    dev_config->network_connection[0].remote_ip[0], dev_config->network_connection[0].remote_ip[1], dev_config->network_connection[0].remote_ip[2], dev_config->network_connection[0].remote_ip[3],
                    dev_config->network_connection[0].remote_port,
+#ifdef __USE_S2E_OVER_TLS__
                    dev_config->ssl_option[0].recv_timeout,
+#else
+                   0,
+#endif
                    dev_config->serial_option[0].protocol,
                    dev_config->serial_option[0].baud_rate,     //ch0 serial options
                    dev_config->serial_option[0].data_bits,
@@ -108,7 +112,11 @@ void make_json_devinfo(uint8_t * buf, uint16_t * len) {
                    dev_config->network_connection[1].local_port,
                    dev_config->network_connection[1].remote_ip[0], dev_config->network_connection[1].remote_ip[1], dev_config->network_connection[1].remote_ip[2], dev_config->network_connection[1].remote_ip[3],
                    dev_config->network_connection[1].remote_port,
+#ifdef __USE_S2E_OVER_TLS__
                    dev_config->ssl_option[1].recv_timeout,
+#else
+                   0,
+#endif
                    dev_config->serial_option[1].protocol,
                    dev_config->serial_option[1].baud_rate,
                    dev_config->serial_option[1].data_bits,
@@ -195,10 +203,12 @@ uint8_t set_devinfo(uint8_t * uri) {
         }
     }
 
+#ifdef __USE_S2E_OVER_TLS__
     if ((param = get_http_param_value((char *)uri, "sslRecvTimeout0", temp_buf))) {
         dev_config->ssl_option[0].recv_timeout = ATOI(param, 10);
         ret = 1;
     }
+#endif
 
     if ((param = get_http_param_value((char *)uri, "modbus0", temp_buf))) {
         dev_config->serial_option[0].protocol = ATOI(param, 10);
@@ -292,10 +302,12 @@ uint8_t set_devinfo(uint8_t * uri) {
         }
     }
 
+#ifdef __USE_S2E_OVER_TLS__
     if ((param = get_http_param_value((char *)uri, "sslRecvTimeout1", temp_buf))) {
         dev_config->ssl_option[1].recv_timeout = ATOI(param, 10);
         ret = 1;
     }
+#endif
 
     if ((param = get_http_param_value((char *)uri, "modbus1", temp_buf))) {
         dev_config->serial_option[1].protocol = ATOI(param, 10);

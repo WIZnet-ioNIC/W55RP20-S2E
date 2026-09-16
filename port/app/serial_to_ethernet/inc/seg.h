@@ -5,7 +5,9 @@
 #include "common.h"
 #include "WIZnet_board.h"
 #include "port_common.h"
+#ifdef __USE_MQTT__
 #include "mqtt_transport_interface.h"
+#endif
 
 #define _SEG_DEBUG_
 
@@ -159,6 +161,7 @@ void send_sid(uint8_t sock, uint8_t link_message);
 // Serial debug messages for verifying data transfer
 uint16_t debugSerial_dataTransfer(uint8_t * buf, uint16_t size, teDEBUGTYPE type);
 
+#ifdef __USE_MQTT__
 // MQTT sub handler
 void mqtt_subscribeMessageHandler0(uint8_t *data, uint32_t data_len);
 void mqtt_subscribeMessageHandler1(uint8_t *data, uint32_t data_len);
@@ -170,6 +173,7 @@ void mqtt_subscribeMessageHandler3(uint8_t *data, uint32_t data_len);
 #endif
 
 int wizchip_mqtt_publish(mqtt_config_t *mqtt_config, uint8_t *pub_topic, uint8_t qos, uint8_t *pub_data, uint32_t pub_data_len);
+#endif
 
 void seg_task(void *argument);
 void seg_ch_task(void *argument);       // argument = (void*)(intptr_t)channel

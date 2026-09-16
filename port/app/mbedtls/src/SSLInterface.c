@@ -25,6 +25,10 @@
 #include "common.h"
 #include "util.h"
 
+// Nothing here has a caller on a board built without the SSL/TLS working mode,
+// and its settings live in a configuration structure that no longer carries them.
+#ifdef __USE_S2E_OVER_TLS__
+
 //unsigned char tempBuf[DEBUG_BUFFER_SIZE] = {0,};
 static int wiz_tls_init_state[DEVICE_UART_CNT];
 
@@ -477,3 +481,4 @@ void set_wiz_tls_init_state(int state, int channel) {
     }
 }
 
+#endif // __USE_S2E_OVER_TLS__

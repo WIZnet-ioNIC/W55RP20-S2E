@@ -20,7 +20,9 @@
 #include "seg.h"
 #include "segcp.h"
 
+#ifdef __USE_S2E_OVER_TLS__
 #include "mbedtls/ssl.h"
+#endif
 
 static DevConfig dev_config;
 uint8_t mac[] = {MAC_OUI0, MAC_OUI1, MAC_OUI2, 0xAA, 0xBB, 0xCC};
@@ -135,14 +137,17 @@ void set_DevConfig_to_factory_value(void) {
         dev_config.serial_option[i].dtr_en = DISABLE;
         dev_config.serial_option[i].dsr_en = DISABLE;
 #endif
+#ifdef __USE_S2E_OVER_TLS__
         // SSL Option
         dev_config.ssl_option[i].root_ca_option = 0; //MBEDTLS_SSL_VERIFY_NONE;
         dev_config.ssl_option[i].client_cert_enable = DISABLE;
         dev_config.ssl_option[i].recv_timeout = 2000;
+#endif
 
         memset(dev_config.tcp_option[i].pw_connect, 0x00, sizeof(dev_config.tcp_option[i].pw_connect));
         dev_config.tcp_option[i].pw_connect_en = DISABLE;
 
+#ifdef __USE_MQTT__
         // MQTT Option
         memset(dev_config.mqtt_option[i].user_name, 0x00, sizeof(dev_config.mqtt_option[i].user_name));
         memset(dev_config.mqtt_option[i].password, 0x00, sizeof(dev_config.mqtt_option[i].password));
@@ -153,6 +158,7 @@ void set_DevConfig_to_factory_value(void) {
         memset(dev_config.mqtt_option[i].sub_topic_2, 0x00, sizeof(dev_config.mqtt_option[i].sub_topic_2));
         dev_config.mqtt_option[i].qos = MQTTQoS0;
         dev_config.mqtt_option[i].keepalive = 0;
+#endif
 
         memset(dev_config.device_option.device_serial_connect_data[i], 0x00, sizeof(dev_config.device_option.device_serial_connect_data[i]));
         memset(dev_config.device_option.device_serial_disconnect_data[i], 0x00, sizeof(dev_config.device_option.device_serial_disconnect_data[i]));
