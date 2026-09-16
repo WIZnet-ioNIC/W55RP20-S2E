@@ -532,7 +532,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep) {
                     break;
                 case SEGCP_OP:
                     tmp_byte = is_hex(*param);
-                    if (param_len != 1 || tmp_byte > MQTTS_CLIENT_MODE) {
+                    if (param_len != 1 || tmp_byte > UDP_MODE) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         process_socket_termination(SEG_DATA0_SOCK, 100);

@@ -172,8 +172,12 @@ typedef struct __DevConfig {
     struct __serial_data_packing serial_data_packing[DEVICE_UART_CNT];
     struct __user_io_info user_io_info;
     struct __firmware_update firmware_update;
+#ifdef __USE_S2E_OVER_TLS__
     struct __ssl_option ssl_option[DEVICE_UART_CNT];
+#endif
+#ifdef __USE_MQTT__
     struct __mqtt_option mqtt_option[DEVICE_UART_CNT];
+#endif
     struct __device_option device_option;
     uint32_t devConfigVer;
 } __attribute__((packed)) DevConfig;

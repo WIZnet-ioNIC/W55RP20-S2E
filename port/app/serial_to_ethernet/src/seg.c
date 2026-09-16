@@ -7,7 +7,6 @@
 #include "WIZnet_board.h"
 #include "socket.h"
 
-#include "mqtt_transport_interface.h"
 #include "seg.h"
 #include "deviceHandler.h"
 #include "timerHandler.h"
@@ -26,7 +25,9 @@
 wiz_tls_context s2e_tlsContext[DEVICE_UART_CNT];
 #endif
 
+#ifdef __USE_MQTT__
 #include "mqtt_transport_interface.h"
+#endif
 
 #include "netHandler.h"
 
@@ -87,7 +88,9 @@ static uint32_t seg_udp_transient_since[DEVICE_UART_CNT] = {0, };
 // User's buffer / size idx
 extern uint8_t g_send_buf[DEVICE_UART_CNT][DATA_BUF_SIZE];
 extern uint8_t g_recv_buf[DEVICE_UART_CNT][DATA_BUF_SIZE];
+#ifdef __USE_MQTT__
 extern uint8_t g_recv_mqtt_buf[DEVICE_UART_CNT][DATA_BUF_SIZE];
+#endif
 
 /*the flag of modbus*/
 extern volatile uint8_t mb_state_rtu_finish[DEVICE_UART_CNT];
@@ -752,22 +755,34 @@ uint8_t isXON[DEVICE_UART_CNT] = {SEG_ENABLE, SEG_ENABLE,
 #endif
                                  };
 
+#ifdef __USE_MQTT__
+#define SEG_MODE_RECV_VIA_CALLBACK(m)   (((m) == MQTT_CLIENT_MODE) || ((m) == MQTTS_CLIENT_MODE))
+#else
+#define SEG_MODE_RECV_VIA_CALLBACK(m)   (0)
+#endif
+
 char * str_working[] = {"TCP_CLIENT_MODE", "TCP_SERVER_MODE", "TCP_MIXED_MODE", "UDP_MODE", "SSL_TCP_CLIENT_MODE", "MQTT_CLIENT_MODE", "MQTTS_CLIENT_MODE"};
 
 //Network mqtt_n;
 //MQTTClient mqtt_c = DefaultClient;
 //MQTTPacket_connectData mqtt_data = MQTTPacket_connectData_initializer;
+#ifdef __USE_MQTT__
 NetworkContext_t g_network_context[DEVICE_UART_CNT];
 TransportInterface_t g_transport_interface[DEVICE_UART_CNT];
 mqtt_config_t g_mqtt_config[DEVICE_UART_CNT];
+#endif
 
 /* Private functions prototypes ----------------------------------------------*/
 void proc_SEG_tcp_client(uint8_t sock, int channel);
 void proc_SEG_tcp_server(uint8_t sock, int channel);
 void proc_SEG_tcp_mixed(uint8_t sock, int channel);
 void proc_SEG_udp(uint8_t sock, int channel);
+#ifdef __USE_MQTT__
 void proc_SEG_mqtt_client(uint8_t sock, int channel);
+#ifdef __USE_S2E_OVER_TLS__
 void proc_SEG_mqtts_client(uint8_t sock, int channel);
+#endif
+#endif
 
 #ifdef __USE_S2E_OVER_TLS__
 void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel);
@@ -1223,6 +1238,7 @@ void do_seg(uint8_t sock, int channel) {
             break;
 #endif
 
+#ifdef __USE_MQTT__
         case MQTT_CLIENT_MODE:
             proc_SEG_mqtt_client(sock, channel);
             break;
@@ -1231,6 +1247,7 @@ void do_seg(uint8_t sock, int channel) {
         case MQTTS_CLIENT_MODE:
             proc_SEG_mqtts_client(sock, channel);
             break;
+#endif
 #endif
 
         default:
@@ -1304,22 +1321,24 @@ void set_device_status(teDEVSTATUS status, int channel) {
     // Status indicator pins
     if (network_connection->working_state == ST_CONNECT) {
         if (device_option->device_eth_connect_data[channel][0] != 0) {
+#ifdef __USE_MQTT__
             struct __mqtt_option *mqtt_option = (struct __mqtt_option *) & (get_DevConfig_pointer()->mqtt_option[channel]);
 
             if (network_connection->working_mode == MQTT_CLIENT_MODE || network_connection->working_mode == MQTTS_CLIENT_MODE) {
                 wizchip_mqtt_publish(&g_mqtt_config[channel], mqtt_option->pub_topic, mqtt_option->qos, device_option->device_eth_connect_data[channel], strlen((char *)device_option->device_eth_connect_data[channel]));
-            }
-#ifdef __USE_S2E_OVER_TLS__
-            else if (network_connection->working_mode == SSL_TCP_CLIENT_MODE) {
-                wiz_tls_write(&s2e_tlsContext[channel], device_option->device_eth_connect_data[channel], strlen((char *)device_option->device_eth_connect_data[channel]));
-            }
+            } else
 #endif
-            else {
-                (void)seg_socket_send(seg_data_sock[channel],
-                                      device_option->device_eth_connect_data[channel],
-                                      strlen((char *)device_option->device_eth_connect_data[channel]),
-                                      channel);
-            }
+#ifdef __USE_S2E_OVER_TLS__
+                if (network_connection->working_mode == SSL_TCP_CLIENT_MODE) {
+                    wiz_tls_write(&s2e_tlsContext[channel], device_option->device_eth_connect_data[channel], strlen((char *)device_option->device_eth_connect_data[channel]));
+                } else
+#endif
+                {
+                    (void)seg_socket_send(seg_data_sock[channel],
+                                          device_option->device_eth_connect_data[channel],
+                                          strlen((char *)device_option->device_eth_connect_data[channel]),
+                                          channel);
+                }
         }
 
         if (device_option->device_serial_connect_data[channel][0] != 0) {
@@ -1760,6 +1779,7 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
 #endif
 
 
+#ifdef __USE_MQTT__
 void proc_SEG_mqtt_client(uint8_t sock, int channel) {
     struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option[channel]);
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
@@ -2202,6 +2222,7 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
     }
 }
 #endif // __USE_S2E_OVER_TLS__
+#endif // __USE_MQTT__
 
 void proc_SEG_tcp_server(uint8_t sock, int channel) {
     struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option[channel]);
@@ -2603,7 +2624,9 @@ void uart_to_ether(uint8_t sock, int channel) {
     struct __network_connection *network_connection = (struct __network_connection *) & (get_DevConfig_pointer()->network_connection[channel]);
     struct __serial_common *serial_common = (struct __serial_common *)&get_DevConfig_pointer()->serial_common;
     struct __tcp_option *tcp_option = (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option[channel]);
+#ifdef __USE_MQTT__
     struct __mqtt_option *mqtt_option = (struct __mqtt_option *) & (get_DevConfig_pointer()->mqtt_option[channel]);
+#endif
 
     uint16_t len;
     int16_t sent_len = 0;
@@ -2653,48 +2676,50 @@ void uart_to_ether(uint8_t sock, int channel) {
                                              channel);    // UDP 1:1 mode
             }
         } else if (network_connection->working_state == ST_CONNECT) {
+#ifdef __USE_MQTT__
             if (network_connection->working_mode == MQTT_CLIENT_MODE || network_connection->working_mode == MQTTS_CLIENT_MODE) {
                 sent_len = wizchip_mqtt_publish(&g_mqtt_config[channel], mqtt_option->pub_topic, mqtt_option->qos, g_send_buf[channel], len);
-            }
-#ifdef __USE_S2E_OVER_TLS__
-            else if (network_connection->working_mode == SSL_TCP_CLIENT_MODE) {
-                sent_len = wiz_tls_write(&s2e_tlsContext[channel], g_send_buf[channel], len);
-            }
+            } else
 #endif
-            else {
-                // send() is all or nothing: it clamps the request to getSn_TxMAX() and
-                // then, on a non-blocking socket, returns SOCK_BUSY until that whole
-                // amount is free. DATA_BUF_SIZE equals the 2 KB socket transmit buffer,
-                // so a saturated u2e_size asks for every byte of it and only succeeds
-                // once nothing is left unacknowledged. get_serial_data() cannot grow the
-                // request past that cap to make it fit either, so under sustained
-                // traffic - where something is always in flight - the channel stops
-                // sending for good: the ring buffer fills behind it and the peer is
-                // never released. Offer what the socket has room for and keep the rest.
-                //
-                // Holding out for a minimum partial size was tried and reverted: it
-                // stopped three channels outright at 630 s where taking whatever was
-                // free only degraded them. socket.c allows one SEND in flight per
-                // socket and returns SOCK_BUSY until SENDOK, so waiting for a larger
-                // chunk only lengthens the gap between sends without making the next
-                // one bigger.
-                //
-                // Original:
-                //     sent_len = (int16_t)send(sock, g_send_buf[channel], len);
-                // send() must be reached on every pass. It is the only thing that
-                // acknowledges Sn_IR_SENDOK and clears socket.c's sock_is_sending, and
-                // the chip does not refresh Sn_TX_FSR until it has been. Skipping the
-                // call when the clamp produced zero left both set and the register
-                // stuck at 0 for good - captured as tx_rd == tx_wr, so an empty
-                // transmit buffer, reporting no free space, unchanged over twelve
-                // minutes with SENDOK still raised.
-                //
-                // So clamp only when there is space to clamp to. With none reported,
-                // hand over the full request: send() runs its SENDOK bookkeeping first
-                // and then returns SOCK_BUSY, which is the state the next pass needs.
-                sent_len = seg_socket_send_available(sock, g_send_buf[channel],
-                                                     &len, channel);
-            }
+#ifdef __USE_S2E_OVER_TLS__
+                if (network_connection->working_mode == SSL_TCP_CLIENT_MODE) {
+                    sent_len = wiz_tls_write(&s2e_tlsContext[channel], g_send_buf[channel], len);
+                } else
+#endif
+                {
+                    // send() is all or nothing: it clamps the request to getSn_TxMAX() and
+                    // then, on a non-blocking socket, returns SOCK_BUSY until that whole
+                    // amount is free. DATA_BUF_SIZE equals the 2 KB socket transmit buffer,
+                    // so a saturated u2e_size asks for every byte of it and only succeeds
+                    // once nothing is left unacknowledged. get_serial_data() cannot grow the
+                    // request past that cap to make it fit either, so under sustained
+                    // traffic - where something is always in flight - the channel stops
+                    // sending for good: the ring buffer fills behind it and the peer is
+                    // never released. Offer what the socket has room for and keep the rest.
+                    //
+                    // Holding out for a minimum partial size was tried and reverted: it
+                    // stopped three channels outright at 630 s where taking whatever was
+                    // free only degraded them. socket.c allows one SEND in flight per
+                    // socket and returns SOCK_BUSY until SENDOK, so waiting for a larger
+                    // chunk only lengthens the gap between sends without making the next
+                    // one bigger.
+                    //
+                    // Original:
+                    //     sent_len = (int16_t)send(sock, g_send_buf[channel], len);
+                    // send() must be reached on every pass. It is the only thing that
+                    // acknowledges Sn_IR_SENDOK and clears socket.c's sock_is_sending, and
+                    // the chip does not refresh Sn_TX_FSR until it has been. Skipping the
+                    // call when the clamp produced zero left both set and the register
+                    // stuck at 0 for good - captured as tx_rd == tx_wr, so an empty
+                    // transmit buffer, reporting no free space, unchanged over twelve
+                    // minutes with SENDOK still raised.
+                    //
+                    // So clamp only when there is space to clamp to. With none reported,
+                    // hand over the full request: send() runs its SENDOK bookkeeping first
+                    // and then returns SOCK_BUSY, which is the state the next pass needs.
+                    sent_len = seg_socket_send_available(sock, g_send_buf[channel],
+                                                         &len, channel);
+                }
 
             if ((tcp_option->keepalive_en == ENABLE) &&
                     (flag_first_keepalive[channel] == DISABLE) &&
@@ -2822,7 +2847,7 @@ static void ether_to_uart_unlocked(uint8_t sock, int channel) {
         // (see the flow_dtr_dsr branch below). Send that first: recv() assigns
         // rather than appends, so fetching now would overwrite it.
         if ((e2u_size[channel] == 0) &&
-                !(network_connection->working_mode == MQTT_CLIENT_MODE || network_connection->working_mode == MQTTS_CLIENT_MODE)) {
+                !SEG_MODE_RECV_VIA_CALLBACK(network_connection->working_mode)) {
             seg_recv_step[channel] = SEG_RECV_STEP_RX_AVAIL;
             len = seg_socket_rx_available(sock, channel);
             if (len > DATA_BUF_SIZE) {
@@ -2887,9 +2912,9 @@ static void ether_to_uart_unlocked(uint8_t sock, int channel) {
                             return;
                         }
                         e2u_size[channel] = (uint16_t)received;
-                    }
+                    } else
 #endif
-                    else {
+                    {
                         received = seg_socket_recv(sock, g_recv_buf[channel], len,
                                                    channel);
                         if (received <= 0) {
@@ -3056,7 +3081,7 @@ void ether_to_spi(uint8_t sock) {
 
     do {
         // H/W Socket buffer -> User's buffer
-        if (!(network_connection->working_mode == MQTT_CLIENT_MODE || network_connection->working_mode == MQTTS_CLIENT_MODE)) {
+        if (!SEG_MODE_RECV_VIA_CALLBACK(network_connection->working_mode)) {
             len = seg_socket_rx_available(sock, SEG_DATA0_CH);
             if (len > DATA_BUF_SIZE) {
                 len = DATA_BUF_SIZE;    // avoiding buffer overflow
@@ -3106,9 +3131,9 @@ void ether_to_spi(uint8_t sock) {
                             return;
                         }
                         e2u_size[SEG_DATA0_CH] = (uint16_t)received;
-                    }
+                    } else
 #endif
-                    else {
+                    {
                         received = seg_socket_recv(sock, g_recv_buf[SEG_DATA0_CH], len,
                                                    SEG_DATA0_CH);
                         if (received <= 0) {
@@ -3550,6 +3575,7 @@ uint8_t check_tcp_connect_exception(int channel) {
     return ret;
 }
 
+#ifdef __USE_MQTT__
 int wizchip_mqtt_publish(mqtt_config_t *mqtt_config, uint8_t *pub_topic, uint8_t qos, uint8_t *pub_data, uint32_t pub_data_len) {
     if (mqtt_transport_publish(mqtt_config, pub_topic, pub_data, pub_data_len, qos)) {
         return -1;
@@ -3600,6 +3626,7 @@ void mqtt_subscribeMessageHandler3(uint8_t *data, uint32_t data_len) {
     ether_to_uart(SEG_DATA3_SOCK, SEG_DATA3_CH);
 }
 #endif
+#endif // __USE_MQTT__
 
 uint16_t debugSerial_dataTransfer(uint8_t * buf, uint16_t size, teDEBUGTYPE type) {
     uint16_t bytecnt = 0;
@@ -3708,10 +3735,16 @@ void seg_timer_msec(void) {
                 case TCP_CLIENT_MODE:
                 case TCP_SERVER_MODE:
                 case TCP_MIXED_MODE:
-                case SSL_TCP_CLIENT_MODE:
                 case UDP_MODE:
+#ifdef __USE_S2E_OVER_TLS__
+                case SSL_TCP_CLIENT_MODE:
+#endif
+#ifdef __USE_MQTT__
                 case MQTT_CLIENT_MODE:
+#ifdef __USE_S2E_OVER_TLS__
                 case MQTTS_CLIENT_MODE:
+#endif
+#endif
                     xSemaphoreGiveFromISR(seg_u2e_sem[i], &xHigherPriorityTaskWoken);
                     portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
                     break;

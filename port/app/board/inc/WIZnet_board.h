@@ -28,7 +28,13 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define __USE_HW_FACTORY_RESET__            // Use Factory reset pin
 #define __USE_SAFE_SAVE__                   // When this option is enabled, data verify is additionally performed in the flash save of config-data.
 #define __USE_WATCHDOG__                  // WDT timeout 30 Second
+// W55RP20-S2E 4CH offers neither an SSL/TLS nor an MQTT mode, so both are left out here.
+// Their settings are what pushed the configuration structure past the single flash
+// sector it is stored in, and the MQTT receive buffers cost 8 kB of RAM besides.
+#if (DEVICE_BOARD_NAME != W55RP20_S2E)
 #define __USE_S2E_OVER_TLS__                // Use S2E TCP client over SSL/TLS mode
+#define __USE_MQTT__                        // Use S2E MQTT / MQTTS client mode
+#endif
 #define __USE_UART_485_422__
 //#define __USE_USERS_GPIO__
 #if (DEVICE_BOARD_NAME == WIZ5XXSR_RP)

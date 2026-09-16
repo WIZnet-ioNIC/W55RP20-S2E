@@ -33,7 +33,9 @@ uint8_t reset_flag = 0;
 static uint16_t any_port = 0;
 
 uint8_t g_send_buf[DEVICE_UART_CNT][DATA_BUF_SIZE];
+#ifdef __USE_MQTT__
 uint8_t g_recv_mqtt_buf[DEVICE_UART_CNT][DATA_BUF_SIZE];
+#endif
 uint8_t g_recv_buf[DEVICE_UART_CNT][DATA_BUF_SIZE];
 
 extern TimerHandle_t reset_timer;

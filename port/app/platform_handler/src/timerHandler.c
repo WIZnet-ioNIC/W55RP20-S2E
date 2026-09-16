@@ -2,7 +2,9 @@
 #include "common.h"
 #include "WIZnet_board.h"
 #include "timerHandler.h"
+#ifdef __USE_S2E_OVER_TLS__
 #include "SSLInterface.h"
+#endif
 #include "seg.h"
 #include "segcp.h"
 #include "deviceHandler.h"
@@ -61,7 +63,7 @@ bool repeating_timer_callback(struct repeating_timer *t) {
 #else
         // LED3 pin (GP19) is DATA3 TCP status on 4-port; no heartbeat blink
 #endif
-#ifdef __USE_WATCHDOG__
+#if defined(__USE_WATCHDOG__) && defined(__USE_S2E_OVER_TLS__)
         if ((get_wiz_tls_init_state(SEG_DATA0_CH) == ENABLE) && (get_device_status(SEG_DATA0_CH) == ST_OPEN) ||
                 (get_wiz_tls_init_state(SEG_DATA1_CH) == ENABLE) && (get_device_status(SEG_DATA1_CH) == ST_OPEN)) {
             device_wdt_reset();

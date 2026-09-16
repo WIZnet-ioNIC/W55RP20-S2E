@@ -29,7 +29,16 @@ extern xSemaphoreHandle net_seg_sem[DEVICE_UART_CNT];
 extern xSemaphoreHandle net_seg_u2e_sem[DEVICE_UART_CNT];
 
 extern uint8_t g_send_buf[DEVICE_UART_CNT][DATA_BUF_SIZE];
+
+// The DHCP client borrowed the MQTT receive buffer as its work area. Where MQTT is
+// not built in, it gets one of its own instead, the same size as before.
+#ifdef __USE_MQTT__
 extern uint8_t g_recv_mqtt_buf[DEVICE_UART_CNT][DATA_BUF_SIZE];
+#define DHCP_WORK_BUF   g_recv_mqtt_buf[SEG_DATA0_CH]
+#else
+static uint8_t g_dhcp_buf[DATA_BUF_SIZE];
+#define DHCP_WORK_BUF   g_dhcp_buf
+#endif
 
 NetStatus g_net_status = NET_LINK_DISCONNECTED;
 
@@ -209,7 +218,7 @@ int8_t process_dhcp(void) {
     seg_wizchip_api_lock();
     close(SOCK_DHCP);
     seg_wizchip_api_unlock();
-    DHCP_init(SOCK_DHCP, g_recv_mqtt_buf[SEG_DATA0_CH]);
+    DHCP_init(SOCK_DHCP, DHCP_WORK_BUF);
     reg_dhcp_cbfunc(w5x00_dhcp_assign, w5x00_dhcp_assign, NULL);
     if (get_device_status(SEG_DATA0_CH) != ST_ATMODE) {
         for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {

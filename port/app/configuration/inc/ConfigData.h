@@ -181,11 +181,23 @@ typedef struct __DevConfig {
     struct __serial_data_packing serial_data_packing[DEVICE_UART_CNT];
     struct __user_io_info user_io_info;
     struct __firmware_update firmware_update;
+#ifdef __USE_S2E_OVER_TLS__
     struct __ssl_option ssl_option[DEVICE_UART_CNT];
+#endif
+#ifdef __USE_MQTT__
     struct __mqtt_option mqtt_option[DEVICE_UART_CNT];
+#endif
     struct __device_option device_option;
     uint32_t devConfigVer;
 } __attribute__((packed)) DevConfig;
+
+// The configuration is stored in the single 4 kB flash sector at FLASH_DEV_INFO_ADDR,
+// and the sector after it holds Root CA 0. A structure that outgrows the sector is
+// written over its neighbour on every save, which is what the SSL and MQTT settings
+// did here before they were dropped.
+#define DEVICE_CONFIG_STORAGE_SIZE      0x1000
+_Static_assert(sizeof(DevConfig) <= DEVICE_CONFIG_STORAGE_SIZE,
+               "DevConfig outgrew the flash sector it is saved in");
 
 DevConfig* get_DevConfig_pointer(void);
 void set_DevConfig_to_factory_value(void);
