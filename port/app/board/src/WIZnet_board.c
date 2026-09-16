@@ -47,7 +47,11 @@ void RP2040_Board_Init(void) {
 
     // STATUS #1 : PHY link status (LED_0)
     // STATUS #2 : TCP connection status (LED_1)
+#ifndef __STATUS_IO_ACTIVE_LOW__
+    // LED3 shares a status pin on WIZ145SR, where initialising it as an LED would
+    // drive that pin to the "connected" level at boot.
     LED_Init(LED3);
+#endif
 }
 
 uint8_t get_phylink(void) {

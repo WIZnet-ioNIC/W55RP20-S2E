@@ -37,6 +37,8 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 //#define __USE_USERS_GPIO__
 #if (DEVICE_BOARD_NAME != W55RP20_S2E)
 #define __USE_BOOTMODE_PIN__                // Boot mode entry pin; the 4-port W55RP20-S2E reuses GP15 as DATA2 RTS
+#else
+#define __STATUS_IO_ACTIVE_LOW__            // Status pins read Low when connected / link up
 #endif
 #if (DEVICE_BOARD_NAME == WIZ5XXSR_RP)
 #define DEVICE_ID_DEFAULT                   "WIZ5XXSR-RP"
@@ -137,7 +139,12 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 
 #define LED1_PIN      STATUS_PHYLINK_PIN        //STATUS_PHYLINK
 #define LED2_PIN      STATUS_TCPCONNECT_PIN    //STATUS_TCP_PIN
+// No spare pin for the heartbeat LED; GP19 carries the PHY link status here.
+#if (DEVICE_BOARD_NAME == W55RP20_S2E)
+#define LED3_PIN      STATUS_PHYLINK_PIN
+#else
 #define LED3_PIN      19    //Blink
+#endif
 #define LEDn    3
 #endif
 

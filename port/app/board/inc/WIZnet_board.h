@@ -42,6 +42,7 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 // entered with the HW trigger pin or the '+++' trigger.
 #define DEVICE_ID_DEFAULT                   "WIZ145SR" // Device name
 #define __USE_HW_TRIG_MODE_SWITCH__         // HW pin serial command mode entry
+#define __STATUS_IO_ACTIVE_LOW__            // Status pins read Low when connected / link up
 #elif (DEVICE_BOARD_NAME == PLATYPUS_S2E)
 #define __USE_UART_IF_SELECTOR__            // Use Serial interface port selector pin
 #define __USE_HW_TRIG_MODE_SWITCH__
@@ -161,7 +162,7 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 
 #define LED1_PIN      STATUS_PHYLINK_PIN             // PHY link
 #define LED2_PIN      DATA0_STATUS_TCPCONNECT_PIN    // DATA0 TCP status
-#define LED3_PIN      DATA3_STATUS_TCPCONNECT_PIN    // GP19 now DATA3 status (heartbeat blink removed)
+#define LED3_PIN      DATA3_STATUS_TCPCONNECT_PIN    // No spare pin; heartbeat blink removed
 #define LEDn          3
 
 #else   // ---- W232N / IP20 / PLATYPUS_S2E : original 2-port pin map ----

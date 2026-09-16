@@ -105,6 +105,11 @@ void Device_IO_Init(void) {
 
 // This function is intended only for output connection status pins; PHYlink, TCPconnection
 void set_connection_status_io(uint16_t pin, uint8_t set) {
+#ifdef __STATUS_IO_ACTIVE_LOW__
+    // WIZ145SR signals "connected" and "link up" by pulling the pin low, so the
+    // logical state is inverted here instead of at every caller.
+    set = (set == ON) ? OFF : ON;
+#endif
     if (pin == STATUS_PHYLINK_PIN) {
         //PRT_INFO("pin = PHY, set = %d\r\n", set);
         if (set == ON) {
@@ -179,8 +184,13 @@ uint8_t get_connection_status_io(uint16_t pin) {
 // PHY link status pin
 void init_phylink_status_pin(void) {
     GPIO_Configuration(STATUS_PHYLINK_PIN, IO_OUTPUT, IO_NOPULL);
-    // Pin initial state; Low
-    GPIO_Output_Reset(STATUS_PHYLINK_PIN);
+    // Pin initial state; link down. Driving the pin through set_connection_status_io()
+    // keeps the idle level right where the status pins are active low.
+    //
+    // Original:
+    //     // Pin initial state; Low
+    //     GPIO_Output_Reset(STATUS_PHYLINK_PIN);
+    set_connection_status_io(STATUS_PHYLINK_PIN, OFF);
 }
 
 // DTR/DSR share the RTS/CTS pins; the flow control setting selects which
