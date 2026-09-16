@@ -49,6 +49,11 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define SERIAL_FLOW_CONTROL_MAX             flow_dtr_dsr
 #define SERIAL_UART_INTERFACE_MAX           UART_IF_RS485_REVERSE
 #endif
+// WIZ145SR carries a debug port of its own. The other boards keep USB CDC unless the
+// build asks for the PIO port.
+#if (DEVICE_BOARD_NAME == W55RP20_S2E) || defined(UART_PIO_DEBUG)
+#define __USE_PIO_DEBUG_UART__
+#endif
 //#define __USE_USERS_GPIO__
 #if (DEVICE_BOARD_NAME == WIZ5XXSR_RP)
 #define DEVICE_ID_DEFAULT                   "WIZ5XXSR-RP"//"S2E_SSL-MB" // Device name
@@ -216,7 +221,7 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define BOOT_MODE_PIN          15    //When this pin is Low during a device reset, it enters AT Command Mode
 #define HW_TRIG_PIN            14    //When this pin is Low during a device reset, it enters AT Command Mode
 
-#ifdef UART_PIO_DEBUG
+#ifdef __USE_PIO_DEBUG_UART__
 #define DEBUG_UART_TX_PIN      29
 #endif
 #define LED1_PIN      STATUS_PHYLINK_PIN        //STATUS_PHYLINK

@@ -222,10 +222,18 @@ void load_DevConfig_from_storage(void) {
     read_storage(STORAGE_MAC, dev_config.network_common.mac, 6);
 
     if (dev_config.serial_common.serial_debug_en) {
-#ifdef UART_PIO_DEBUG
-        debug_uart_enable();
-#else
+        // Both, not one or the other: the PIO port is the product's debug port and USB
+        // CDC is what development and the long soak runs read.
+        //
+        // Original:
+        //     #ifdef UART_PIO_DEBUG
+        //             debug_uart_enable();
+        //     #else
+        //             stdio_init_all();
+        //     #endif
         stdio_init_all();
+#ifdef __USE_PIO_DEBUG_UART__
+        debug_uart_enable();
 #endif
     }
 

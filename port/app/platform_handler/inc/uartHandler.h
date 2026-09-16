@@ -145,8 +145,9 @@ void uart_rs485_rs422_init(int channel);
 void uart_rs485_disable(int channel);
 void uart_rs485_enable(int channel);
 
-#ifdef UART_PIO_DEBUG
+#ifdef __USE_PIO_DEBUG_UART__
 void debug_uart_enable(void);
+void debug_uart_task(void *argument);
 #endif
 
 #endif /* UARTHANDLER_H_ */

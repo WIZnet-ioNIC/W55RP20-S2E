@@ -6,7 +6,7 @@
 #include "seg.h"
 #include "port_common.h"
 #include "WIZnet_board.h"
-#ifdef UART_PIO_DEBUG
+#ifdef __USE_PIO_DEBUG_UART__
 #include "uart_tx.pio.h"
 #endif
 
@@ -467,18 +467,29 @@ void set_uart_rts_pin_low(void) {
 
 #endif
 
-#ifdef UART_PIO_DEBUG
-static void debug_uart_init(void) {
-    gpio_init(DEBUG_UART_TX_PIN);
-    gpio_set_dir(DEBUG_UART_TX_PIN, GPIO_OUT);
+#ifdef __USE_PIO_DEBUG_UART__
+// The bootloader has no data channels to hold up, so it writes straight to the FIFO.
+// Only the state machine and the rate changed: pio0 sm0 was assumed free, and
+// PICO_DEFAULT_UART_BAUD_RATE is 3 Mbaud here while the debug port runs at 115200.
+//
+// Original:
+//     uint offset = pio_add_program(pio0, &uart_tx_program);
+//     uart_tx_program_init(pio0, 0, offset, DEBUG_UART_TX_PIN, PICO_DEFAULT_UART_BAUD_RATE);
+#define DEBUG_UART_PIO          pio0
+#define DEBUG_UART_BAUD         115200      // WIZ145SR debug port: 115200-8N1
 
-    uint offset = pio_add_program(pio0, &uart_tx_program);
-    uart_tx_program_init(pio0, 0, offset, DEBUG_UART_TX_PIN, PICO_DEFAULT_UART_BAUD_RATE);
+static uint debug_tx_sm;
+
+static void debug_uart_init(void) {
+    uint offset = pio_add_program(DEBUG_UART_PIO, &uart_tx_program);
+
+    debug_tx_sm = (uint)pio_claim_unused_sm(DEBUG_UART_PIO, true);
+    uart_tx_program_init(DEBUG_UART_PIO, debug_tx_sm, offset, DEBUG_UART_TX_PIN, DEBUG_UART_BAUD);
 }
 
 static void debug_uart_puts(const char *buf, int len) {
     for (int i = 0; i < len; i++) {
-        uart_tx_program_putc(pio0, 0, buf[i]);
+        uart_tx_program_putc(DEBUG_UART_PIO, debug_tx_sm, buf[i]);
     }
 }
 

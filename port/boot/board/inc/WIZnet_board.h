@@ -46,6 +46,11 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #else
 #define __STATUS_IO_ACTIVE_LOW__            // Status pins read Low when connected / link up
 #endif
+// WIZ145SR carries a debug port of its own, and the bootloader had nowhere to print:
+// both stdio backends are off for this target and GP0/1 belongs to DATA1.
+#if (DEVICE_BOARD_NAME == W55RP20_S2E) || defined(UART_PIO_DEBUG)
+#define __USE_PIO_DEBUG_UART__
+#endif
 #if (DEVICE_BOARD_NAME == WIZ5XXSR_RP)
 #define DEVICE_ID_DEFAULT                   "WIZ5XXSR-RP"
 #elif (DEVICE_BOARD_NAME == W55RP20_S2E || DEVICE_BOARD_NAME == PLATYPUS_S2E)
@@ -139,8 +144,12 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #endif
 #define DATA0_UART_PORTNUM          (1)
 
-#ifdef UART_PIO_DEBUG
+#ifdef __USE_PIO_DEBUG_UART__
+#if (DEVICE_BOARD_NAME == W55RP20_S2E)
+#define DEBUG_UART_TX_PIN      18
+#else
 #define DEBUG_UART_TX_PIN      29
+#endif
 #endif
 
 #define LED1_PIN      STATUS_PHYLINK_PIN        //STATUS_PHYLINK

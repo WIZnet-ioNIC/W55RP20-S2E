@@ -1263,28 +1263,110 @@ void set_uart_rts_pin_low(void) {
 
 #endif
 
-#ifdef UART_PIO_DEBUG
-static void debug_uart_init(void) {
-    gpio_init(DEBUG_UART_TX_PIN);
-    gpio_set_dir(DEBUG_UART_TX_PIN, GPIO_OUT);
+#ifdef __USE_PIO_DEBUG_UART__
+// A message on the debug port must never hold up a data channel, so printf() only
+// fills a ring here and debug_uart_task() feeds the state machine at whatever rate
+// the line allows. Writing straight to the FIFO is what diagnostic output used to
+// do, and a channel stalled behind it.
+//
+// Original:
+//     static void debug_uart_init(void) {
+//         gpio_init(DEBUG_UART_TX_PIN);
+//         gpio_set_dir(DEBUG_UART_TX_PIN, GPIO_OUT);
+//
+//         uint offset = pio_add_program(pio0, &uart_tx_program);
+//         uart_tx_program_init(pio0, 0, offset, DEBUG_UART_TX_PIN, PICO_DEFAULT_UART_BAUD_RATE);
+//     }
+//
+//     static void debug_uart_puts(const char *buf, int len) {
+//         for (int i = 0; i < len; i++) {
+//             uart_tx_program_putc(pio0, 0, buf[i]);
+//         }
+//     }
+//
+// DATA2 and DATA3 own all four state machines on pio0, which is why this shares a
+// block with the W5500 SPI instead. The SPI program leaves room for both.
+#define DEBUG_UART_PIO          pio1
+#define DEBUG_UART_BAUD         115200      // WIZ145SR debug port: 115200-8N1
+#define DEBUG_UART_BUF_SIZE     2048        // power of two
 
-    uint offset = pio_add_program(pio0, &uart_tx_program);
-    uart_tx_program_init(pio0, 0, offset, DEBUG_UART_TX_PIN, PICO_DEFAULT_UART_BAUD_RATE);
+static uint8_t debug_tx_buf[DEBUG_UART_BUF_SIZE];
+static volatile uint16_t debug_tx_head;
+static volatile uint16_t debug_tx_tail;
+static volatile uint8_t debug_tx_overrun;
+static uint debug_tx_sm;
+static uint8_t debug_tx_ready;
+
+static void debug_uart_init(void) {
+    uint offset = pio_add_program(DEBUG_UART_PIO, &uart_tx_program);
+
+    debug_tx_sm = (uint)pio_claim_unused_sm(DEBUG_UART_PIO, true);
+    uart_tx_program_init(DEBUG_UART_PIO, debug_tx_sm, offset, DEBUG_UART_TX_PIN, DEBUG_UART_BAUD);
+    debug_tx_ready = 1;
 }
 
-static void debug_uart_puts(const char *buf, int len) {
-    for (int i = 0; i < len; i++) {
-        uart_tx_program_putc(pio0, 0, buf[i]);
+// Hand the ring to the FIFO until one of them runs out. Returns what is still waiting.
+static uint16_t debug_uart_drain(void) {
+    while (debug_tx_tail != debug_tx_head) {
+        if (pio_sm_is_tx_fifo_full(DEBUG_UART_PIO, debug_tx_sm)) {
+            break;
+        }
+        pio_sm_put(DEBUG_UART_PIO, debug_tx_sm, (uint32_t)debug_tx_buf[debug_tx_tail]);
+        debug_tx_tail = (uint16_t)((debug_tx_tail + 1) & (DEBUG_UART_BUF_SIZE - 1));
     }
+    return (uint16_t)((debug_tx_head - debug_tx_tail) & (DEBUG_UART_BUF_SIZE - 1));
+}
+
+static void debug_uart_out_chars(const char *buf, int len) {
+    uint32_t save;
+
+    if (!debug_tx_ready) {
+        return;
+    }
+
+    // Before the scheduler starts nothing drains the ring, and there is no channel
+    // to hold up either, so the boot messages go straight out.
+    if (xTaskGetSchedulerState() != taskSCHEDULER_RUNNING) {
+        for (int i = 0; i < len; i++) {
+            uart_tx_program_putc(DEBUG_UART_PIO, debug_tx_sm, buf[i]);
+        }
+        return;
+    }
+
+    save = save_and_disable_interrupts();
+    for (int i = 0; i < len; i++) {
+        uint16_t next = (uint16_t)((debug_tx_head + 1) & (DEBUG_UART_BUF_SIZE - 1));
+        if (next == debug_tx_tail) {
+            debug_tx_overrun = 1;   // keep the earliest message and drop what will not fit
+            break;
+        }
+        debug_tx_buf[debug_tx_head] = (uint8_t)buf[i];
+        debug_tx_head = next;
+    }
+    restore_interrupts(save);
 }
 
 static struct stdio_driver debug_driver = {
-    .out_chars = debug_uart_puts,
+    .out_chars = debug_uart_out_chars,
     .in_chars = NULL,
 };
 
 void debug_uart_enable(void) {
     debug_uart_init();
     stdio_set_driver_enabled(&debug_driver, true);
+}
+
+void debug_uart_task(void *argument) {
+    static const char dropped[] = "\r\n[debug output dropped]\r\n";
+
+    for (;;) {
+        // Say so once the backlog is gone, rather than leaving a message that simply
+        // stops in the middle looking like the device did.
+        if ((debug_uart_drain() == 0) && debug_tx_overrun) {
+            debug_tx_overrun = 0;
+            debug_uart_out_chars(dropped, sizeof(dropped) - 1);
+        }
+        vTaskDelay(1);
+    }
 }
 #endif

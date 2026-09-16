@@ -95,6 +95,11 @@
 #define START_TASK_STACK_SIZE 512
 #define START_TASK_PRIORITY 65
 
+// Below SEG_TASK_PRIORITY, the lowest of the data-path tasks: the debug port gets
+// whatever time is left over and can never be the reason a channel waits.
+#define DEBUG_UART_TASK_STACK_SIZE 256
+#define DEBUG_UART_TASK_PRIORITY 5
+
 /**
     ----------------------------------------------------------------------------------------------------
     Variables
@@ -208,6 +213,11 @@ void start_task(void *argument) {
     RP2040_Init();
     RP2040_W5X00_Init();
     load_DevConfig_from_storage();
+#ifdef __USE_PIO_DEBUG_UART__
+    // Right after the port exists, so the start-up messages are not left waiting in
+    // the ring until the rest of the tasks are created.
+    xTaskCreate(debug_uart_task, "Debug_UART_Task", DEBUG_UART_TASK_STACK_SIZE, NULL, DEBUG_UART_TASK_PRIORITY, NULL);
+#endif
     RP2040_Board_Init();
     DATA_UART_Configuration();
     check_mac_address();

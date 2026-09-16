@@ -140,7 +140,7 @@ void uart_rs485_rs422_init(void);
 void uart_rs485_disable(void);
 void uart_rs485_enable(void);
 
-#ifdef UART_PIO_DEBUG
+#ifdef __USE_PIO_DEBUG_UART__
 void debug_uart_enable(void);
 #endif
 
