@@ -25,7 +25,10 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #if ((DEVICE_BOARD_NAME == WIZ5XXSR_RP) || DEVICE_BOARD_NAME == W55RP20_S2E || DEVICE_BOARD_NAME == W232N || DEVICE_BOARD_NAME == IP20 || DEVICE_BOARD_NAME == PLATYPUS_S2E) // Chip product
 //#define __USE_DHCP_INFINITE_LOOP__          // When this option is enabled, if DHCP IP allocation failed, process_dhcp() function will try to DHCP steps again.
 #define __USE_DNS_INFINITE_LOOP__           // When this option is enabled, if DNS query failed, process_dns() function will try to DNS steps again.
+// The WIZ145SR board has no factory reset pin; GP18 carries the debug UART.
+#if (DEVICE_BOARD_NAME != W55RP20_S2E)
 #define __USE_HW_FACTORY_RESET__            // Use Factory reset pin
+#endif
 #define __USE_SAFE_SAVE__                   // When this option is enabled, data verify is additionally performed in the flash save of config-data.
 #define __USE_WATCHDOG__                  // WDT timeout 30 Second
 #define __USE_S2E_OVER_TLS__                // Use S2E TCP client over SSL/TLS mode
@@ -35,8 +38,10 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define DEVICE_ID_DEFAULT                   "WIZ5XXSR-RP"//"S2E_SSL-MB" // Device name
 #define __USE_HW_TRIG_MODE_SWITCH__         // HW pin AT-mode entry
 #elif (DEVICE_BOARD_NAME == W55RP20_S2E)
-// 4-port: interface via AT command (no IF_SEL pin); AT mode via '+++' only (no HW trig / BOOT_MODE pin)
-#define DEVICE_ID_DEFAULT                   "W55RP20-S2E-4CH"//"S2E_SSL-MB" // Device name
+// WIZ145SR: interface selected by configuration (no IF_SEL pin); serial command mode is
+// entered with the HW trigger pin or the '+++' trigger.
+#define DEVICE_ID_DEFAULT                   "WIZ145SR" // Device name
+#define __USE_HW_TRIG_MODE_SWITCH__         // HW pin serial command mode entry
 #elif (DEVICE_BOARD_NAME == PLATYPUS_S2E)
 #define __USE_UART_IF_SELECTOR__            // Use Serial interface port selector pin
 #define __USE_HW_TRIG_MODE_SWITCH__
@@ -102,38 +107,43 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #elif ((DEVICE_BOARD_NAME == W55RP20_S2E) || (DEVICE_BOARD_NAME == W232N) || (DEVICE_BOARD_NAME == IP20) || (DEVICE_BOARD_NAME == PLATYPUS_S2E))
 
 #if (DEVICE_BOARD_NAME == W55RP20_S2E)
-// W55RP20-S2E 4-port pin map.
+// WIZ145SR pin map; the four channels run in GPIO order.
+//
+// Original (4-port): DATA2 TX/RX/CTS/RTS on GP13/14/8/15, DATA3 on GP12/27/9/28,
+//     statuses on GP11/26/10/19, PHY link on GP29, no HW trigger or debug pin.
 // Per channel: TX(out), RX(in), CTS(in), RTS(out), STATUS(out).
 // CTS and DSR share the one input pin; RTS and DTR share the one output pin (function by config).
-#define STATUS_PHYLINK_PIN           29   // PHY link LED (not on EVB header; VSYS-sense net)
+#define STATUS_PHYLINK_PIN           19   // PHY link status (not on EVB header; onboard LD2 red LED net)
+#define HW_TRIG_PIN                  16   // Serial command mode entry, active low, read once at boot
+#define DEBUG_UART_TX_PIN            18   // Debug message output over PIO (not on EVB header)
 
 // DATA0 (HW uart1)
 #define DATA0_UART_TX_PIN            4
 #define DATA0_UART_RX_PIN            5
 #define DATA0_UART_CTS_PIN           6
 #define DATA0_UART_RTS_PIN           7
-#define DATA0_STATUS_TCPCONNECT_PIN  11
+#define DATA0_STATUS_TCPCONNECT_PIN  26
 
 // DATA1 (HW uart0)
 #define DATA1_UART_TX_PIN            0
 #define DATA1_UART_RX_PIN            1
 #define DATA1_UART_CTS_PIN           2
 #define DATA1_UART_RTS_PIN           3
-#define DATA1_STATUS_TCPCONNECT_PIN  26
+#define DATA1_STATUS_TCPCONNECT_PIN  27
 
 // DATA2 (PIO)
-#define DATA2_UART_TX_PIN            13
-#define DATA2_UART_RX_PIN            14
-#define DATA2_UART_CTS_PIN           8
-#define DATA2_UART_RTS_PIN           15
-#define DATA2_STATUS_TCPCONNECT_PIN  10   // EVB pin 14
+#define DATA2_UART_TX_PIN            8
+#define DATA2_UART_RX_PIN            9
+#define DATA2_UART_CTS_PIN           10
+#define DATA2_UART_RTS_PIN           11
+#define DATA2_STATUS_TCPCONNECT_PIN  28
 
 // DATA3 (PIO)
 #define DATA3_UART_TX_PIN            12
-#define DATA3_UART_RX_PIN            27
-#define DATA3_UART_CTS_PIN           9
-#define DATA3_UART_RTS_PIN           28
-#define DATA3_STATUS_TCPCONNECT_PIN  19   // not on EVB header (onboard LD2 red LED net)
+#define DATA3_UART_RX_PIN            13
+#define DATA3_UART_CTS_PIN           14
+#define DATA3_UART_RTS_PIN           15
+#define DATA3_STATUS_TCPCONNECT_PIN  29   // not on EVB header (VSYS-sense net)
 
 // DTR/DSR share the RTS/CTS pins (config selects RTS-CTS vs DTR-DSR); aliases keep the
 // existing DTR/DSR GPIO helpers pointing at the correct shared pins.
@@ -146,8 +156,8 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define DATA3_UART_DTR_PIN           DATA3_UART_RTS_PIN
 #define DATA3_UART_DSR_PIN           DATA3_UART_CTS_PIN
 
-// Removed for 4-port: BOOT_MODE(GP15)/HW_TRIG(GP14) -> reused by DATA2; UART_IF_SEL(GP12/GP16)
-// -> interface chosen via AT command (GP16 spare); PIO debug UART(GP29) -> USB CDC.
+// Removed: BOOT_MODE and UART_IF_SEL (chosen by configuration), and the factory reset pin.
+// HW_TRIG now sits on GP16 and the debug UART on GP18; GP29 carries the DATA3 status.
 
 #define LED1_PIN      STATUS_PHYLINK_PIN             // PHY link
 #define LED2_PIN      DATA0_STATUS_TCPCONNECT_PIN    // DATA0 TCP status
@@ -206,7 +216,9 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define WIZCHIP_PIN_RST        25
 #define WIZCHIP_PIN_IRQ        24
 
+#if (DEVICE_BOARD_NAME != W55RP20_S2E)
 #define FAC_RSTn_PIN           18    //Holding Low for more than 5 seconds triggers a factory reset
+#endif
 #define DATA0_UART_PORTNUM          (1)
 #endif
 

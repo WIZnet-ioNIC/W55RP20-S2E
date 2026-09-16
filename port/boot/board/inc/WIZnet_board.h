@@ -25,7 +25,10 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #if ((DEVICE_BOARD_NAME == WIZ5XXSR_RP) || DEVICE_BOARD_NAME == W55RP20_S2E || DEVICE_BOARD_NAME == W232N || DEVICE_BOARD_NAME == IP20 || DEVICE_BOARD_NAME == PLATYPUS_S2E) // Chip product
 #define __USE_DHCP_INFINITE_LOOP__          // When this option is enabled, if DHCP IP allocation failed, process_dhcp() function will try to DHCP steps again.
 #define __USE_DNS_INFINITE_LOOP__           // When this option is enabled, if DNS query failed, process_dns() function will try to DNS steps again.
+// The WIZ145SR board has no factory reset pin; GP18 carries the debug UART.
+#if (DEVICE_BOARD_NAME != W55RP20_S2E)
 #define __USE_HW_FACTORY_RESET__            // Use Factory reset pin
+#endif
 //#define __USE_UART_IF_SELECTOR__            // Use Serial interface port selector pin
 #define __USE_SAFE_SAVE__                   // When this option is enabled, data verify is additionally performed in the flash save of config-data.
 #define __USE_WATCHDOG__                  // WDT timeout 30 Second
@@ -98,6 +101,9 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #if (DEVICE_BOARD_NAME == PLATYPUS_S2E)
 #define STATUS_PHYLINK_PIN      11
 #define STATUS_TCPCONNECT_PIN   10
+#elif (DEVICE_BOARD_NAME == W55RP20_S2E)
+#define STATUS_PHYLINK_PIN      19
+#define STATUS_TCPCONNECT_PIN   26
 #else
 #define STATUS_PHYLINK_PIN      10
 #define STATUS_TCPCONNECT_PIN   11
@@ -117,8 +123,12 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define WIZCHIP_PIN_IRQ 24
 
 #define BOOT_MODE_PIN          15
+#if (DEVICE_BOARD_NAME == W55RP20_S2E)
+#define HW_TRIG_PIN            16
+#else
 #define FAC_RSTn_PIN           18
 #define HW_TRIG_PIN            14
+#endif
 #define DATA0_UART_PORTNUM          (1)
 
 #ifdef UART_PIO_DEBUG

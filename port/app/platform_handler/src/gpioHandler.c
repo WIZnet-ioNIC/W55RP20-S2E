@@ -86,9 +86,11 @@ void GPIO_Configuration_Callback(void) {
 }
 
 static void platform_gpio_interrupt_callback(uint GPIO_Pin, uint32_t events) {
+#ifdef __USE_HW_FACTORY_RESET__
     if (GPIO_Pin == FAC_RSTn_PIN) {
         factory_reset_pin_callback();
     }
+#endif
 }
 
 /**

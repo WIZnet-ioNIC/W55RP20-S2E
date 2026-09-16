@@ -80,9 +80,11 @@ void GPIO_Configuration_IRQ(uint16_t GPIO_Pin, USER_IO_IRQ GPIO_IRQ_Event) {
 }
 
 static void platform_gpio_interrupt_callback(uint GPIO_Pin, uint32_t events) {
+#ifdef __USE_HW_FACTORY_RESET__
     if (GPIO_Pin == FAC_RSTn_PIN) {
         factory_reset_pin_callback();
     }
+#endif
 }
 
 void GPIO_Configuration_Callback(void) {
@@ -94,6 +96,8 @@ void GPIO_Configuration_Callback(void) {
     @brief  Device I/O Initialize Function
 */
 void Device_IO_Init(void) {
+#if (DEVICE_BOARD_NAME != W55RP20_S2E)
+    // DTR/DSR share the DATA2 pins on this board, so the bootloader leaves them alone.
     struct __serial_option *serial_option = (struct __serial_option *) & (get_DevConfig_pointer()->serial_option);
     // Set the DTR pin to high when the DTR signal enabled (== PHY link status disabled)
 
@@ -105,6 +109,7 @@ void Device_IO_Init(void) {
     if (serial_option->dsr_en == 1) {
         init_flowcontrol_dsr_pin();
     }
+#endif
 }
 
 // This function is intended only for output connection status pins; PHYlink, TCPconnection
