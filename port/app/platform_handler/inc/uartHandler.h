@@ -27,6 +27,7 @@
 //#define UART_IF_STR_RS232               "RS-232"
 #define UART_IF_STR_RS422               "RS-422"
 #define UART_IF_STR_RS485               "RS-485"
+#define UART_IF_STR_RS485_REVERSE       "RS-485 Reverse"
 
 // If the define '__USE_UART_IF_SELECTOR__' disabled, default UART interface is selected to be 'UART_IF_DEFAULT'
 //#define UART_IF_DEFAULT                 UART_IF_RS485
