@@ -250,6 +250,15 @@ void load_DevConfig_from_storage(void) {
         // } else {
         //     dev_config.serial_option[i].uart_interface = get_uart_if_sel_pin(i);
         // }
+
+        // Stored settings can come from a build that offered more serial modes than
+        // this board does; fall back rather than drive pins that serve another function.
+        if (dev_config.serial_option[i].flow_control > SERIAL_FLOW_CONTROL_MAX) {
+            dev_config.serial_option[i].flow_control = flow_none;
+        }
+        if (dev_config.serial_option[i].uart_interface > SERIAL_UART_INTERFACE_MAX) {
+            dev_config.serial_option[i].uart_interface = UART_IF_RS232_TTL;
+        }
         set_device_status(ST_OPEN, i);
     }
 

@@ -1375,7 +1375,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_FL:
                     tmp_byte = is_hex(*param);
-                    if (param_len != 1 || tmp_byte > flow_dtr_dsr) {
+                    if (param_len != 1 || tmp_byte > SERIAL_FLOW_CONTROL_MAX) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         if (dev_config->serial_option[0].uart_interface != UART_IF_RS232_TTL) {
@@ -1391,7 +1391,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_EF:
                     tmp_byte = is_hex(*param);
-                    if (param_len != 1 || tmp_byte > flow_dtr_dsr) {
+                    if (param_len != 1 || tmp_byte > SERIAL_FLOW_CONTROL_MAX) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         if (dev_config->serial_option[1].uart_interface != UART_IF_RS232_TTL) {
@@ -2028,7 +2028,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
 #endif
                 case SEGCP_UI: // ch0 serial IF (num) — R/W
                     tmp_byte = is_hex(*param);
-                    if (param_len != 1 || tmp_byte > UART_IF_RS485_REVERSE) {
+                    if (param_len != 1 || tmp_byte > SERIAL_UART_INTERFACE_MAX) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         dev_config->serial_option[0].uart_interface = tmp_byte;
@@ -2036,7 +2036,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_EI: // ch1 serial IF (num) — R/W
                     tmp_byte = is_hex(*param);
-                    if (param_len != 1 || tmp_byte > UART_IF_RS485_REVERSE) {
+                    if (param_len != 1 || tmp_byte > SERIAL_UART_INTERFACE_MAX) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         dev_config->serial_option[1].uart_interface = tmp_byte;
@@ -2128,7 +2128,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_WF: // flow control (RS422/485 특례)
                     tmp_byte = is_hex(*param);
-                    if (param_len != 1 || tmp_byte > flow_dtr_dsr) {
+                    if (param_len != 1 || tmp_byte > SERIAL_FLOW_CONTROL_MAX) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         if (dev_config->serial_option[2].uart_interface != UART_IF_RS232_TTL) {
@@ -2252,7 +2252,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_WI: // ch2 serial IF (num) — R/W
                     tmp_byte = is_hex(*param);
-                    if (param_len != 1 || tmp_byte > UART_IF_RS485_REVERSE) {
+                    if (param_len != 1 || tmp_byte > SERIAL_UART_INTERFACE_MAX) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         dev_config->serial_option[2].uart_interface = tmp_byte;
@@ -2345,7 +2345,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_YF: // flow control (RS422/485 특례)
                     tmp_byte = is_hex(*param);
-                    if (param_len != 1 || tmp_byte > flow_dtr_dsr) {
+                    if (param_len != 1 || tmp_byte > SERIAL_FLOW_CONTROL_MAX) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         if (dev_config->serial_option[3].uart_interface != UART_IF_RS232_TTL) {
@@ -2469,7 +2469,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_YI: // ch3 serial IF (num) — R/W
                     tmp_byte = is_hex(*param);
-                    if (param_len != 1 || tmp_byte > UART_IF_RS485_REVERSE) {
+                    if (param_len != 1 || tmp_byte > SERIAL_UART_INTERFACE_MAX) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
                         dev_config->serial_option[3].uart_interface = tmp_byte;

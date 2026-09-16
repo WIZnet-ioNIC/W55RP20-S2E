@@ -826,6 +826,8 @@ void DATA_UART_Configuration(void) {
             // [Disabled 2026-07] write-back of pin-derived mode — keep AT-command value authoritative.
             //serial_option->uart_interface = uart_if_mode[i];
         }
+#endif
+
         // Set our data format
         uart_set_format(uart_id[i], temp_data_bits, temp_stop_bits, temp_parity);
         uart_set_fifo_enabled(uart_id[i], true);
@@ -838,8 +840,6 @@ void DATA_UART_Configuration(void) {
         PRT_INFO("serial_option->flow_control = %d\r\n", serial_option->flow_control);
         PRT_INFO("data_bits = %d, stop_bits = %d, parity = %d\r\n", temp_data_bits, temp_stop_bits, temp_parity);
         PRT_INFO("baud = %d\r\n", baud_table[serial_option->baud_rate]);
-
-#endif
     }
 
 #if (DEVICE_UART_CNT > 2)

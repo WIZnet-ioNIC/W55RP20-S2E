@@ -33,6 +33,16 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define __USE_WATCHDOG__                  // WDT timeout 30 Second
 #define __USE_S2E_OVER_TLS__                // Use S2E TCP client over SSL/TLS mode
 #define __USE_UART_485_422__
+// WIZ145SR carries a TTL-only serial port with None / XON-XOFF / RTS-CTS flow
+// control. The RTS-only modes and DTR/DSR drive an RS-422/485 transceiver this
+// board does not have, so they stay out of the selectable range.
+#if (DEVICE_BOARD_NAME == W55RP20_S2E)
+#define SERIAL_FLOW_CONTROL_MAX             flow_rts_cts
+#define SERIAL_UART_INTERFACE_MAX           UART_IF_RS232_TTL
+#else
+#define SERIAL_FLOW_CONTROL_MAX             flow_dtr_dsr
+#define SERIAL_UART_INTERFACE_MAX           UART_IF_RS485_REVERSE
+#endif
 //#define __USE_USERS_GPIO__
 #if (DEVICE_BOARD_NAME == WIZ5XXSR_RP)
 #define DEVICE_ID_DEFAULT                   "WIZ5XXSR-RP"//"S2E_SSL-MB" // Device name
