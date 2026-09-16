@@ -19,26 +19,33 @@
 //////////////////////////////////
 // W5500 HW Socket Definition  //
 //////////////////////////////////
-// 0 ~ 7 : DATA0~3 = 0~3, config UDP/TCP = 4/5, DHCP/DNS = 6, socket 7 free.
-// HTTP macros retained (point to 7) only so httpHandler.c compiles; the task is not created.
+// 0 = PPPoE, DATA0~3 = 1~4, config UDP/TCP = 5/6, DHCP/DNS/FW update = 7.
+// MACRAW, which the PPPoE negotiation runs over, exists only on socket 0, so socket 0
+// is left to it rather than time-shared with a data channel that would then drop every
+// time the line reconnects. Everything else moved up one.
+//
+// Original: DATA0~3 = 0~3, config UDP/TCP = 4/5, DHCP/DNS = 6, socket 7 free.
+//
+// HTTP macros retained only so httpHandler.c compiles; the task is not created.
 #define SOCK_MAX_USED           8
 
-#define SOCK_DATA0              0
-#define SOCK_DATA1              1
-#define SOCK_DATA2              2
-#define SOCK_DATA3              3
-#define SOCK_CONFIG_UDP         4
-#define SOCK_CONFIG_TCP         5
-#define SOCK_DHCP               6
-#define SOCK_DNS                6
-#define SOCK_FWUPDATE           6
-#define SOCK_NETBIOS            6
-#define SOCK_NTP                6
+#define SOCK_PPPOE              0
+#define SOCK_DATA0              1
+#define SOCK_DATA1              2
+#define SOCK_DATA2              3
+#define SOCK_DATA3              4
+#define SOCK_CONFIG_UDP         5
+#define SOCK_CONFIG_TCP         6
+#define SOCK_DHCP               7
+#define SOCK_DNS                7
+#define SOCK_FWUPDATE           7
+#define SOCK_NETBIOS            7
+#define SOCK_NTP                7
 
 #define MAX_HTTPSOCK	3
-#define SOCK_HTTPSERVER_1       7
-#define SOCK_HTTPSERVER_2       7
-#define SOCK_HTTPSERVER_3       7
+#define SOCK_HTTPSERVER_1       SOCK_DHCP
+#define SOCK_HTTPSERVER_2       SOCK_DHCP
+#define SOCK_HTTPSERVER_3       SOCK_DHCP
 
 #define SEG_DATA0_SOCK          SOCK_DATA0
 #define SEG_DATA1_SOCK          SOCK_DATA1
