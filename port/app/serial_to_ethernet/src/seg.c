@@ -1164,7 +1164,7 @@ void proc_SEG_mqtts_client(uint8_t sock) {
             first_established = 0;
             set_device_status(ST_CONNECT);
         }
-        mqtt_transport_yield(&g_mqtt_config);
+        //mqtt_transport_yield(&g_mqtt_config); // Handled by seg_mqtt_yield_task; calling here blocks seg_critical_sem up to SSL recv_timeout
         break;
 
     case SOCK_CLOSE_WAIT:

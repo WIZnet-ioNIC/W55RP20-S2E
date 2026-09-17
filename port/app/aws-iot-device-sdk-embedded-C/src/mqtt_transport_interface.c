@@ -338,6 +338,18 @@ int32_t mqtts_write(NetworkContext_t *pNetworkContext, const void *pBuffer, size
 
     if (getSn_SR(pNetworkContext->socketDescriptor) == SOCK_ESTABLISHED) {
         size = wiz_tls_write(&s2e_tlsContext, (uint8_t *)pBuffer, bytesToSend);
+
+        /*  Not an error: the TLS layer asks to be called again. Returning 0 is the
+            coreMQTT contract for "no progress yet" - sendBuffer() retries without
+            advancing its index, which also satisfies mbedTLS's requirement to
+            re-issue the call with the same arguments. */
+        if ((size == MBEDTLS_ERR_SSL_WANT_WRITE) || (size == MBEDTLS_ERR_SSL_WANT_READ)) {
+            return 0;
+        }
+
+        if (size < 0) {
+            return -1;
+        }
     }
 
     return size;

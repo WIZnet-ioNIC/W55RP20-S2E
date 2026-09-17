@@ -12,6 +12,7 @@
 #include "mbedtls/x509_crt.h"
 #include "mbedtls/error.h"
 #include "mbedtls/debug.h"
+#include "mbedtls/net_sockets.h"
 #include "psa/crypto.h"
 #include "port_common.h"
 
@@ -84,7 +85,23 @@ int WIZnetRecvNB(void *ctx, unsigned char *buf, unsigned int len) {
 
 /*Shell for mbedtls send function*/
 int WIZnetSend(void *ctx, const unsigned char *buf, unsigned int len) {
-    return (send((uint8_t)ctx, (uint8_t *)buf, (uint16_t)len));
+    int32_t ret = send((uint8_t)ctx, (uint8_t *)buf, (uint16_t)len);
+
+    /*  send() returns SOCK_BUSY (== 0) in non-blocking mode when the socket TX buffer
+        has no room, or when the previous SEND command has not completed yet.
+        mbedTLS requires MBEDTLS_ERR_SSL_WANT_WRITE for that case: returning 0 makes
+        mbedtls_ssl_flush_output() bail out while ssl->out_left is still non-zero,
+        i.e. an unsent record is reported as sent. */
+    if (ret == SOCK_BUSY) {
+        return MBEDTLS_ERR_SSL_WANT_WRITE;
+    }
+
+    if (ret < 0) {
+        return MBEDTLS_ERR_NET_SEND_FAILED;
+    }
+
+    /* Partial writes are fine; mbedTLS keeps the remainder in ssl->out_left. */
+    return (int)ret;
 }
 
 /*  Shell for mbedtls debug function.

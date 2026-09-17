@@ -14,7 +14,7 @@
 #define DEV_CONFIG_VER          104
 
 //#define STR_VERSION_STATUS      "Develop" // or "Stable"
-#define STR_VERSION_STATUS      "Stable"
+#define STR_VERSION_STATUS      "Develop"
 
 //////////////////////////////////
 // W5500 HW Socket Definition  //
