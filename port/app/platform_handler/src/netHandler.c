@@ -15,6 +15,7 @@
 #include "wizchip_conf.h"
 #include "dhcp.h"
 #include "dhcp_cb.h"
+#include "pppoeHandler.h"
 #include "seg.h"
 #include "WIZ5XXSR-RP_Debug.h"
 #include "socket.h"
@@ -43,6 +44,28 @@ static uint8_t g_dhcp_buf[DATA_BUF_SIZE] __attribute__((aligned(4)));
 #endif
 
 NetStatus g_net_status = NET_LINK_DISCONNECTED;
+
+// A PPPoE account that is wrong stays wrong, so the attempts are counted and the
+// device settles on its stored address rather than retrying for ever.
+#define PPPOE_MAX_ATTEMPTS      3
+#define PPPOE_RETRY_DELAY_MS    5000
+static uint8_t pppoe_attempts;
+uint8_t flag_process_pppoe_success = OFF;
+
+// Whether the device is still waiting to be told its address. Static mode never
+// waits; the other two each have their own completion flag.
+uint8_t net_address_pending(void) {
+    DevConfig *dev_config = get_DevConfig_pointer();
+
+    switch (dev_config->network_option.ip_mode) {
+    case IP_MODE_DHCP:
+        return (flag_process_dhcp_success != ON);
+    case IP_MODE_PPPOE:
+        return (flag_process_pppoe_success != ON);
+    default:
+        return 0;
+    }
+}
 
 uint8_t flag_process_dhcp_success = OFF;
 uint8_t flag_dhcp_stop = OFF;
@@ -87,6 +110,27 @@ void net_status_task(void *argument) {
                     //Net_Conf(); // Set default static IP settings
                     PRT_ERR("NET_LINK_CONNECTED DHCP Failed\r\n");
                     wizchip_recovery();
+                    break;
+                }
+            } else if (dev_config->network_option.ip_mode == IP_MODE_PPPOE) {
+                // Unlike DHCP this does not retry for ever. A wrong account never
+                // starts working, and looping here would reset the chip on every
+                // attempt - which takes the configuration socket down with it and
+                // leaves no way to correct the account.
+                if (process_pppoe() == PPPOE_RET_SUCCESS) {
+                    uint8_t assigned[4];
+
+                    pppoe_get_assigned_ip(assigned);
+                    memcpy(dev_config->network_common.local_ip, assigned,
+                           sizeof(dev_config->network_common.local_ip));
+                    flag_process_pppoe_success = ON;
+                } else if (++pppoe_attempts >= PPPOE_MAX_ATTEMPTS) {
+                    PRT_ERR("NET_LINK_CONNECTED PPPoE gave up after %d attempts;"
+                            " keeping the stored address\r\n", pppoe_attempts);
+                } else {
+                    PRT_ERR("NET_LINK_CONNECTED PPPoE Failed [%d/%d]\r\n",
+                            pppoe_attempts, PPPOE_MAX_ATTEMPTS);
+                    vTaskDelay(pdMS_TO_TICKS(PPPOE_RETRY_DELAY_MS));
                     break;
                 }
             }
@@ -177,6 +221,20 @@ void net_status_task(void *argument) {
                         PRT_INFO("flag_process_dns_success[CH%d] = ON\r\n", ch);
                         display_Dev_Info_dns(ch);
                     }
+                }
+
+                // The PHY stays up when the far end drops the PPP session, so
+                // nothing above notices: the channels just stop passing traffic.
+                // The chip reports it in IR, and the session has to be rebuilt.
+                if (pppoe_link_lost()) {
+                    PRT_ERR("NET_IP_UP PPPoE session closed by peer\r\n");
+                    for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+                        process_socket_termination(seg_data_sock[ch], SOCK_TERMINATION_DELAY, ch, TRUE);
+                    }
+                    flag_process_pppoe_success = OFF;
+                    pppoe_attempts = 0;
+                    g_net_status = NET_LINK_CONNECTED;
+                    break;
                 }
 
                 if (check_phylink_status() == PHY_LINK_OFF) {

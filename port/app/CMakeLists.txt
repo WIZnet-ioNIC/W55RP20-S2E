@@ -239,6 +239,25 @@ target_link_libraries(APP_MODBUS_FILES PUBLIC
         APP_BOARD_FILES
 )
 
+add_library(APP_PPPOE_FILES STATIC)
+
+target_sources(APP_PPPOE_FILES PUBLIC
+        ${APP_PORT_DIR}/pppoe/src/PPPoE.c
+        ${APP_PORT_DIR}/pppoe/src/md5.c
+        ${APP_PORT_DIR}/pppoe/src/pppoeHandler.c
+        )
+
+target_include_directories(APP_PPPOE_FILES PUBLIC
+        ${APP_PORT_DIR}/pppoe/inc
+        )
+
+target_link_libraries(APP_PPPOE_FILES PUBLIC
+        APP_MCU_FILES
+        APP_BOARD_FILES
+        APP_CONFIG_FILES
+        APP_IOLIBRARY_FILES
+        )
+
 add_library(APP_AWS_SDK_PORT_FILES STATIC)
 
 target_sources(APP_AWS_SDK_PORT_FILES PUBLIC
@@ -257,5 +276,6 @@ target_link_libraries(APP_AWS_SDK_PORT_FILES PUBLIC
         APP_CONFIG_FILES
         APP_IOLIBRARY_FILES
         APP_MBEDTLS_FILES
+        APP_PPPOE_FILES
         AWS_SDK_FILES
         )

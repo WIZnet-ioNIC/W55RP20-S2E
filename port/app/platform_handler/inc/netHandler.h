@@ -8,6 +8,9 @@ typedef enum {
 } NetStatus;
 
 #define DHCP_RETRY_COUNT 2
+
+extern uint8_t flag_process_pppoe_success;
+uint8_t net_address_pending(void);
 NetStatus get_net_status(void);
 void net_status_task(void *argument);
 

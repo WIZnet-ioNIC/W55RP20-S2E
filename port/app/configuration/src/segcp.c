@@ -560,7 +560,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                 case SEGCP_RR: sprintf(trep, "%d", dev_config->tcp_option[1].reconnection);
                     break;
                 case SEGCP_LI:
-                    if ((dev_config->network_option.ip_mode != IP_MODE_STATIC) && !flag_process_dhcp_success) {  // address not assigned yet, send all 0
+                    if (net_address_pending()) {  // address not assigned yet, send all 0
                         sprintf(trep, "0.0.0.0");
                     } else {
                         sprintf(trep, "%d.%d.%d.%d", dev_config->network_common.local_ip[0], dev_config->network_common.local_ip[1],
@@ -568,7 +568,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     }
                     break;
                 case SEGCP_SM:
-                    if ((dev_config->network_option.ip_mode != IP_MODE_STATIC) && !flag_process_dhcp_success) {  // address not assigned yet, send all 0
+                    if (net_address_pending()) {  // address not assigned yet, send all 0
                         sprintf(trep, "0.0.0.0");
                     } else {
                         sprintf(trep, "%d.%d.%d.%d", dev_config->network_common.subnet[0], dev_config->network_common.subnet[1],
@@ -576,7 +576,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     }
                     break;
                 case SEGCP_GW:
-                    if ((dev_config->network_option.ip_mode != IP_MODE_STATIC) && !flag_process_dhcp_success) {  // address not assigned yet, send all 0
+                    if (net_address_pending()) {  // address not assigned yet, send all 0
                         sprintf(trep, "0.0.0.0");
                     } else {
                         sprintf(trep, "%d.%d.%d.%d", dev_config->network_common.gateway[0], dev_config->network_common.gateway[1],
@@ -584,7 +584,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     }
                     break;
                 case SEGCP_DS:
-                    if ((dev_config->network_option.ip_mode != IP_MODE_STATIC) && !flag_process_dhcp_success) {  // address not assigned yet, send all 0
+                    if (net_address_pending()) {  // address not assigned yet, send all 0
                         sprintf(trep, "0.0.0.0");
                     } else {
                         sprintf(trep, "%d.%d.%d.%d", dev_config->network_option.dns_server_ip[0], dev_config->network_option.dns_server_ip[1],
