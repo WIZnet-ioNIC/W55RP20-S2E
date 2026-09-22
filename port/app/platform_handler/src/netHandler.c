@@ -36,7 +36,9 @@ extern uint8_t g_send_buf[DEVICE_UART_CNT][DATA_BUF_SIZE];
 extern uint8_t g_recv_mqtt_buf[DEVICE_UART_CNT][DATA_BUF_SIZE];
 #define DHCP_WORK_BUF   g_recv_mqtt_buf[SEG_DATA0_CH]
 #else
-static uint8_t g_dhcp_buf[DATA_BUF_SIZE];
+// The DHCP client casts this to a RIP_MSG, whose fields are 32-bit, and an
+// unaligned word access faults on this core.
+static uint8_t g_dhcp_buf[DATA_BUF_SIZE] __attribute__((aligned(4)));
 #define DHCP_WORK_BUF   g_dhcp_buf
 #endif
 
