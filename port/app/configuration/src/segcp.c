@@ -188,7 +188,7 @@ uint8_t * tbSEGCPCMD[] = {"MC", "VR", "MN", "IM", "OP", "CP", "DG", "KA", "KI", 
                           "QH", "AP", "EB", "ED", "EP", "ES", "EF", "ND", "NS", "AT",
                           "RV", "RR", "RA", "RS", "RE", "RO", "EO", "RD", "RF", "SE",
                           "EE",
-                          "PA", "PB",   // PPPoE account and password
+                          "PI", "PP",   // PPPoE account and password
 #if (DEVICE_UART_CNT > 2)
                           "GS", "WN", "WI", "TO", "GL", "GH", "TP", "WB", "WD", "WP", "WS", "WF", "HD", "HS",
                           "TT", "XV", "XR", "XA", "XS", "XE", "XO", "WO", "XD", "XF", "WE", // ch2 (25)
@@ -521,14 +521,14 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_IM: sprintf(trep, "%d", dev_config->network_option.ip_mode);	// 0:STATIC, 1:DHCP, 2:PPPoE
                     break;
-                case SEGCP_PA: // PPPoE account
+                case SEGCP_PI: // PPPoE account
                     if (dev_config->network_option.pppoe_id[0] == 0) {
                         sprintf(trep, "%c", SEGCP_NULL);
                     } else {
                         sprintf(trep, "%s", dev_config->network_option.pppoe_id);
                     }
                     break;
-                case SEGCP_PB: // PPPoE password
+                case SEGCP_PP: // PPPoE password
                     if (dev_config->network_option.pppoe_pw[0] == 0) {
                         sprintf(trep, "%c", SEGCP_NULL);
                     } else {
@@ -1098,7 +1098,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                         dev_config->network_option.ip_mode = tmp_byte;
                     }
                     break;
-                case SEGCP_PA: // PPPoE account
+                case SEGCP_PI: // PPPoE account
                     if (param[0] == SEGCP_NULL) {
                         dev_config->network_option.pppoe_id[0] = 0;
                     } else {
@@ -1106,7 +1106,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                                            sizeof(dev_config->network_option.pppoe_id), param, &ret);
                     }
                     break;
-                case SEGCP_PB: // PPPoE password
+                case SEGCP_PP: // PPPoE password
                     if (param[0] == SEGCP_NULL) {
                         dev_config->network_option.pppoe_pw[0] = 0;
                     } else {
