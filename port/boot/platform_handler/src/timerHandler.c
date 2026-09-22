@@ -52,7 +52,9 @@ bool repeating_timer_callback(struct repeating_timer *t) {
         DHCP_time_handler();	    // [sec] time counter for DHCP timeout
         devtime_sec++;              // device time counter,
         currenttime_sec++;          // Can be updated this counter value by time protocol like NTP.
-#ifndef __STATUS_IO_ACTIVE_LOW__
+#ifdef __USE_MCU_STATUS_HEARTBEAT__
+        toggle_mcu_status_pin();    // 1 Hz square wave: the MCU is still running
+#else
         LED_Toggle(LED3);
 #endif
     }

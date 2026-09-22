@@ -184,6 +184,10 @@ uint8_t get_connection_status_io(uint16_t pin) {
 // PHY link status pin
 void init_phylink_status_pin(void) {
     GPIO_Configuration(STATUS_PHYLINK_PIN, IO_OUTPUT, IO_NOPULL);
+#ifdef __USE_MCU_STATUS_HEARTBEAT__
+    // The heartbeat owns this pin from here; start it at a known level.
+    GPIO_Output_Reset(STATUS_PHYLINK_PIN);
+#else
     // Pin initial state; link down. Driving the pin through set_connection_status_io()
     // keeps the idle level right where the status pins are active low.
     //
@@ -191,7 +195,16 @@ void init_phylink_status_pin(void) {
     //     // Pin initial state; Low
     //     GPIO_Output_Reset(STATUS_PHYLINK_PIN);
     set_connection_status_io(STATUS_PHYLINK_PIN, OFF);
+#endif
 }
+
+#ifdef __USE_MCU_STATUS_HEARTBEAT__
+// Called from the millisecond timer, so it writes the pin register directly
+// rather than reading the pin back first.
+void toggle_mcu_status_pin(void) {
+    gpio_xor_mask(1ul << MCU_STATUS_PIN);
+}
+#endif
 
 // DTR/DSR share the RTS/CTS pins; the flow control setting selects which
 // function a channel's pins serve.
@@ -267,11 +280,13 @@ uint8_t check_phylink_status(void) {
     //PRT_INFO("link_status = %d\r\n", link_status);
 
     if (prev_link_status != link_status) {
+#ifndef __USE_MCU_STATUS_HEARTBEAT__
         if (link_status == PHY_LINK_ON) {
             set_connection_status_io(STATUS_PHYLINK_PIN, ON);    // PHY Link up
         } else {
             set_connection_status_io(STATUS_PHYLINK_PIN, OFF);    // PHY Link down
         }
+#endif
         prev_link_status = link_status;
     }
     return link_status;

@@ -145,6 +145,11 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define STATUS_PHYLINK_PIN           19   // PHY link status (not on EVB header; onboard LD2 red LED net)
 #define HW_TRIG_PIN                  16   // Serial command mode entry, active low, read once at boot
 #define DEBUG_UART_TX_PIN            18   // Debug message output over PIO (not on EVB header)
+// GP19 shows a heartbeat rather than the PHY link level: the pin only has to say
+// that the MCU is still running. Every GPIO is spoken for, so the link gave up its
+// pin for this - the EVB still shows link state, from the W5500's own LED output.
+#define __USE_MCU_STATUS_HEARTBEAT__
+#define MCU_STATUS_PIN               STATUS_PHYLINK_PIN
 
 // DATA0 (HW uart1)
 #define DATA0_UART_TX_PIN            4

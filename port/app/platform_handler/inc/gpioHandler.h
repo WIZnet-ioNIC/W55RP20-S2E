@@ -61,6 +61,9 @@ void Device_IO_Init(void);
 void init_connection_status_io(void);
 
 void init_phylink_status_pin(void);
+#ifdef __USE_MCU_STATUS_HEARTBEAT__
+void toggle_mcu_status_pin(void);
+#endif
 void init_tcpconnection_status_pin(void);
 void init_flowcontrol_dtr_pin(int channel);
 void init_flowcontrol_dsr_pin(int channel);

@@ -117,6 +117,9 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #elif (DEVICE_BOARD_NAME == W55RP20_S2E)
 #define STATUS_PHYLINK_PIN      19
 #define STATUS_TCPCONNECT_PIN   26
+// Same heartbeat as the application, so the pin means one thing across both.
+#define __USE_MCU_STATUS_HEARTBEAT__
+#define MCU_STATUS_PIN          STATUS_PHYLINK_PIN
 #else
 #define STATUS_PHYLINK_PIN      10
 #define STATUS_TCPCONNECT_PIN   11
