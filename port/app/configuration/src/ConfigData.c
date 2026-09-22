@@ -221,6 +221,12 @@ void load_DevConfig_from_storage(void) {
     read_storage(STORAGE_CONFIG, &dev_config, sizeof(DevConfig));
     read_storage(STORAGE_MAC, dev_config.network_common.mac, 6);
 
+    // The name belongs to the firmware, not to whatever an earlier build left in
+    // flash. Taking it from storage meant a rename only reached the configuration
+    // tool after a factory reset, which needs that same tool to trigger it.
+    memset(dev_config.device_common.device_name, 0x00, sizeof(dev_config.device_common.device_name));
+    memcpy(dev_config.device_common.device_name, DEVICE_ID_DEFAULT, sizeof(DEVICE_ID_DEFAULT));
+
     if (dev_config.serial_common.serial_debug_en) {
         // Both, not one or the other: the PIO port is the product's debug port and USB
         // CDC is what development and the long soak runs read.

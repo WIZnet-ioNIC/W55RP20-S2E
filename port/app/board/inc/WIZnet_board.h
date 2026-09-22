@@ -61,7 +61,14 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #elif (DEVICE_BOARD_NAME == W55RP20_S2E)
 // WIZ145SR: interface selected by configuration (no IF_SEL pin); serial command mode is
 // entered with the HW trigger pin or the '+++' trigger.
-#define DEVICE_ID_DEFAULT                   "WIZ145SR" // Device name
+// Temporary: the configuration tool identifies a device by this string, and its
+// W55RP20_FAMILY list carries neither "WIZ145SR" nor the 4-port name. The 4CH name
+// is the closer of the two to register, so it stands in until the tool learns this
+// board.
+//
+// Original:
+//     #define DEVICE_ID_DEFAULT                   "WIZ145SR" // Device name
+#define DEVICE_ID_DEFAULT                   "W55RP20-S2E-4CH" // Device name
 #define __USE_HW_TRIG_MODE_SWITCH__         // HW pin serial command mode entry
 #define __STATUS_IO_ACTIVE_LOW__            // Status pins read Low when connected / link up
 #elif (DEVICE_BOARD_NAME == PLATYPUS_S2E)
