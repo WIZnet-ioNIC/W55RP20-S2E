@@ -395,7 +395,10 @@ void display_Dev_Info_main(void) {
              (dev_config->serial_option[SEG_DATA0_CH].uart_interface == UART_IF_RS232)) ? 0 : 1,
              uart_if_table[dev_config->serial_option[SEG_DATA0_CH].uart_interface]);
     PRT_INFO(" - Network settings: \r\n");
-    PRT_INFO("\t- Obtaining IP settings: [%s]\r\n", (dev_config->network_option.dhcp_use == 1) ? "Automatic - DHCP" : "Static");
+    static const char *ip_mode_str[] = {"Static", "Automatic - DHCP", "PPPoE"};
+    PRT_INFO("\t- Obtaining IP settings: [%s]\r\n",
+             (dev_config->network_option.ip_mode <= IP_MODE_PPPOE)
+             ? ip_mode_str[dev_config->network_option.ip_mode] : "Unknown");
     PRT_INFO("\t- TCP/UDP ports\r\n");
     PRT_INFO("\t   + S2E data port: [%d]\r\n", dev_config->network_connection[SEG_DATA0_CH].local_port);
     PRT_INFO("\t   + TCP/UDP setting port: [%d]\r\n", DEVICE_SEGCP_PORT);
@@ -492,7 +495,7 @@ void display_Dev_Info_main(void) {
 void display_Dev_Info_dhcp(void) {
     DevConfig *dev_config = get_DevConfig_pointer();
 
-    if (dev_config->network_option.dhcp_use) {
+    if (dev_config->network_option.ip_mode == IP_MODE_DHCP) {
         if (flag_process_dhcp_success == ON) {
             PRT_INFO(" # DHCP IP Leased time : %ld seconds\r\n", getDHCPLeasetime());
         } else {

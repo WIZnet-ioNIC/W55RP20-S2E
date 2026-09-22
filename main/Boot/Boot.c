@@ -97,7 +97,8 @@ int main(void) {
         display_Dev_Info_main();
 
         Net_Conf();
-        if (dev_config->network_option.dhcp_use) {
+        // PPPoE is the application's; here that mode falls back to the stored address.
+        if (dev_config->network_option.ip_mode == IP_MODE_DHCP) {
             if (process_dhcp() == DHCP_IP_LEASED) { // DHCP success
                 flag_process_dhcp_success = ON;
             } else { // DHCP failed

@@ -84,7 +84,7 @@ void make_json_devinfo(uint8_t * buf, uint16_t * len) {
                    dev_config->network_common.gateway[0], dev_config->network_common.gateway[1], dev_config->network_common.gateway[2], dev_config->network_common.gateway[3],
                    dev_config->network_common.subnet[0], dev_config->network_common.subnet[1], dev_config->network_common.subnet[2], dev_config->network_common.subnet[3],
                    dev_config->network_connection[0].dns_domain_name[0], dev_config->network_connection[0].dns_domain_name[1], dev_config->network_connection[0].dns_domain_name[2], dev_config->network_connection[0].dns_domain_name[3],
-                   dev_config->network_option.dhcp_use,
+                   dev_config->network_option.ip_mode,
                    dev_config->network_connection[0].working_mode, //ch0 network
                    dev_config->network_connection[0].local_port,
                    dev_config->network_connection[0].remote_ip[0], dev_config->network_connection[0].remote_ip[1], dev_config->network_connection[0].remote_ip[2], dev_config->network_connection[0].remote_ip[3],
@@ -156,14 +156,14 @@ uint8_t set_devinfo(uint8_t * uri) {
 
     if ((param = get_http_param_value((char *)uri, "dhcp", temp_buf))) {
         if (strstr((char const *)param, "1") != NULL) {
-            dev_config->network_option.dhcp_use = 1;    // DHCP mode
+            dev_config->network_option.ip_mode = IP_MODE_DHCP;
         } else {
-            dev_config->network_option.dhcp_use = 0;    // Static mode
+            dev_config->network_option.ip_mode = IP_MODE_STATIC;
         }
         ret = 1;
     }
 
-    if (dev_config->network_option.dhcp_use == 0) { // Static mode
+    if (dev_config->network_option.ip_mode == IP_MODE_STATIC) {
         if ((param = get_http_param_value((char *)uri, "ip", temp_buf))) {
             inet_addr_((unsigned char*)param, dev_config->network_common.local_ip);
             ret = 1;

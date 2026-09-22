@@ -14,6 +14,8 @@
 #define DEVICE_CONNECT_DATA_SIZE 32
 
 #define DNS_DOMAIN_SIZE         128
+#define PPPOE_ID_SIZE           64
+#define PPPOE_PW_SIZE           64
 
 #define MQTT_TOPIC_SIZE		    128
 #define MQTT_USER_NAME_SIZE		128
@@ -71,9 +73,11 @@ struct __network_connection {
 } __attribute__((packed));
 
 struct __network_option {
-    uint8_t dhcp_use;
+    uint8_t ip_mode;            // IP_MODE_STATIC / IP_MODE_DHCP / IP_MODE_PPPOE
     uint8_t dns_server_ip[4];
     uint8_t tcp_rcr_val;
+    char pppoe_id[PPPOE_ID_SIZE];
+    char pppoe_pw[PPPOE_PW_SIZE];
 } __attribute__((packed));
 
 struct __tcp_option {

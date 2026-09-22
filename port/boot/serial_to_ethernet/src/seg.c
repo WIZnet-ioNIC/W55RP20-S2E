@@ -1431,7 +1431,7 @@ uint8_t check_tcp_connect_exception(void) {
         ret = ON;
     } else if ((srcip[0] == 192) && (srcip[1] == 168)) { // local IP address == Class C private IP
         // Static IP address obtained
-        if ((network_option->dhcp_use == SEG_DISABLE) && ((network_connection->remote_ip[0] == 192) &&
+        if ((network_option->ip_mode == IP_MODE_STATIC) && ((network_connection->remote_ip[0] == 192) &&
                 (network_connection->remote_ip[1] == 168))) {
             if (srcip[2] != network_connection->remote_ip[2]) { // Class C Private IP network mismatch
                 if (serial_common->serial_debug_en)

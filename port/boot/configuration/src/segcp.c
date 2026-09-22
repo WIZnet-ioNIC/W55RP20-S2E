@@ -297,7 +297,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep) {
                     break;
                 case SEGCP_MN: sprintf(trep, "%s", dev_config->device_common.device_name);
                     break;
-                case SEGCP_IM: sprintf(trep, "%d", dev_config->network_option.dhcp_use);	// 0:STATIC, 1:DHCP (PPPoE X)
+                case SEGCP_IM: sprintf(trep, "%d", dev_config->network_option.ip_mode);	// 0:STATIC, 1:DHCP, 2:PPPoE
                     break;
                 case SEGCP_OP: sprintf(trep, "%d", dev_config->network_connection[SEG_DATA0_CH].working_mode); // opmode
                     break;
@@ -527,7 +527,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep) {
                     if (param_len != 1 || tmp_byte > SEGCP_DHCP) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
-                        dev_config->network_option.dhcp_use = tmp_byte;
+                        dev_config->network_option.ip_mode = tmp_byte;
                     }
                     break;
                 case SEGCP_OP:

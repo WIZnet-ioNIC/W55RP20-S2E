@@ -90,6 +90,12 @@ typedef enum {ST_BOOT, ST_OPEN, ST_CONNECT, ST_UPGRADE, ST_ATMODE, ST_UDP} teDEV
 //#define MODBUS_TCP_CLIENT_MODE  4   // TCP client (Master)
 //#define MODBUS_TCP_SERVER_MODE  5   // TCP server (Slave)
 
+// How the device gets its IP. The numbering is the WIZ145SR W_MD command's.
+// The bootloader has no PPPoE of its own; it falls back to the stored address.
+#define IP_MODE_STATIC          0
+#define IP_MODE_DHCP            1
+#define IP_MODE_PPPOE           2
+
 #define MIXED_SERVER            0
 #define MIXED_CLIENT            1
 

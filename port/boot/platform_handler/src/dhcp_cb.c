@@ -28,7 +28,7 @@ void w5x00_dhcp_assign(void) {
     set_DevConfig_value(value->network_common.gateway, gWIZNETINFO.gw, sizeof(value->network_common.gateway));
     set_DevConfig_value(value->network_common.subnet, gWIZNETINFO.sn, sizeof(value->network_common.subnet));
     set_DevConfig_value(value->network_option.dns_server_ip, gWIZNETINFO.dns, sizeof(value->network_option.dns_server_ip));
-    if (value->network_option.dhcp_use) {
+    if (value->network_option.ip_mode == IP_MODE_DHCP) {
         gWIZNETINFO.dhcp = NETINFO_DHCP;
     } else {
         gWIZNETINFO.dhcp = NETINFO_STATIC;

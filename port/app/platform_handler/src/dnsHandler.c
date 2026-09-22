@@ -179,7 +179,7 @@ int8_t process_dns(int channel) {
             break;
         }
 
-        if (dev_config->network_option.dhcp_use) {
+        if (dev_config->network_option.ip_mode == IP_MODE_DHCP) {
             seg_wizchip_api_lock();
             DHCP_run();
             seg_wizchip_api_unlock();

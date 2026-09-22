@@ -169,7 +169,9 @@ void set_DevConfig_to_factory_value(void) {
     dev_config.serial_common.serial_debug_en = ENABLE;
     dev_config.serial_common.uart_interface_cnt = DEVICE_UART_CNT;
 
-    dev_config.network_option.dhcp_use = DISABLE;
+    dev_config.network_option.ip_mode = IP_MODE_STATIC;
+    memset(dev_config.network_option.pppoe_id, 0x00, sizeof(dev_config.network_option.pppoe_id));
+    memset(dev_config.network_option.pppoe_pw, 0x00, sizeof(dev_config.network_option.pppoe_pw));
 
     dev_config.network_option.dns_server_ip[0] = 8; // Default DNS server IP: Google Public DNS (8.8.8.8)
     dev_config.network_option.dns_server_ip[1] = 8;
@@ -339,9 +341,9 @@ void set_DevConfig(wiz_NetInfo *net) {
     set_DevConfig_value(dev_config.network_common.subnet, net->sn, sizeof(dev_config.network_common.subnet));
     set_DevConfig_value(dev_config.network_option.dns_server_ip, net->dns, sizeof(dev_config.network_option.dns_server_ip));
     if (net->dhcp == NETINFO_STATIC) {
-        dev_config.network_option.dhcp_use = DISABLE;
+        dev_config.network_option.ip_mode = IP_MODE_STATIC;
     } else {
-        dev_config.network_option.dhcp_use = ENABLE;
+        dev_config.network_option.ip_mode = IP_MODE_DHCP;
     }
 }
 
@@ -351,7 +353,7 @@ void get_DevConfig(wiz_NetInfo *net) {
     get_DevConfig_value(net->gw, dev_config.network_common.gateway, sizeof(net->gw));
     get_DevConfig_value(net->sn, dev_config.network_common.subnet, sizeof(net->sn));
     get_DevConfig_value(net->dns, dev_config.network_option.dns_server_ip, sizeof(net->dns));
-    if (dev_config.network_option.dhcp_use) {
+    if (dev_config.network_option.ip_mode == IP_MODE_DHCP) {
         net->dhcp = NETINFO_DHCP;
     } else {
         net->dhcp = NETINFO_STATIC;
@@ -418,7 +420,7 @@ void Net_Conf(void) {
     get_DevConfig_value(gWIZNETINFO.gw, dev_config->network_common.gateway, sizeof(gWIZNETINFO.gw[0]) * 4);
     get_DevConfig_value(gWIZNETINFO.sn, dev_config->network_common.subnet, sizeof(gWIZNETINFO.sn[0]) * 4);
     get_DevConfig_value(gWIZNETINFO.dns, dev_config->network_option.dns_server_ip, sizeof(gWIZNETINFO.dns));
-    if (dev_config->network_option.dhcp_use) {
+    if (dev_config->network_option.ip_mode == IP_MODE_DHCP) {
         gWIZNETINFO.dhcp = NETINFO_DHCP;
     } else {
         gWIZNETINFO.dhcp = NETINFO_STATIC;
@@ -429,7 +431,7 @@ void Net_Conf(void) {
 
 void set_dhcp_mode(void) {
     DevConfig *dev_config = get_DevConfig_pointer();
-    dev_config->network_option.dhcp_use = 1;
+    dev_config->network_option.ip_mode = IP_MODE_DHCP;
 }
 
 void check_mac_address(void) {

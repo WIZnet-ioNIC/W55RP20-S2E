@@ -76,14 +76,14 @@ void net_status_task(void *argument) {
 
         case NET_LINK_CONNECTED:
             xSemaphoreGive(net_segcp_udp_sem);
-            if (dev_config->network_option.dhcp_use) {
+            if (dev_config->network_option.ip_mode == IP_MODE_DHCP) {
                 set_stop_dhcp_flag(0);
                 //PRT_INFO("DHCP waiting 3 seconds...\r\n");
                 //vTaskDelay(3000); // Wait for 3 seconds before starting DHCP
                 if (process_dhcp() == DHCP_IP_LEASED) { // DHCP success
                     flag_process_dhcp_success = ON;
                 } else {  // DHCP failed
-                    //dev_config->network_option.dhcp_use = 0;
+                    //dev_config->network_option.ip_mode = IP_MODE_STATIC;
                     //Net_Conf(); // Set default static IP settings
                     PRT_ERR("NET_LINK_CONNECTED DHCP Failed\r\n");
                     wizchip_recovery();

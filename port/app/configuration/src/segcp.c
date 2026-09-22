@@ -188,6 +188,7 @@ uint8_t * tbSEGCPCMD[] = {"MC", "VR", "MN", "IM", "OP", "CP", "DG", "KA", "KI", 
                           "QH", "AP", "EB", "ED", "EP", "ES", "EF", "ND", "NS", "AT",
                           "RV", "RR", "RA", "RS", "RE", "RO", "EO", "RD", "RF", "SE",
                           "EE",
+                          "PA", "PB",   // PPPoE account and password
 #if (DEVICE_UART_CNT > 2)
                           "GS", "WN", "WI", "TO", "GL", "GH", "TP", "WB", "WD", "WP", "WS", "WF", "HD", "HS",
                           "TT", "XV", "XR", "XA", "XS", "XE", "XO", "WO", "XD", "XF", "WE", // ch2 (25)
@@ -518,7 +519,21 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_MN: sprintf(trep, "%s", dev_config->device_common.device_name);
                     break;
-                case SEGCP_IM: sprintf(trep, "%d", dev_config->network_option.dhcp_use);	// 0:STATIC, 1:DHCP (PPPoE X)
+                case SEGCP_IM: sprintf(trep, "%d", dev_config->network_option.ip_mode);	// 0:STATIC, 1:DHCP, 2:PPPoE
+                    break;
+                case SEGCP_PA: // PPPoE account
+                    if (dev_config->network_option.pppoe_id[0] == 0) {
+                        sprintf(trep, "%c", SEGCP_NULL);
+                    } else {
+                        sprintf(trep, "%s", dev_config->network_option.pppoe_id);
+                    }
+                    break;
+                case SEGCP_PB: // PPPoE password
+                    if (dev_config->network_option.pppoe_pw[0] == 0) {
+                        sprintf(trep, "%c", SEGCP_NULL);
+                    } else {
+                        sprintf(trep, "%s", dev_config->network_option.pppoe_pw);
+                    }
                     break;
                 case SEGCP_OP: sprintf(trep, "%d", dev_config->network_connection[0].working_mode); // opmode
                     break;
@@ -545,7 +560,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                 case SEGCP_RR: sprintf(trep, "%d", dev_config->tcp_option[1].reconnection);
                     break;
                 case SEGCP_LI:
-                    if (dev_config->network_option.dhcp_use && !flag_process_dhcp_success) {  //if dhcp doesn't be finished, send all 0
+                    if ((dev_config->network_option.ip_mode != IP_MODE_STATIC) && !flag_process_dhcp_success) {  // address not assigned yet, send all 0
                         sprintf(trep, "0.0.0.0");
                     } else {
                         sprintf(trep, "%d.%d.%d.%d", dev_config->network_common.local_ip[0], dev_config->network_common.local_ip[1],
@@ -553,7 +568,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     }
                     break;
                 case SEGCP_SM:
-                    if (dev_config->network_option.dhcp_use && !flag_process_dhcp_success) {  //if dhcp doesn't be finished, send all 0
+                    if ((dev_config->network_option.ip_mode != IP_MODE_STATIC) && !flag_process_dhcp_success) {  // address not assigned yet, send all 0
                         sprintf(trep, "0.0.0.0");
                     } else {
                         sprintf(trep, "%d.%d.%d.%d", dev_config->network_common.subnet[0], dev_config->network_common.subnet[1],
@@ -561,7 +576,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     }
                     break;
                 case SEGCP_GW:
-                    if (dev_config->network_option.dhcp_use && !flag_process_dhcp_success) {  //if dhcp doesn't be finished, send all 0
+                    if ((dev_config->network_option.ip_mode != IP_MODE_STATIC) && !flag_process_dhcp_success) {  // address not assigned yet, send all 0
                         sprintf(trep, "0.0.0.0");
                     } else {
                         sprintf(trep, "%d.%d.%d.%d", dev_config->network_common.gateway[0], dev_config->network_common.gateway[1],
@@ -569,7 +584,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     }
                     break;
                 case SEGCP_DS:
-                    if (dev_config->network_option.dhcp_use && !flag_process_dhcp_success) {  //if dhcp doesn't be finished, send all 0
+                    if ((dev_config->network_option.ip_mode != IP_MODE_STATIC) && !flag_process_dhcp_success) {  // address not assigned yet, send all 0
                         sprintf(trep, "0.0.0.0");
                     } else {
                         sprintf(trep, "%d.%d.%d.%d", dev_config->network_option.dns_server_ip[0], dev_config->network_option.dns_server_ip[1],
@@ -1077,10 +1092,26 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                     break;
                 case SEGCP_IM:
                     tmp_byte = is_hex(*param);
-                    if (param_len != 1 || tmp_byte > SEGCP_DHCP) {
+                    if (param_len != 1 || tmp_byte > IP_MODE_PPPOE) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     } else {
-                        dev_config->network_option.dhcp_use = tmp_byte;
+                        dev_config->network_option.ip_mode = tmp_byte;
+                    }
+                    break;
+                case SEGCP_PA: // PPPoE account
+                    if (param[0] == SEGCP_NULL) {
+                        dev_config->network_option.pppoe_id[0] = 0;
+                    } else {
+                        segcp_store_string(dev_config->network_option.pppoe_id,
+                                           sizeof(dev_config->network_option.pppoe_id), param, &ret);
+                    }
+                    break;
+                case SEGCP_PB: // PPPoE password
+                    if (param[0] == SEGCP_NULL) {
+                        dev_config->network_option.pppoe_pw[0] = 0;
+                    } else {
+                        segcp_store_string(dev_config->network_option.pppoe_pw,
+                                           sizeof(dev_config->network_option.pppoe_pw), param, &ret);
                     }
                     break;
                 case SEGCP_OP:
