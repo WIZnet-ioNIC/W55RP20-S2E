@@ -45,7 +45,18 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define DEVICE_ID_DEFAULT                   "IP20"
 #endif
 #define DEVICE_CLOCK_SELECT                 CLOCK_SOURCE_EXTERNAL // or CLOCK_SOURCE_INTERNAL
+// The bootloader drives one channel, but this count also sizes the per-channel
+// arrays in DevConfig, which both images read from the same flash sector. Built
+// with 2 while the application used 4, every field after those arrays sat at a
+// different offset in each - including firmware_update.fwup_copy_flag, the byte
+// the application writes to ask for a bank copy and the bootloader reads to act
+// on it. A firmware upload over the network was therefore accepted and then
+// ignored, and the old image booted again.
+#if (DEVICE_BOARD_NAME == W55RP20_S2E)
+#define DEVICE_UART_CNT                     (4)
+#else
 #define DEVICE_UART_CNT                     (2)
+#endif
 #define DEVICE_SETTING_PASSWORD_DEFAULT     "00000000"
 #define DEVICE_GROUP_DEFAULT                "WORKGROUP" // Device group
 #define DEVICE_TARGET_SYSTEM_CLOCK   PLL_SYS_KHZ
