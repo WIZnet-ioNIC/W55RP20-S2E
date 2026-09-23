@@ -53,7 +53,7 @@ bool repeating_timer_callback(struct repeating_timer *t) {
         devtime_sec++;              // device time counter,
         currenttime_sec++;          // Can be updated this counter value by time protocol like NTP.
 #ifdef __USE_MCU_STATUS_HEARTBEAT__
-        toggle_mcu_status_pin();    // 1 Hz square wave: the MCU is still running
+        toggle_mcu_status_pin();    // 1 s high, 1 s low: the MCU is still running
 #else
         LED_Toggle(LED3);
 #endif
