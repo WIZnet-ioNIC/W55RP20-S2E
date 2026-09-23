@@ -286,10 +286,19 @@ void start_task(void *argument) {
     xTaskCreate(segcp_serial_task, "SEGCP_serial_Task", SEGCP_SERIAL_TASK_STACK_SIZE, NULL, SEGCP_SERIAL_TASK_PRIORITY, NULL);
     xTaskCreate(segcp_tcp_task, "SEGCP_tcp_Task", SEGCP_TCP_TASK_STACK_SIZE, NULL, SEGCP_TCP_TASK_PRIORITY, NULL);
 
+    // A channel whose tasks were never created looks exactly like a channel that is
+    // ignoring the network: no socket, no log line, nothing to follow. The return
+    // value was discarded, so say when one fails and what the heap had left.
     for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
-        xTaskCreate(seg_ch_task,      "SEG_Task",      SEG_TASK_STACK_SIZE, (void *)(uintptr_t)ch, SEG_TASK_PRIORITY,          NULL);
-        xTaskCreate(seg_ch_u2e_task,  "SEG_U2E_Task",  SEG_U2E_TASK_STACK_SIZE, (void *)(uintptr_t)ch, SEG_U2E_TASK_PRIORITY,      NULL);
-        xTaskCreate(seg_ch_recv_task, "SEG_Recv_Task", SEG_RECV_TASK_STACK_SIZE, (void *)(uintptr_t)ch, SEG_RECV_TASK_PRIORITY + ch, NULL);
+        BaseType_t ok = pdPASS;
+
+        ok &= xTaskCreate(seg_ch_task,      "SEG_Task",      SEG_TASK_STACK_SIZE, (void *)(uintptr_t)ch, SEG_TASK_PRIORITY,          NULL);
+        ok &= xTaskCreate(seg_ch_u2e_task,  "SEG_U2E_Task",  SEG_U2E_TASK_STACK_SIZE, (void *)(uintptr_t)ch, SEG_U2E_TASK_PRIORITY,      NULL);
+        ok &= xTaskCreate(seg_ch_recv_task, "SEG_Recv_Task", SEG_RECV_TASK_STACK_SIZE, (void *)(uintptr_t)ch, SEG_RECV_TASK_PRIORITY + ch, NULL);
+        if (ok != pdPASS) {
+            PRT_ERR(" > CH%d task creation FAILED, heap left %u\r\n",
+                    ch, (unsigned int)xPortGetFreeHeapSize());
+        }
     }
     xTaskCreate(seg_timer_task, "SEG_Timer_task", SEG_TIMER_TASK_STACK_SIZE, NULL, SEG_TIMER_TASK_PRIORITY, NULL);
 #if SEG_S2E_STALL_RECOVERY_ENABLE
@@ -300,6 +309,8 @@ void start_task(void *argument) {
     // spin waits in the data path call taskYIELD(), so it does get scheduled.
     xTaskCreate(seg_s2e_monitor_task, "SEG_S2E_Monitor", 1024, NULL, 31, NULL);
 #endif
+    PRT_INFO(" > Tasks created, heap left %u of %u\r\n",
+             (unsigned int)xPortGetFreeHeapSize(), (unsigned int)configTOTAL_HEAP_SIZE);
     // HTTP web server removed (sockets reassigned to DATA2/DATA3)
     // if (dev_config->config_common.pw_search[0] == 0) {
     //     xTaskCreate(http_webserver_task, "http_webserver_task", HTTP_WEBSERVER_TASK_STACK_SIZE, NULL, HTTP_WEBSERVER_TASK_PRIORITY, NULL);
