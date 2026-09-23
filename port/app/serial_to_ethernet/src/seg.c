@@ -4071,6 +4071,45 @@ static void seg_e2s_gate_poll(int channel) {
     }
 }
 
+// Who each channel is talking to, reported on a slow tick.
+//
+// "CONNECTED ch=N FROM ip:port" is printed once, when the peer arrives. A session
+// that was already up before anyone attached to the debug port is therefore
+// anonymous - which is exactly the position a wedged-looking channel leaves you in.
+// This repeats the answer often enough to catch, and only while something is
+// actually connected, so an idle device stays quiet.
+#define SEG_PEER_REPORT_MS      30000U
+
+static void seg_report_channel_peers(void) {
+    static uint32_t last_ms;
+    uint32_t now = (uint32_t)millis();
+
+    if ((uint32_t)(now - last_ms) < SEG_PEER_REPORT_MS) {
+        return;
+    }
+    last_ms = now;
+
+    for (int ch = 0; ch < DEVICE_UART_CNT; ch++) {
+        uint8_t sock = seg_data_sock[ch];
+        uint8_t sr;
+        uint8_t ip[4];
+        uint16_t port;
+
+        seg_wizchip_api_lock();
+        sr = getSn_SR(sock);
+        if (sr == SOCK_ESTABLISHED) {
+            getSn_DIPR(sock, ip);
+            port = getSn_DPORT(sock);
+        }
+        seg_wizchip_api_unlock();
+
+        if (sr == SOCK_ESTABLISHED) {
+            PRT_SEG(" > SEG:PEER ch=%d sock=%d %d.%d.%d.%d:%d\r\n",
+                    ch, sock, ip[0], ip[1], ip[2], ip[3], port);
+        }
+    }
+}
+
 void seg_s2e_monitor_task(void *argument) {
     (void)argument;
 
@@ -4092,6 +4131,7 @@ void seg_s2e_monitor_task(void *argument) {
 #endif
             seg_e2s_gate_poll(ch);      // peer stopped asserting CTS
         }
+        seg_report_channel_peers();
         vTaskDelay(pdMS_TO_TICKS(250));
     }
 }
