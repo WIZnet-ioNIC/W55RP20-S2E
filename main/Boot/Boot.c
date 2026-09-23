@@ -133,14 +133,29 @@ int main(void) {
     if (dev_config->firmware_update.fwup_copy_flag == 1) {
         if (device_bank_check(1) < 0) {
             printf("device_bank_check failed\r\n");
-            device_raw_reboot();
         } else {
             erase_storage(STORAGE_APPBANK);
             if (device_bank_copy() < 0) {
                 printf("device_bank_copy failed\r\n");
-                device_raw_reboot();
             }
         }
+        // Clear the request whether or not the copy happened. Rebooting with it
+        // still set made a failure permanent: nothing else clears the flag, so
+        // the device came straight back here and never reached the application
+        // it already had. An upload that cannot be applied should leave the
+        // working image running, not take the device down.
+        //
+        // Original:
+        //     if (device_bank_check(1) < 0) {
+        //         printf("device_bank_check failed\r\n");
+        //         device_raw_reboot();
+        //     } else {
+        //         erase_storage(STORAGE_APPBANK);
+        //         if (device_bank_copy() < 0) {
+        //             printf("device_bank_copy failed\r\n");
+        //             device_raw_reboot();
+        //         }
+        //     }
         dev_config->firmware_update.fwup_copy_flag = 0;
         write_storage(STORAGE_CONFIG, 0, dev_config, sizeof(DevConfig));
     }
