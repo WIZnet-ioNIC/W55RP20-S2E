@@ -121,14 +121,24 @@ void set_DevConfig_to_factory_value(void) {
         dev_config.tcp_option[i].keepalive_wait_time = 7000;
         dev_config.tcp_option[i].keepalive_retry_time = 5000;
 
-        // Default Settings for Data UART: 460800-8-N-1, RTS/CTS flow control
+        // Default Settings for Data UART: 115200-8-N-1, no flow control
+        //
+        // 460800 with RTS/CTS locked a factory-fresh board out. check_mac_address()
+        // asks for the MAC on DATA0 after DATA_UART_Configuration() has applied these
+        // settings, so a host whose RTS/CTS lines are not wired cannot send the MAC -
+        // and without a MAC it cannot reach the configuration tool to turn flow
+        // control off either. The slower rate also matches what the family ships with.
+        //
+        // Original:
+        //     dev_config.serial_option[i].baud_rate = baud_460800;
+        //     dev_config.serial_option[i].flow_control = flow_rts_cts;
         dev_config.serial_option[i].uart_interface = UART_IF_RS232_TTL;
         dev_config.serial_option[i].protocol = SEG_SERIAL_PROTOCOL_NONE;
-        dev_config.serial_option[i].baud_rate = baud_460800;
+        dev_config.serial_option[i].baud_rate = baud_115200;
         dev_config.serial_option[i].data_bits = word_len8;
         dev_config.serial_option[i].parity = parity_none;
         dev_config.serial_option[i].stop_bits = stop_bit1;
-        dev_config.serial_option[i].flow_control = flow_rts_cts;
+        dev_config.serial_option[i].flow_control = flow_none;
 
 #ifdef __USE_DSR_DTR_DEFAULT__
         dev_config.serial_option[i].dtr_en = ENABLE;
