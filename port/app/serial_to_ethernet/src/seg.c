@@ -1512,12 +1512,19 @@ void proc_SEG_tcp_client(uint8_t sock, int channel) {
 
             if (tcp_option->keepalive_en) {
                 if (seg_keepalive_timer[channel] == NULL) {
-                    ensure_channel_timer(&seg_keepalive_timer[channel],
-                                         "seg_keepalive_timer",
-                                         seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time),
-                                         pdFALSE,
-                                         channel,
-                                         keepalive_timer_callback);
+                    // Keepalive is the only thing that reaps a peer which vanished
+                    // without FIN, and every caller skips it when this handle is
+                    // NULL. Losing it silently leaves the socket ESTABLISHED for
+                    // good, refusing every later connection.
+                    if (ensure_channel_timer(&seg_keepalive_timer[channel],
+                                             "seg_keepalive_timer",
+                                             seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time),
+                                             pdFALSE,
+                                             channel,
+                                             keepalive_timer_callback) != pdPASS) {
+                        PRT_ERR(" > SEG:KEEPALIVE timer creation FAILED ch=%d, heap left %u\r\n",
+                                channel, (unsigned int)xPortGetFreeHeapSize());
+                    }
                 } else {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
@@ -1706,12 +1713,19 @@ void proc_SEG_tcp_client_over_tls(uint8_t sock, int channel) {
 
             if (tcp_option->keepalive_en) {
                 if (seg_keepalive_timer[channel] == NULL) {
-                    ensure_channel_timer(&seg_keepalive_timer[channel],
-                                         "seg_keepalive_timer",
-                                         seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time),
-                                         pdFALSE,
-                                         channel,
-                                         keepalive_timer_callback);
+                    // Keepalive is the only thing that reaps a peer which vanished
+                    // without FIN, and every caller skips it when this handle is
+                    // NULL. Losing it silently leaves the socket ESTABLISHED for
+                    // good, refusing every later connection.
+                    if (ensure_channel_timer(&seg_keepalive_timer[channel],
+                                             "seg_keepalive_timer",
+                                             seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time),
+                                             pdFALSE,
+                                             channel,
+                                             keepalive_timer_callback) != pdPASS) {
+                        PRT_ERR(" > SEG:KEEPALIVE timer creation FAILED ch=%d, heap left %u\r\n",
+                                channel, (unsigned int)xPortGetFreeHeapSize());
+                    }
                 } else {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
@@ -1904,12 +1918,19 @@ void proc_SEG_mqtt_client(uint8_t sock, int channel) {
 
             if (tcp_option->keepalive_en) {
                 if (seg_keepalive_timer[channel] == NULL) {
-                    ensure_channel_timer(&seg_keepalive_timer[channel],
-                                         "seg_keepalive_timer",
-                                         seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time),
-                                         pdFALSE,
-                                         channel,
-                                         keepalive_timer_callback);
+                    // Keepalive is the only thing that reaps a peer which vanished
+                    // without FIN, and every caller skips it when this handle is
+                    // NULL. Losing it silently leaves the socket ESTABLISHED for
+                    // good, refusing every later connection.
+                    if (ensure_channel_timer(&seg_keepalive_timer[channel],
+                                             "seg_keepalive_timer",
+                                             seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time),
+                                             pdFALSE,
+                                             channel,
+                                             keepalive_timer_callback) != pdPASS) {
+                        PRT_ERR(" > SEG:KEEPALIVE timer creation FAILED ch=%d, heap left %u\r\n",
+                                channel, (unsigned int)xPortGetFreeHeapSize());
+                    }
                 } else {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
@@ -2129,12 +2150,19 @@ void proc_SEG_mqtts_client(uint8_t sock, int channel) {
 
             if (tcp_option->keepalive_en) {
                 if (seg_keepalive_timer[channel] == NULL) {
-                    ensure_channel_timer(&seg_keepalive_timer[channel],
-                                         "seg_keepalive_timer",
-                                         seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time),
-                                         pdFALSE,
-                                         channel,
-                                         keepalive_timer_callback);
+                    // Keepalive is the only thing that reaps a peer which vanished
+                    // without FIN, and every caller skips it when this handle is
+                    // NULL. Losing it silently leaves the socket ESTABLISHED for
+                    // good, refusing every later connection.
+                    if (ensure_channel_timer(&seg_keepalive_timer[channel],
+                                             "seg_keepalive_timer",
+                                             seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time),
+                                             pdFALSE,
+                                             channel,
+                                             keepalive_timer_callback) != pdPASS) {
+                        PRT_ERR(" > SEG:KEEPALIVE timer creation FAILED ch=%d, heap left %u\r\n",
+                                channel, (unsigned int)xPortGetFreeHeapSize());
+                    }
                 } else {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
@@ -2302,12 +2330,19 @@ void proc_SEG_tcp_server(uint8_t sock, int channel) {
 
             if (tcp_option->keepalive_en) {
                 if (seg_keepalive_timer[channel] == NULL) {
-                    ensure_channel_timer(&seg_keepalive_timer[channel],
-                                         "seg_keepalive_timer",
-                                         seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time),
-                                         pdFALSE,
-                                         channel,
-                                         keepalive_timer_callback);
+                    // Keepalive is the only thing that reaps a peer which vanished
+                    // without FIN, and every caller skips it when this handle is
+                    // NULL. Losing it silently leaves the socket ESTABLISHED for
+                    // good, refusing every later connection.
+                    if (ensure_channel_timer(&seg_keepalive_timer[channel],
+                                             "seg_keepalive_timer",
+                                             seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time),
+                                             pdFALSE,
+                                             channel,
+                                             keepalive_timer_callback) != pdPASS) {
+                        PRT_ERR(" > SEG:KEEPALIVE timer creation FAILED ch=%d, heap left %u\r\n",
+                                channel, (unsigned int)xPortGetFreeHeapSize());
+                    }
                 } else {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
@@ -2502,12 +2537,19 @@ void proc_SEG_tcp_mixed(uint8_t sock, int channel) {
 
             if (tcp_option->keepalive_en) {
                 if (seg_keepalive_timer[channel] == NULL) {
-                    ensure_channel_timer(&seg_keepalive_timer[channel],
-                                         "seg_keepalive_timer",
-                                         seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time),
-                                         pdFALSE,
-                                         channel,
-                                         keepalive_timer_callback);
+                    // Keepalive is the only thing that reaps a peer which vanished
+                    // without FIN, and every caller skips it when this handle is
+                    // NULL. Losing it silently leaves the socket ESTABLISHED for
+                    // good, refusing every later connection.
+                    if (ensure_channel_timer(&seg_keepalive_timer[channel],
+                                             "seg_keepalive_timer",
+                                             seg_keepalive_interval_ticks(tcp_option->keepalive_wait_time),
+                                             pdFALSE,
+                                             channel,
+                                             keepalive_timer_callback) != pdPASS) {
+                        PRT_ERR(" > SEG:KEEPALIVE timer creation FAILED ch=%d, heap left %u\r\n",
+                                channel, (unsigned int)xPortGetFreeHeapSize());
+                    }
                 } else {
                     if (xTimerIsTimerActive(seg_keepalive_timer[channel]) == pdTRUE) {
                         xTimerStop(seg_keepalive_timer[channel], 0);
@@ -4110,6 +4152,40 @@ static void seg_report_channel_peers(void) {
     }
 }
 
+// Keep probing an established channel even when its keepalive timer is missing.
+//
+// A peer that disappears without FIN leaves the socket ESTABLISHED, and keepalive
+// is the only thing that ends it - the W5500 closes the socket once a probe goes
+// unanswered for RCR retries. Every caller of that probe is guarded by
+// seg_keepalive_timer[ch] != NULL, so a timer that failed to be created takes the
+// recovery with it and the channel refuses connections until the device is reset.
+// The monitor already runs on its own tick and can stand in.
+static void seg_keepalive_backstop(int channel) {
+    struct __tcp_option *tcp_option =
+        (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option[channel]);
+    static uint32_t last_probe_ms[DEVICE_UART_CNT];
+    uint32_t now;
+
+    if ((tcp_option->keepalive_en != SEG_ENABLE) ||
+            (seg_keepalive_timer[channel] != NULL) ||
+            (get_device_status(channel) != ST_CONNECT)) {
+        return;
+    }
+
+    now = (uint32_t)millis();
+    if ((uint32_t)(now - last_probe_ms[channel]) <
+            seg_keepalive_interval_ms(tcp_option->keepalive_retry_time)) {
+        return;
+    }
+    last_probe_ms[channel] = now;
+
+    // The helper re-checks idleness under the API lock, so an active channel is
+    // never probed and nothing is sent when the peer is still talking.
+    if (send_keepalive_packet_manual(seg_data_sock[channel], channel) == TRUE) {
+        PRT_SEG(" > SEG:KEEPALIVE probe from monitor ch=%d (no timer)\r\n", channel);
+    }
+}
+
 void seg_s2e_monitor_task(void *argument) {
     (void)argument;
 
@@ -4130,6 +4206,7 @@ void seg_s2e_monitor_task(void *argument) {
             seg_s2e_recovery_poll(ch);  // permanent raw-TCP send stall
 #endif
             seg_e2s_gate_poll(ch);      // peer stopped asserting CTS
+            seg_keepalive_backstop(ch); // peer vanished and the timer is missing
         }
         seg_report_channel_peers();
         vTaskDelay(pdMS_TO_TICKS(250));
