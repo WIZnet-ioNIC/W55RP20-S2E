@@ -4164,11 +4164,13 @@ static void seg_keepalive_backstop(int channel) {
     struct __tcp_option *tcp_option =
         (struct __tcp_option *) & (get_DevConfig_pointer()->tcp_option[channel]);
     static uint32_t last_probe_ms[DEVICE_UART_CNT];
+    static uint8_t reported[DEVICE_UART_CNT];
     uint32_t now;
 
     if ((tcp_option->keepalive_en != SEG_ENABLE) ||
             (seg_keepalive_timer[channel] != NULL) ||
             (get_device_status(channel) != ST_CONNECT)) {
+        reported[channel] = 0;      // say it again for the next connection
         return;
     }
 
@@ -4181,8 +4183,12 @@ static void seg_keepalive_backstop(int channel) {
 
     // The helper re-checks idleness under the API lock, so an active channel is
     // never probed and nothing is sent when the peer is still talking.
-    if (send_keepalive_packet_manual(seg_data_sock[channel], channel) == TRUE) {
-        PRT_SEG(" > SEG:KEEPALIVE probe from monitor ch=%d (no timer)\r\n", channel);
+    // A peer that is alive but quiet gets probed at the retry interval for as long
+    // as it stays connected, so say this once per connection rather than per probe.
+    if ((send_keepalive_packet_manual(seg_data_sock[channel], channel) == TRUE) &&
+            !reported[channel]) {
+        reported[channel] = 1;
+        PRT_SEG(" > SEG:KEEPALIVE driven from monitor ch=%d (timer missing)\r\n", channel);
     }
 }
 
