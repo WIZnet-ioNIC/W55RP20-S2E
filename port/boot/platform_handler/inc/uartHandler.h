@@ -59,7 +59,19 @@ enum baud {
     baud_57600 = 11,
     baud_115200 = 12,
     baud_230400 = 13,
-    baud_460800 = 14
+    // The application and the bootloader read the same stored baud rate index, so
+    // the bootloader has to know the same rates. It stopped at 460800 while the
+    // application went to 8M, and a faster setting silently dropped its own console
+    // back to 115200.
+    //
+    // Original: baud_460800 = 14
+    baud_460800 = 14,
+    baud_921600 = 15,
+    baud_1M = 16,
+    baud_2M = 17,
+    baud_4M = 18,
+    baud_8M = 19,
+    baud_max = 20
 };
 
 enum word_len {

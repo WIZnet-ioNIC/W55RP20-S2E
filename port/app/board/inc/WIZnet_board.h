@@ -25,7 +25,8 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #if ((DEVICE_BOARD_NAME == WIZ5XXSR_RP) || DEVICE_BOARD_NAME == W55RP20_S2E || DEVICE_BOARD_NAME == W232N || DEVICE_BOARD_NAME == IP20 || DEVICE_BOARD_NAME == PLATYPUS_S2E) // Chip product
 //#define __USE_DHCP_INFINITE_LOOP__          // When this option is enabled, if DHCP IP allocation failed, process_dhcp() function will try to DHCP steps again.
 #define __USE_DNS_INFINITE_LOOP__           // When this option is enabled, if DNS query failed, process_dns() function will try to DNS steps again.
-// The WIZ145SR board has no factory reset pin; GP18 carries the debug UART.
+// No factory reset pin on this board: GP18 carries the debug UART and every other
+// GPIO is spoken for. A factory reset is issued with the FR command instead.
 #if (DEVICE_BOARD_NAME != W55RP20_S2E)
 #define __USE_HW_FACTORY_RESET__            // Use Factory reset pin
 #endif
@@ -39,15 +40,27 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define __USE_MQTT__                        // Use S2E MQTT / MQTTS client mode
 #endif
 #define __USE_UART_485_422__
-// WIZ145SR carries a TTL-only serial port with None / XON-XOFF / RTS-CTS flow
-// control. The RTS-only modes and DTR/DSR drive an RS-422/485 transceiver this
-// board does not have, so they stay out of the selectable range.
-#if (DEVICE_BOARD_NAME == W55RP20_S2E)
-#define SERIAL_FLOW_CONTROL_MAX             flow_rts_cts
-#define SERIAL_UART_INTERFACE_MAX           UART_IF_RS232_TTL
-#else
+// The serial port offers every interface and flow-control mode the driver carries.
+// This board was held to the discontinued WIZ145SR's feature list for a while and
+// had RS-422/485 and the RTS-only and DTR/DSR modes taken out of range; the part
+// itself does all of them, so the limit is back to what the driver supports.
+//
+// Original:
+//     #if (DEVICE_BOARD_NAME == W55RP20_S2E)
+//     #define SERIAL_FLOW_CONTROL_MAX             flow_rts_cts
+//     #define SERIAL_UART_INTERFACE_MAX           UART_IF_RS232_TTL
+//     #else
 #define SERIAL_FLOW_CONTROL_MAX             flow_dtr_dsr
 #define SERIAL_UART_INTERFACE_MAX           UART_IF_RS485_REVERSE
+
+// Highest selectable baud rate index, which is the last entry of baud_table[].
+// The configuration commands used to stop at baud_230400 while the table and the
+// baud enum both ran well past it, so the rates the part can actually reach could
+// not be set over the network at all - not even the 460800 this board shipped with.
+#if (DEVICE_BOARD_NAME == W232N)
+#define SERIAL_BAUD_RATE_MAX                baud_230400
+#else
+#define SERIAL_BAUD_RATE_MAX                baud_8M
 #endif
 // WIZ145SR carries a debug port of its own. The other boards keep USB CDC unless the
 // build asks for the PIO port.

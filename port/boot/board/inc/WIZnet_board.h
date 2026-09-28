@@ -40,6 +40,8 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #define __USE_MQTT__                        // Use S2E MQTT / MQTTS client mode
 #endif
 #define __USE_UART_485_422__
+// Highest selectable baud rate index, matching the last entry of baud_table[].
+#define SERIAL_BAUD_RATE_MAX                baud_8M
 //#define __USE_USERS_GPIO__
 #if (DEVICE_BOARD_NAME != W55RP20_S2E)
 #define __USE_BOOTMODE_PIN__                // Boot mode entry pin; the 4-port W55RP20-S2E reuses GP15 as DATA2 RTS

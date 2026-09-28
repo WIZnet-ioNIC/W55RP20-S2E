@@ -681,7 +681,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     }
 #else
-                    if (param_len > 2 || tmp_int > baud_230400) {
+                    if (param_len > 2 || tmp_int > SERIAL_BAUD_RATE_MAX) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     }
 #endif

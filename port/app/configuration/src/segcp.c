@@ -1339,7 +1339,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                 case SEGCP_BR:
                     tmp_int = atoi(param);
 #if (DEVICE_BOARD_NAME == W232N)
-                    if (param_len > 2 || tmp_int > baud_230400) {
+                    if (param_len > 2 || tmp_int > SERIAL_BAUD_RATE_MAX) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     }
 #else
@@ -1354,7 +1354,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                 case SEGCP_EB:
                     tmp_int = atoi(param);
 #if (DEVICE_BOARD_NAME == W232N)
-                    if (param_len > 2 || tmp_int > baud_230400) {
+                    if (param_len > 2 || tmp_int > SERIAL_BAUD_RATE_MAX) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     }
 #else
@@ -2133,7 +2133,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                 case SEGCP_WB: // baud
                     tmp_int = atoi(param);
 #if (DEVICE_BOARD_NAME == W232N)
-                    if (param_len > 2 || tmp_int > baud_230400) {
+                    if (param_len > 2 || tmp_int > SERIAL_BAUD_RATE_MAX) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     }
 #else
@@ -2352,7 +2352,7 @@ uint16_t proc_SEGCP(uint8_t* segcp_req, uint8_t* segcp_rep, uint8_t segcp_privil
                 case SEGCP_YB: // baud
                     tmp_int = atoi(param);
 #if (DEVICE_BOARD_NAME == W232N)
-                    if (param_len > 2 || tmp_int > baud_230400) {
+                    if (param_len > 2 || tmp_int > SERIAL_BAUD_RATE_MAX) {
                         ret |= SEGCP_RET_ERR_INVALIDPARAM;
                     }
 #else
