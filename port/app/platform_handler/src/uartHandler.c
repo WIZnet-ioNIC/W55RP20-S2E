@@ -67,42 +67,47 @@ dma_channel_config dma_uart_c[DEVICE_UART_CNT];
 // RX interrupt handler
 void data0_uart_rx(void) {
     //uartRxByte: // 1-byte character variable for UART Interrupt request handler
-    uint8_t ch = 0, input_flag = 0;
+    uint8_t ch = 0, input_flag0 = 0, input_flag1 = 0;
     signed portBASE_TYPE xHigherPriorityTaskWoken = pdFALSE;
 
     while (uart_is_readable(DATA0_UART_ID)) {
         ch = uart_getc(DATA0_UART_ID);
 
         if (!(check_modeswitch_trigger(ch))) { // ret: [0] data / [!0] trigger code
-            // if (is_data_buffer_full(SEG_DATA0_CH) == TRUE) {
             if (is_data_buffer_full(SEG_DATA0_CH) == TRUE){
                 data_buffer_flush(SEG_DATA0_CH);
             }
-        
+
             if (is_data_buffer_full(SEG_DATA1_CH) == TRUE) {
                 data_buffer_flush(SEG_DATA1_CH);
             }
 
-            // if (check_serial_store_permitted(ch, SEG_DATA0_CH)) { // ret: [0] not permitted / [1] permitted
+            if (check_serial_store_permitted(ch, SEG_DATA0_CH)) { // ret: [0] not permitted / [1] permitted
+                put_byte_to_data_buffer(ch, SEG_DATA0_CH);
+                input_flag0 = 1;
+            }
             if (check_serial_store_permitted(ch, SEG_DATA1_CH)) {
                 put_byte_to_data_buffer(ch, SEG_DATA1_CH);
-                input_flag = 1;
-            }else{            
-                if(check_serial_store_permitted(ch, SEG_DATA0_CH)) {
-                    put_byte_to_data_buffer(ch, SEG_DATA0_CH);
-                    input_flag = 1;
-                }
+                input_flag1 = 1;
             }
         }
     }
 
-    if (input_flag) {
+    if (input_flag0) {
         init_time_delimiter_timer(SEG_DATA0_CH);
         if (opmode == DEVICE_GW_MODE) {
             xSemaphoreGiveFromISR(seg_u2e_sem[SEG_DATA0_CH], &xHigherPriorityTaskWoken);
         } else if (opmode == DEVICE_AT_MODE) {
             xSemaphoreGiveFromISR(segcp_uart_sem, &xHigherPriorityTaskWoken);
         }
+    }
+    if (input_flag1) {
+        init_time_delimiter_timer(SEG_DATA1_CH);
+        if (opmode == DEVICE_GW_MODE) {
+            xSemaphoreGiveFromISR(seg_u2e_sem[SEG_DATA1_CH], &xHigherPriorityTaskWoken);
+        }
+    }
+    if (input_flag0 || input_flag1) {
         portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
     }
 }
