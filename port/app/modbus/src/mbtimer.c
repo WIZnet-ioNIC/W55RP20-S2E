@@ -10,22 +10,30 @@ volatile uint32_t mb_timeout[DEVICE_UART_CNT];
 
 extern xSemaphoreHandle seg_u2e_sem[];
 
-bool vMBPortTimersCallbackCh0(struct repeating_timer *t) {
-    xMBRTUTimerT35Expired(SEG_DATA0_CH);
+// One callback for every channel; the channel arrives in the timer's user_data.
+// There used to be one callback per channel and only DATA0/DATA1 had one.
+//
+// Original:
+//     bool vMBPortTimersCallbackCh0(struct repeating_timer *t) {
+//         xMBRTUTimerT35Expired(SEG_DATA0_CH);
+//         return true; // Indicate that the timer callback was successful
+//     }
+//
+//     bool vMBPortTimersCallbackCh1(struct repeating_timer *t) {
+//         xMBRTUTimerT35Expired(SEG_DATA1_CH);
+//         return true; // Indicate that the timer callback was successful
+//     }
+//
+//     void vMBPortTimersCallback(struct repeating_timer *t) {
+//         if (t == &g_mb_timer[SEG_DATA0_CH]) {
+//             xMBRTUTimerT35Expired(SEG_DATA0_CH);
+//         } else if (t == &g_mb_timer[SEG_DATA1_CH]) {
+//             xMBRTUTimerT35Expired(SEG_DATA1_CH);
+//         }
+//     }
+static bool vMBPortTimersCallback(struct repeating_timer *t) {
+    xMBRTUTimerT35Expired((int)(intptr_t)t->user_data);
     return true; // Indicate that the timer callback was successful
-}
-
-bool vMBPortTimersCallbackCh1(struct repeating_timer *t) {
-    xMBRTUTimerT35Expired(SEG_DATA1_CH);
-    return true; // Indicate that the timer callback was successful
-}
-
-void vMBPortTimersCallback(struct repeating_timer *t) {
-    if (t == &g_mb_timer[SEG_DATA0_CH]) {
-        xMBRTUTimerT35Expired(SEG_DATA0_CH);
-    } else if (t == &g_mb_timer[SEG_DATA1_CH]) {
-        xMBRTUTimerT35Expired(SEG_DATA1_CH);
-    }
 }
 
 void xMBPortTimersInit(uint32_t usTim1Timerout50us, int channel) {
@@ -46,15 +54,22 @@ void xMBPortTimersInit(uint32_t usTim1Timerout50us, int channel) {
 
 void vMBPortTimersEnable(int channel) {
     cancel_repeating_timer(&g_mb_timer[channel]);
-#if 1
-    if (channel == SEG_DATA0_CH) {
-        add_repeating_timer_us(mb_timeout[channel], vMBPortTimersCallbackCh0, NULL, &g_mb_timer[channel]);
-    } else if (channel == SEG_DATA1_CH) {
-        add_repeating_timer_us(mb_timeout[channel], vMBPortTimersCallbackCh1, NULL, &g_mb_timer[channel]);
-    }
-#else
-    add_repeating_timer_us(mb_timeout[channel], vMBPortTimersCallback, NULL, &g_mb_timer[channel]);
-#endif
+    // DATA2/DATA3 got no timer here, so a Modbus RTU frame on those channels never
+    // reached its T3.5 expiry: the receiver stayed in STATE_RX_INIT and nothing was
+    // ever forwarded to the network. Every channel now starts the same timer.
+    //
+    // Original:
+    // #if 1
+    //     if (channel == SEG_DATA0_CH) {
+    //         add_repeating_timer_us(mb_timeout[channel], vMBPortTimersCallbackCh0, NULL, &g_mb_timer[channel]);
+    //     } else if (channel == SEG_DATA1_CH) {
+    //         add_repeating_timer_us(mb_timeout[channel], vMBPortTimersCallbackCh1, NULL, &g_mb_timer[channel]);
+    //     }
+    // #else
+    //     add_repeating_timer_us(mb_timeout[channel], vMBPortTimersCallback, NULL, &g_mb_timer[channel]);
+    // #endif
+    add_repeating_timer_us(mb_timeout[channel], vMBPortTimersCallback,
+                           (void *)(intptr_t)channel, &g_mb_timer[channel]);
 }
 
 void vMBPortTimersDisable(int channel) {
