@@ -99,7 +99,9 @@
 #define		PPP_FAIL			0
 #define 	PPP_RETRY			2
 
-#define   OPTMSG_LEN		80
+// A PAP request carries both account strings with a length byte each:
+// 1 + 63 + 1 + 63, the most the 64-byte PPPoE ID/PW settings can hold.
+#define   OPTMSG_LEN		128
 #define		CV_HV_LEN			16
 
 
