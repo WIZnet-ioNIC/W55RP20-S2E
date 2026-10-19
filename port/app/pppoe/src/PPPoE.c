@@ -244,8 +244,6 @@ void ppp_recv(uint16_t received_len) {
     uint8_t opt_code;
     uint8_t ppp_code;
 
-    uint8_t str[OPTMSG_LEN];
-    uint16_t str_len = 0;
     uint8_t tmp8 = 0;
     uint8_t mac[6];
 
@@ -579,20 +577,18 @@ void ppp_recv(uint16_t received_len) {
 
                     switch (ppp_code) {
                     case 0x01: // Challenge, parse the packet and return 'Response' to NAS
-                        //-- MD5 calc input consist of ID(1), password(pwlen) and Challenge value(16).
-
-                        //-- buf[t_idx] => CV(challenge value) size, buf[t_idx+1] => start byte of CV
-                        memcpy(&str[str_len], &buf[t_idx + 1], buf[t_idx]); // CV(value)
-                        str_len += buf[t_idx];
-                        memcpy(&str[str_len], &pppoe_pw, pppoe_pw_len); // user password
-                        str_len += pppoe_pw_len;
-                        memcpy(&str[str_len], &pppoe_id, pppoe_id_len); // user id
-                        str_len += pppoe_id_len;
+                        //-- MD5 calc input consist of ID(1), password(pwlen) and Challenge value (RFC 1994).
+                        //-- The user name is not part of the hash; it only goes in the Name field.
+                        //-- Fed to MD5 piece by piece: the challenge may be up to 255 bytes, more
+                        //-- than an OPTMSG_LEN buffer holds next to the password.
 
                         // MD5 calculation
-                        // Input - str, str_len / Output - digest
+                        // Input - ID, password, CV / Output - digest
                         md5_init(&context);
-                        md5_update(&context, str, str_len);
+                        md5_update(&context, &get_protocol_id, 1); // CHAP identifier
+                        md5_update(&context, pppoe_pw, pppoe_pw_len); // user password
+                        //-- buf[t_idx] => CV(challenge value) size, buf[t_idx+1] => start byte of CV
+                        md5_update(&context, &buf[t_idx + 1], buf[t_idx]); // CV(value)
                         md5_final(digest, &context);
 
                         // making response msg
