@@ -40,7 +40,8 @@ typedef enum {RESET = 0, SET = !RESET} FlagStatus, ITStatus;
 #elif (DEVICE_BOARD_NAME == W232N)
 #define DEVICE_ID_DEFAULT                   "W232N"//"S2E_SSL-MB" // Device name
 #elif (DEVICE_BOARD_NAME == IP20)
-#define DEVICE_ID_DEFAULT                   "IP20"//"S2E_SSL-MB" // Device name
+// #define DEVICE_ID_DEFAULT                   "IP20"//"S2E_SSL-MB" // Device name
+#define DEVICE_ID_DEFAULT                   "W55RP20-S2E-2CH"//"S2E_SSL-MB" // Device name
 #endif
 #define DEVICE_CLOCK_SELECT                 CLOCK_SOURCE_EXTERNAL // or CLOCK_SOURCE_INTERNAL
 #define DEVICE_UART_CNT                     (2)
